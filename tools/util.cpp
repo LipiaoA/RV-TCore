@@ -1,9 +1,8 @@
-#include <string>
-#include <cstdint>
-#include <cstring>
+#include "util.h"
 
-static std::string to_hex(uint64_t x) {
+std::string to_hex(uint64_t x) {
     char buf[32];
     std::snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)x);
     return std::string(buf);
 }
+
