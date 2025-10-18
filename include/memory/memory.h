@@ -6,32 +6,32 @@
 #include <algorithm>
 #include <cstdio>
 
-#include "tool.h"
+#include "intf.h"
+#include "util.h"
 
+typedef struct Segment {
+    uint64_t base;                 // 分片基地址
+    uint64_t size;                 // 分片大小
+    std::vector<uint8_t> storage;  // 实际存储
+
+    Segment(uint64_t b, uint64_t s)
+        : base(b), size(s), storage(s, 0) {}
+
+    inline bool contains(uint64_t addr) const {
+        return (addr >= base) && (addr < base + size);
+    }
+
+    inline uint64_t offset(uint64_t addr) const {
+        return addr - base;
+    }
+} Segment;
 
 class Memory {
 public:
-    struct Segment {
-        uint64_t base;                 // 分片基地址
-        uint64_t size;                 // 分片大小
-        std::vector<uint8_t> storage;  // 实际存储
 
-        Segment(uint64_t b, uint64_t s)
-            : base(b), size(s), storage(s, 0) {}
-
-        inline bool contains(uint64_t addr) const {
-            return (addr >= base) && (addr < base + size);
-        }
-
-        inline uint64_t offset(uint64_t addr) const {
-            return addr - base;
-        }
-    };
 
 public:
-    explicit Memory(bool check_bound = true)
-        : m_checkBound(check_bound) {}
-    Memory();
+    explicit Memory(bool check_bound = true);
     ~Memory();
 
 public:

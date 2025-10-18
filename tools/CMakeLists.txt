@@ -1,4 +1,7 @@
-# 例如 hexdump 工具
-add_executable(util util.cpp)
-target_link_libraries(util PRIVATE common)
+add_library(tools STATIC
+    queue.cpp
+)
 
+target_include_directories(tools PUBLIC
+    ${CMAKE_SOURCE_DIR}/include/tools
+)

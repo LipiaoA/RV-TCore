@@ -1,7 +1,7 @@
 #include "memory.h"
 
-Memory::Memory() {}
-Memroy::~Memroy() {}
+Memory::Memory(bool check_bound) : m_checkBound(check_bound) {}
+Memory::~Memory() {}
 
 void Memory::add_segment(uint64_t base, uint64_t size) {
     // 检查是否与现有分片冲突
@@ -55,7 +55,7 @@ void Memory::dump_segments() const {
     }
 }
 
-const Segment* Memroy::find_segment(uint64_t addr, uint64_t len) const {
+const Segment* Memory::find_segment(uint64_t addr, uint64_t len) const {
     for (auto &seg : m_segments) {
         if (seg.contains(addr) && seg.contains(addr + len - 1)) {
             return &seg;
@@ -66,7 +66,7 @@ const Segment* Memroy::find_segment(uint64_t addr, uint64_t len) const {
     return nullptr;
 }
 
-Segment* Memroy::find_segment(uint64_t addr, uint64_t len) {
+Segment* Memory::find_segment(uint64_t addr, uint64_t len) {
     for (auto &seg : m_segments) {
         if (seg.contains(addr) && seg.contains(addr + len - 1)) {
             return &seg;

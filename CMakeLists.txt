@@ -17,10 +17,10 @@ option(ENABLE_TESTS "Build tests" ON)
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # 子模块
-add_subdirectory(common)
 add_subdirectory(memory)
 add_subdirectory(tools)
 add_subdirectory(core)
+add_subdirectory(util)
 add_subdirectory(func)
 
 if(ENABLE_TESTS)
@@ -29,4 +29,4 @@ endif()
 
 # 主程序（如果需要）
 add_executable(rv-tcore main.cpp)
-target_link_libraries(rv-tcore PRIVATE core common memory)
+target_link_libraries(rv-tcore PRIVATE core tools util memory)
