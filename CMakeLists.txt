@@ -17,7 +17,7 @@ option(ENABLE_TESTS "Build tests" ON)
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # 子模块
-add_subdirectory(memory)
+add_subdirectory(modules/memory)
 add_subdirectory(tools)
 add_subdirectory(core)
 add_subdirectory(util)
