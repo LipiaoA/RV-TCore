@@ -27,6 +27,5 @@ if(ENABLE_TESTS)
     add_subdirectory(tests)
 endif()
 
-# 主程序（如果需要）
-add_executable(rv-tcore main.cpp)
+add_executable(rv-tcore main.cpp model.cpp)
 target_link_libraries(rv-tcore PRIVATE core tools util memory)

@@ -14,15 +14,13 @@ inline bool is_little_endian() {
     return *(uint8_t*)&x == 1;
 }
 
-class MappedFile {
-public:
-    bool map(const char* path);
-    void unmap();
-
-private:
+typedef struct MappedFile {
     int m_fd = -1;
     size_t m_size = 0;
     void *m_data = MAP_FAILED;
-};
+
+    bool map(const char* path);
+    void unmap();
+} MappedFile;
 
 #endif

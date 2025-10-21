@@ -2,6 +2,7 @@
 #define RV_TCORE_ELF_H
 
 #include <elf.h>
+#include "memory.h"
 
 class ELFReader {
 public:
@@ -18,6 +19,7 @@ public:
     uint64_t m_entry = 0;
 
     ELFReader(const void* b, size_t s) : m_base(b), m_fsiz(s), m_ehdr(b) {}
+    ELFReader() {}
 
 private:
     bool elf_valid();
@@ -27,7 +29,7 @@ public:
     int find_section_by_name(const char* nm);
 
     vector<pair<uint64_t,uint64_t>> get_load_segments()
-
+    bool read(Memory &mem);
 
     static constexpr uint64_t PAGE_SIZE = 4096;
     static uint64_t page_round_up(uint64_t v) {
