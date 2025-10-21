@@ -2,6 +2,7 @@
 #define TCORE_INTF_H
 
 #include <string>
+#include "rv_def.h"
 
 class DevIntf {
 public:
