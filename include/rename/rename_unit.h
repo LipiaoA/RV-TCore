@@ -4,8 +4,12 @@
 
 #include "intf.h"
 
-class RenameUnit : public DevIntf {
-
+class RenameUnit : public IRename {
+public:
+    RenameUnit(const std::string& n) : IRename(n) {}
+    ~RenameUnit() {}
+public:
+    void tick() {}
 };
 
 #endif

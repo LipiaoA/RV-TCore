@@ -4,8 +4,12 @@
 
 #include "intf.h"
 
-class IssueUnit : public DevIntf {
-
+class IssueUnit : public IIssue {
+public:
+    IssueUnit(const std::string& n) : IIssue(n) {}
+    ~IssueUnit() {}
+public:
+    void tick() {}
 };
 
 #endif

@@ -4,8 +4,12 @@
 
 #include "intf.h"
 
-class DispatchUnit : public DevIntf {
-
+class DispatchUnit : public IDispatch {
+public:
+    DispatchUnit(const std::string& n) : IDispatch(n) {}
+    ~DispatchUnit() {}
+public:
+    void tick() {}
 };
 
 #endif

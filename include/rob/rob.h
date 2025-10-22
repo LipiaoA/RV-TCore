@@ -4,8 +4,12 @@
 
 #include "intf.h"
 
-class ReorderBuffer : public DevIntf {
-
+class ReorderBuffer : public IRob {
+public:
+    ReorderBuffer(const std::string& n) : IRob(n) {}
+    ~ReorderBuffer() {}
+public:
+    void tick() {}
 };
 
 #endif

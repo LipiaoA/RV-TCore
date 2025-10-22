@@ -51,7 +51,7 @@ bool ELFReader::read(Memory& mem) {
         if (phoff + phentsize * phnum > f_siz) {
             throw std::runtime_error("Program headers exceed file size");
         }
-        const uint64_t alloc_size = page_round_up(mem_siz);
+        const uint64_t alloc_size = round_up(mem_siz, PAGE_SIZE);
         mem.add_segment(vaddr, alloc_size);
 
         if (file_siz > 0) {

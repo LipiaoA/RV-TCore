@@ -4,8 +4,12 @@
 
 #include "intf.h"
 
-class DecodeUnit : public DevIntf {
-
+class DecodeUnit : public IDecode {
+public:
+    DecodeUnit(const std::string& n) : IDecode(n) {}
+    ~DecodeUnit() {}
+public:
+    void tick() {}
 };
 
 #endif

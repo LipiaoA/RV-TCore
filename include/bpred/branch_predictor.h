@@ -3,8 +3,12 @@
 
 #include "intf.h"
 
-class BranchPredictor : public DevIntf {
-
+class BranchPredictor : public IPredictor {
+public:
+    BranchPredictor(const std::string& n) : IPredictor(n) {}
+    ~BranchPredictor() {}
+public:
+    void tick() {}
 };
 
 #endif

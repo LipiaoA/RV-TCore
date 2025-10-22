@@ -3,8 +3,12 @@
 
 #include "intf.h"
 
-class ExecuteUnit : public DevIntf {
-
+class ExecuteUnit : public IExecute {
+public:
+    ExecuteUnit(const std::string& n) : IExecute(n) {}
+    ~ExecuteUnit() {}
+public:
+    void tick() {}
 };
 
 #endif

@@ -1,3 +1,4 @@
+
 #ifndef TCORE_UTIL_H
 #define TCORE_UTIL_H
 
@@ -22,5 +23,25 @@ typedef struct MappedFile {
     bool map(const char* path);
     void unmap();
 } MappedFile;
+
+template <typename T>
+typename std::enable_if<!std::is_array<T>::value>::type
+delete_ptr(T*& ptr) {
+    if (!ptr) return;
+    delete ptr;
+    ptr = nullptr;
+}
+
+template <typename T>
+typename std::enable_if<std::is_array<T>::value>::type
+delete_ptr(T*& ptr) {
+    if (!ptr) return;
+    delete[] ptr;
+    ptr = nullptr;
+}
+
+uint64_t round_up(uint64_t v, uint64_t size) {
+    return (v + size - 1) & ~(size - 1);
+}
 
 #endif

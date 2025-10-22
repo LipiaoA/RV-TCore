@@ -3,8 +3,12 @@
 
 #include "intf.h"
 
-class FetchUnit : public DevIntf {
-
+class FetchUnit : public IFetch {
+public:
+    FetchUnit(const std::string& n) : IFetch(n) {}
+    ~FetchUnit() {}
+public:
+    void tick() {}
 };
 
 #endif

@@ -4,13 +4,12 @@
 #include "util.h"
 #include "intf.h"
 
-class Core : public DevIntf {
+class Core : public ICore {
 public:
-    Core(const std::string &n) : DevIntf(n) {}
+    Core(const std::string &n) : ICore(n) {}
     ~Core() {}
 public:
-    void eval() {}
-
+    void build();
 };
 
 #endif

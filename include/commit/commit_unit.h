@@ -4,8 +4,12 @@
 
 #include "intf.h"
 
-class CommitUnit  : public DevIntf {
-
+class CommitUnit  : public ICommit {
+public:
+    CommitUnit(const std::string& n) : ICommit(n) {}
+    ~CommitUnit() {}
+public:
+    void tick() {}
 };
 
 #endif

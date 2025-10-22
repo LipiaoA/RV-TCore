@@ -5,12 +5,13 @@
 #include "memory.h"
 #include "elf_l.h"
 #include "core.h"
+#include "peripheral.h"
 
-class Model : public DevIntf {
+class Model {
 public:
     Model(const std::string& name) : DevIntf(name) {}
     Model() = delete;
-    ~Model() {}
+    ~Model();
 
 public:
     bool init(const std::string& path);
@@ -19,10 +20,11 @@ public:
     void run();
 
 private:
+    Memory *m_mem;
+    ELFReader m_elf;
 
 private:
-    Memory m_mem;
-    ELFReader m_elf;
+    ICore *m_core;
 };
 
 #endif
