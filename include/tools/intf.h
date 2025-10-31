@@ -115,4 +115,29 @@ private:
 };
 
 
+// 2-bit 饱和计数器
+struct Sat2 {
+    uint8_t m_val = 2; // 取值0-3, >=2表示预测taken
+    Sat2() = default;
+    Sat2(int v): m_val((uint8_t)min(3, max(0, v))) {}
+    bool taken() const { return m_val >= 2; }
+    void update(bool taken) {
+        if (taken) { if (m_val < 3) ++m_val; }
+        else       { if (m_val > 0) --m_val; }
+    }
+};
+
+// 可扩展 N 位饱和计数器
+struct SatN {
+    unsigned bits;
+    unsigned val;
+    unsigned max;
+    SatN(unsigned bits = 2) : bits(bits), val(0) {
+        max = (1u << bits) - 1;
+    }
+    bool predict_high() const { return val > (max / 2); }
+    void inc() { if (val < max) ++val; }
+    void dec() { if (val > 0) --val; }
+};
+
 #endif
