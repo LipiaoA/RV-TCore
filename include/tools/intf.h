@@ -5,19 +5,22 @@
 #include <vector>
 
 #include "rv_def.h"
+#include "util.h"
 
 class DevIntf {
 public:
-    DevIntf(const std::string &n): name(n) {}
+    DevIntf(const std::string &n): m_name(n) {}
     virtual ~DevIntf() = default;
 
     virtual void tick() = 0;                    // 组合逻辑评估
-    virtual void commit() {}                    // 将 next->current 生效（子类覆盖）
+    virtual void commit() = 0;                    // 将 next->current 生效（子类覆盖）
     virtual void reset() {}                     // 复位
     virtual void build() {}
 
-    virtual std::string info() const { return name; }
-    const std::string name;
+    virtual std::string dev_name() const { return m_name; }
+
+private:
+    const std::string m_name;
 };
 
 class IPredictor : public DevIntf {
@@ -78,41 +81,67 @@ public:
 
 class ICore : public DevIntf {
 public:
-    ICore(const std::string& n) : DevIntf(n) {}
+    ICore(const std::string& n) : DevIntf(n), m_exit(false){}
     virtual ~ICore() {
-        for (auto &m : m_module) {
-            delete m;
-            m = nullptr;
+        for (auto &m : m_modules) {
+            delete_ptr(m);
         }
     };
 
 public:
     void tick() {
-        for(auto m : m_module) {
+        for(auto m : m_modules) {
             m->tick();
         }
     }
 
     void commit() {
-        for (auto m : m_module) {
+        for (auto m : m_modules) {
             m->commit();
         }
     }
     void reset() {
-        for (auto m : m_module) {
+        for (auto m : m_modules) {
             m->reset();
         }
     };
 
+    virtual bool exit() {return m_exit;}
+
 protected:
     void add_module(DevIntf *module) {
-        m_module.emplace_back(module);
+        m_modules.emplace_back(module);
     }
 
 private:
-    std::vector<DevIntf *> m_module;
-
+    bool m_exit;
+    std::vector<DevIntf *> m_modules;
 };
 
+
+// 2-bit 饱和计数器
+struct Sat2 {
+    uint8_t m_val = 2; // 取值0-3, >=2表示预测taken
+    Sat2() = default;
+    Sat2(int v): m_val((uint8_t)std::min(3, std::max(0, v))) {}
+    bool taken() const { return m_val >= 2; }
+    void update(bool taken) {
+        if (taken) { if (m_val < 3) ++m_val; }
+        else       { if (m_val > 0) --m_val; }
+    }
+};
+
+// 可扩展 N 位饱和计数器
+struct SatN {
+    unsigned bits;
+    unsigned val;
+    unsigned max;
+    SatN(unsigned bits = 2) : bits(bits), val(0) {
+        max = (1u << bits) - 1;
+    }
+    bool predict_high() const { return val > (max / 2); }
+    void inc() { if (val < max) ++val; }
+    void dec() { if (val > 0) --val; }
+};
 
 #endif

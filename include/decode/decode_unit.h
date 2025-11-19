@@ -9,7 +9,8 @@ public:
     DecodeUnit(const std::string& n) : IDecode(n) {}
     ~DecodeUnit() {}
 public:
-    void tick() {}
+    void                                tick() {}
+    void                                commit() {}
 };
 
 #endif

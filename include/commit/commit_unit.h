@@ -9,7 +9,8 @@ public:
     CommitUnit(const std::string& n) : ICommit(n) {}
     ~CommitUnit() {}
 public:
-    void tick() {}
+    void                                tick() {}
+    void                                commit() {}
 };
 
 #endif

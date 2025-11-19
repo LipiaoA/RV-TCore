@@ -1,7 +1,7 @@
 
 #include <iostream>
 
-#include "memory.h"
+#include "mem.h"
 
 int main() {
     Memory mem;

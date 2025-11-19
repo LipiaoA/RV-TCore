@@ -9,7 +9,8 @@ public:
     IssueUnit(const std::string& n) : IIssue(n) {}
     ~IssueUnit() {}
 public:
-    void tick() {}
+    void                                tick() {}
+    void                                commit() {}
 };
 
 #endif

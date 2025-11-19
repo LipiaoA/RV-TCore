@@ -6,10 +6,13 @@
 
 class Core : public ICore {
 public:
-    Core(const std::string &n) : ICore(n) {}
-    ~Core() {}
+    Core(const std::string &n) : ICore(n) {
+    }
+    virtual ~Core() {}
 public:
-    void build();
+    virtual void                            build();
+private:
+
 };
 
 #endif

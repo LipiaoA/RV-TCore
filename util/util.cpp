@@ -1,7 +1,7 @@
 #include "util.h"
 #include <fcntl.h>
 #include <sys/stat.h>
-#include <sys/mman.h>
+#include <unistd.h>
 
 
 /*
@@ -27,22 +27,30 @@ void hexdump(const void* p, size_t n)
 
 bool MappedFile::map(const char* path) {
     struct stat st;
-    m_fd = open(path, O_RDONLY);
+    fd = open(path, O_RDONLY);
 
-    if (m_fd < 0) return false;
+    if (fd < 0) return false;
     if (fstat(fd, &st) < 0) return false;
-    m_size = st.st_size;
+    size = st.st_size;
 
-    m_data = mmap(nullptr, m_size, PORT_READ, MAP_PRIVATE, fd, 0);
-    return m_data != MAP_FAILED;
+    data = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
+    return data != MAP_FAILED;
 }
 
 
 void MappedFile::unmap() {
-    if (m_data != MAP_FAILED) munmap(m_data, m_size);
-    if (m_fd > 0) close(m_fd);
-    m_data = MAP_FAILED;
-    m_fd = -1;
-    m_size = 0;
+    if (data != MAP_FAILED) munmap(data, size);
+    if (fd > 0) close(fd);
+    data = MAP_FAILED;
+    fd = -1;
+    size = 0;
+}
+
+u64 round_up(u64 v, u64 size) {
+    return (v + size - 1) & ~(size - 1);
+}
+
+u64 round_down(u64 value, u64 alignment) {
+    return value & ~(alignment - 1);
 }
 

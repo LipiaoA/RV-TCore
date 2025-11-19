@@ -1,8 +1,14 @@
+#include <iostream>
+
 #include "model.h"
 
-extern uint64_t g_cycles;
+
+extern u64 g_cycles;
 
 bool Model::build() {
+    m_core = new Core("core");
+    m_core->build();
+
     return true;
 }
 
@@ -11,18 +17,40 @@ void  Model::reset() {
 }
 
 void Model::run() {
-    while(true) {
+    u16 op = 0;
+    u64 addr = m_entry;
+
+    m_core->reset();
+
+    while(g_cycles < 20) {
         g_cycles++;
+        op = m_mem->load16(addr);
+        std::cout << "cycle:" << g_cycles << " op: 0x" << std::hex << op << std::endl;
+        addr += 2;
+        m_core->tick();
+        m_core->commit();
+
+        if (m_core->exit()) {
+            break;
+        }
     }
     return;
 }
 
 bool Model::init(const std::string& path) {
     MappedFile elf;
-    if (!elf.map(path.c_str)) {
+    if (!elf.map(path.c_str())) {
         return false;
     }
-    ELFReader reader(elf.m_fd, elf.m_size);
-    reader.read(m_mem);
+    ELFReader reader(elf.data, elf.size);
+    m_mem = new Memory();
+    reader.read(*m_mem);
+    m_entry = reader.get_entry();
     return true;
+}
+
+
+Model::~Model() {
+    delete_ptr(m_mem);
+    delete_ptr(m_core);
 }

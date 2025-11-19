@@ -8,7 +8,8 @@ public:
     ExecuteUnit(const std::string& n) : IExecute(n) {}
     ~ExecuteUnit() {}
 public:
-    void tick() {}
+    void                                tick() {}
+    void                                commit() {}
 };
 
 #endif

@@ -9,7 +9,8 @@ public:
     RenameUnit(const std::string& n) : IRename(n) {}
     ~RenameUnit() {}
 public:
-    void tick() {}
+    void                                tick() {}
+    void                                commit() {}
 };
 
 #endif

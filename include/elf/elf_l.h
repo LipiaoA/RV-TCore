@@ -2,18 +2,27 @@
 #define RV_TCORE_ELF_H
 
 #include <elf.h>
-#include "memory.h"
+#include <vector>
+#include <cstdint>
+#include <utility>
+
+#include "util.h"
+#include "mem.h"
 
 class ELFReader {
 
 public:
-    ELFReader(const void* b, size_t s) : m_base(b), m_fsiz(s), m_ehdr(b) {}
+    ELFReader(const void* b, size_t s) : m_base(b), m_fsiz(s){
+        m_ehdr = static_cast<const Elf64_Ehdr*>(b);
+    }
     ELFReader() = delete;
 
 public:
-    int find_section_by_name(const char* nm);
-    vector<pair<uint64_t,uint64_t>> get_load_segments()
+    std::vector<std::pair<u64, u64>> get_load_segments();
     bool read(Memory &mem);
+    u64 get_entry() const {
+        return m_entry;
+    }
 
 private:
     bool elf_valid();

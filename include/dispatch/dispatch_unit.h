@@ -9,7 +9,8 @@ public:
     DispatchUnit(const std::string& n) : IDispatch(n) {}
     ~DispatchUnit() {}
 public:
-    void tick() {}
+    void                                tick() {}
+    void                                commit() {}
 };
 
 #endif

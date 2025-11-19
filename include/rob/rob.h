@@ -4,12 +4,13 @@
 
 #include "intf.h"
 
-class ReorderBuffer : public IRob {
+class ROB : public IRob {
 public:
-    ReorderBuffer(const std::string& n) : IRob(n) {}
-    ~ReorderBuffer() {}
+    ROB(const std::string& n) : IRob(n) {}
+    ~ROB() {}
 public:
-    void tick() {}
+    void                                tick() {}
+    void                                commit() {}
 };
 
 #endif
