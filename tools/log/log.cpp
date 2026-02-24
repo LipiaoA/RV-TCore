@@ -24,6 +24,11 @@ void LogSystem::set_mode(LogMode mode)
     }
 }
 
+void LogSystem::set_level(LogLevel level)
+{
+    m_level = level;
+}
+
 void LogSystem::add_writer(shared_ptr<LogOp> w)
 {
     lock_guard<mutex> lock(m_sink_mutex);

@@ -4,11 +4,12 @@
 
 
 extern u64 g_cycles;
+extern u64 g_max_cycles;
 
 bool Model::build() {
     m_core = new Core("core");
     m_core->build();
-
+    m_log = &LogSystem::instance();
     return true;
 }
 
@@ -22,10 +23,11 @@ void Model::run() {
 
     m_core->reset();
 
-    while(g_cycles < 20) {
+    while(g_cycles < g_max_cycles) {
         g_cycles++;
         op = m_mem->load16(addr);
-        std::cout << "cycle:" << g_cycles << " op: 0x" << std::hex << op << std::endl;
+        m_log->write("\nCycle:%d \n-------------------------", g_cycles);
+        LOG_LEVEL1("Total INFO", " addr:0x%lx, op:%lx", addr, op);
         addr += 2;
         m_core->tick();
         m_core->commit();
