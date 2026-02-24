@@ -8,6 +8,7 @@
 #include <cassert>
 
 #include "fetch_unit.h"
+#include "log.h"
 
 FetchUnit::FetchUnit(const std::string& n)
     : IFetch(n)
@@ -57,6 +58,7 @@ void FetchUnit::build() {
     m_dcache->attach_lower(m_l2_cache);
     m_dcache->set_name("DCache");
 
+    m_bpu = std::make_unique<BranchPredictor>("Branch Predictor");
 }
 
 void FetchUnit::tick()
@@ -108,6 +110,8 @@ void FetchUnit::fetch0()
 
     m_pred.valid = true;
     m_pred.data = pred;
+    LOG_LEVEL1("F0 Predict", "pc:0x%lx  valid:%d taken:%d target:%lx", m_pc, pred.valid, pred.taken, pred.target);
+
 }
 
 /*
@@ -122,7 +126,7 @@ void FetchUnit::fetch1()
         m_pred.clear();
         return;
     }
-
+    LOG_LEVEL1("F1 Instr Req", "test");
     // choose PC to request: if predicted taken -> pred.target else current PC
     pc_t req_pc = m_pred.data.taken ? m_pred.data.target : m_pc;
     pc_t line_addr = align_line(req_pc);
@@ -159,6 +163,7 @@ void FetchUnit::fetch2()
         m_f2_line.clear();
         return;
     }
+    LOG_LEVEL1("F2 Data Res", "test");
 
     if (m_icache->line_ready(m_pending_line_addr)) {
         bytes_t line = m_icache->read_line(m_pending_line_addr);
@@ -167,6 +172,8 @@ void FetchUnit::fetch2()
 
         m_f2_line.valid = true;
         m_f2_line.data = std::move(line);
+        LOG_LEVEL1("F2 Data Res", line);
+
     } else {
         // still waiting
         m_f2_line.clear();
@@ -187,6 +194,7 @@ void FetchUnit::fetch3()
         m_f3_pkt.clear();
         return;
     }
+    LOG_LEVEL1("F3 Combine", "test");
 
     // start PC for this line: compute from the low byte used when constructing ICache stub
     // (in stub, bytes were filled based on line_addr LSB, but here we track via m_pc)
@@ -254,6 +262,7 @@ void FetchUnit::fetch4()
         m_f4_pkt.clear();
         return;
     }
+    LOG_LEVEL1("F4 Dispatch", "test");
 
     // if squash threshold says this should be dropped
     if (m_f3_pkt.data.fetch_id >= m_squash_id && m_squash_id > 0) {

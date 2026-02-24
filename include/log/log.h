@@ -71,25 +71,31 @@ public:
         static LogSystem s_instance;
         return s_instance;
     }
-
     ~LogSystem();
 
-    void set_level(LogLevel level) {
-        m_level = level;
+public:
+    void                        set_level(LogLevel level);
+    void                        set_mode(LogMode mode);
+    void                        add_writer(std::shared_ptr<LogOp> w);
+    void                        flush();
+    template <typename Fmt, typename... Args>
+    void                        write(Fmt fmt,  Args &&...args) {
+        std::ostringstream line;
+        std::string formatted_msg = format_string(fmt, std::forward<Args>(args)...);
+        line << formatted_msg << "\n";
+        for (auto &logger : m_writer)
+            logger->write(line.str(), LEVEL1);
     }
 
-    void set_mode(LogMode mode);
-
-    void add_writer(std::shared_ptr<LogOp> w);
-
     template <typename Mut, typename... Args>
-    void log(LogLevel level, const std::string &prefix, Mut mut, Args &&...args) {
+    void                        log(LogLevel level, const std::string &prefix, Mut mut, Args &&...args) {
         if (level > m_level)
             return;
 
         std::ostringstream line;
 
-        line << "[" << current_time() << "] " << "[" << prefix << "] ";
+        // line << "[" << current_time() << "] ";
+        line << "[" << prefix << "] ";
 
         if constexpr (std::is_convertible_v<Mut, const char*>) {
             std::string formatted_msg = format_string(mut, std::forward<Args>(args)...);
@@ -116,7 +122,7 @@ public:
         }
     }
 
-    void flush();
+
 
 private:
     LogSystem() = default;

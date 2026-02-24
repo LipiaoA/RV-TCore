@@ -5,6 +5,7 @@
 #include "log.h"
 
 u64 g_cycles = 0;
+u64 g_max_cycles = 1000;
 
 static Model *model;
 static std::string elf_path = "";
@@ -60,6 +61,7 @@ bool args_init(int argc, char *argv[])
         auto &log = LogSystem::instance();
         log.set_level(static_cast<LogLevel>(level));
         log.set_mode(LogMode::SYNC);
+        log.add_writer(std::make_shared<FileSink>("system.log"));
     }
 
     if (parser.has('f') || parser.has("file")) {

@@ -19,6 +19,8 @@ void Core::build() {
     IRob *rob = new ROB("rob");
     rob->build();
     IFetch *fetch = dynamic_cast<IFetch *>(new FetchUnit(dev_name));
+    fetch->build();
+    add_module(fetch);
 
     ICommit *commit = dynamic_cast<ICommit *>(new CommitUnit(dev_name));
     IDecode *decode = dynamic_cast<IDecode *>(new DecodeUnit(dev_name));
@@ -28,7 +30,6 @@ void Core::build() {
     IRename *rename = dynamic_cast<IRename *>(new RenameUnit(dev_name));
     IPredictor *predictor = dynamic_cast<IPredictor *>(new BranchPredictor(dev_name));
 
-    add_module(fetch);
     add_module(predictor);
     add_module(decode);
     add_module(commit);
