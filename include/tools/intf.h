@@ -10,6 +10,8 @@
 class DevIntf {
 public:
     DevIntf(const std::string &n): m_name(n) {}
+    DevIntf(const DevIntf&) = delete;
+    DevIntf() : m_name("unknown") {}
     virtual ~DevIntf() = default;
 
     virtual void tick() = 0;                    // 组合逻辑评估

@@ -9,12 +9,14 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 # add_compile_options(-Wall -Wextra -Werror)
 add_compile_options(-Wall -O0)
 set(CMAKE_BUILD_TYPE Debug)
+
+# 关闭所有警告
+add_definitions(-w)
+
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
 
 option(ENABLE_TESTS "Build tests" ON)
-
-
 
 # 头文件目录（全局）
 include_directories(${CMAKE_SOURCE_DIR}/include)
@@ -22,6 +24,7 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 # 子模块
 add_subdirectory(modules/memory)
 add_subdirectory(modules/frontend)
+add_subdirectory(modules/backend)
 add_subdirectory(func)
 add_subdirectory(tools)
 add_subdirectory(core)

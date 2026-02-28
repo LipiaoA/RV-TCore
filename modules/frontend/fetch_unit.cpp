@@ -20,7 +20,13 @@ FetchUnit::FetchUnit(const std::string& n)
     m_f3_pkt.clear();
     m_f4_pkt.clear();
 
-    m_pc = 0x1000;   // default reset PC
+    m_pc         = 0x1000;   // default reset PC
+    m_fetch_width = 4;       // 简化模型：每周期最多取 4 条指令
+    m_squash_id   = 0;
+}
+
+void FetchUnit::set_fetch_decode_q(ASyncQueue<FetchPacket>* q) {
+    m_fetch_decode_q = q;
 }
 
 void FetchUnit::build() {
@@ -88,7 +94,7 @@ void FetchUnit::redirct(pc_t new_pc, u64 fetch_id)
         m_dispatch_q.pop_front();
 }
 
-std::optional<fetch_packet_t> FetchUnit::try_dispatch()
+std::optional<FetchPacket> FetchUnit::try_dispatch()
 {
     if (m_dispatch_q.empty())
         return std::nullopt;
@@ -123,18 +129,16 @@ void FetchUnit::fetch0()
 void FetchUnit::fetch1()
 {
     if (!m_pred.valid) {
-        m_pred.clear();
+        m_f1_req.clear();
         return;
     }
-    LOG_LEVEL1("F1 Instr Req", "test");
+
     // choose PC to request: if predicted taken -> pred.target else current PC
     pc_t req_pc = m_pred.data.taken ? m_pred.data.target : m_pc;
     pc_t line_addr = align_line(req_pc);
 
     // if there's already a pending request to same line, reuse it
     if (m_icache_req_pending && m_pending_line_addr == line_addr) {
-        // keep waiting; no new request
-        m_f1_req.valid = false;
         return;
     }
 
@@ -144,9 +148,10 @@ void FetchUnit::fetch1()
         m_icache_req_pending = true;
         m_pending_line_addr = line_addr;
         m_f1_req.valid = true;
-        m_f1_req.data = line_addr;
+        // 在 F1 寄存器中保存本次取指对应的“起始 PC”，供 F2/F3 使用
+        m_f1_req.data = req_pc;
+        LOG_LEVEL1("F1 Instr Req", "pc:0x%lx line:0x%lx", req_pc, line_addr);
     } else {
-        // not accepted (rare in this stub) -> do nothing this cycle
         m_f1_req.clear();
     }
 }
@@ -159,11 +164,11 @@ void FetchUnit::fetch1()
  */
 void FetchUnit::fetch2()
 {
-    if (!m_icache_req_pending) {
+    // 没有挂起的 ICache 请求，直接清空本阶段输出
+    if (!m_icache_req_pending || !m_f1_req.valid) {
         m_f2_line.clear();
         return;
     }
-    LOG_LEVEL1("F2 Data Res", "test");
 
     if (m_icache->line_ready(m_pending_line_addr)) {
         bytes_t line = m_icache->read_line(m_pending_line_addr);
@@ -172,10 +177,9 @@ void FetchUnit::fetch2()
 
         m_f2_line.valid = true;
         m_f2_line.data = std::move(line);
-        LOG_LEVEL1("F2 Data Res", line);
+        LOG_LEVEL1("F2 Data Res", "line_addr:0x%lx", m_pending_line_addr);
 
     } else {
-        // still waiting
         m_f2_line.clear();
     }
 }
@@ -185,70 +189,125 @@ void FetchUnit::fetch2()
  * - 从 F2 的 line bytes 组装最多 k_fetch_width 条 inst
  * - 注入预测信息（来自 F0）
  * - 产生 fetch_packet 写入 m_f3_pkt_nxt
- *
- * NOTE: 这里简化为定长 4-byte 指令；真实实现需要预解码并支持跨行拼接
  */
 void FetchUnit::fetch3()
 {
-    if (!m_f2_line.valid) {
+    // - 每次从缓冲头部解析最多 m_fetch_width 条指令，每条指令根据低 2 bit 判断长度：
+    //      bits[1:0] != 0b11 -> 2 字节压缩指令
+    //      bits[1:0] == 0b11 -> 4 字节指令（此处暂不考虑 >4B 的极端扩展）
+    // - 若当前剩余字节不足以组成一条完整指令，则停在这里，等待下一条 cache line 合并后再解析。
+
+    static bytes_t s_f3_buffer;      // 累积尚未完全解析的字节
+    static pc_t    s_f3_base_pc = 0; // 对应 s_f3_buffer[0] 的 PC
+    static bool    s_f3_buf_valid = false;
+
+    // 如果本周期有新的 I$ 行返回，则把它 append 到缓冲中
+    if (m_f2_line.valid) {
+        const bytes_t &line = m_f2_line.data;
+
+        if (!s_f3_buf_valid) {
+            // 新一轮取指窗口：确定本次缓冲起始 PC
+            pc_t base_pc = m_f1_req.valid
+                ? m_f1_req.data
+                : (m_pred.valid && m_pred.data.taken ? m_pred.data.target : m_pc);
+
+            s_f3_base_pc = base_pc;
+            s_f3_buffer.clear();
+
+            // 跳过 line 中 base_pc 之前的字节，使 s_f3_buffer[0] 与 base_pc 对齐。
+            size_t offset = base_pc % ICache::k_line_bytes;
+            if (offset > line.size())
+                offset = line.size();
+            s_f3_buffer.insert(s_f3_buffer.end(), line.begin() + offset, line.end());
+            s_f3_buf_valid = true;
+        } else {
+            // 已有部分字节（可能来自上一条 cache line 的尾部），直接把新 line 整段追加上去
+            s_f3_buffer.insert(s_f3_buffer.end(), line.begin(), line.end());
+        }
+    }
+
+    // 如果缓冲里依然没有字节可用，则本周期无法输出 fetch 包
+    if (!s_f3_buf_valid || s_f3_buffer.empty()) {
         m_f3_pkt.clear();
         return;
     }
-    LOG_LEVEL1("F3 Combine", "test");
 
-    // start PC for this line: compute from the low byte used when constructing ICache stub
-    // (in stub, bytes were filled based on line_addr LSB, but here we track via m_pc)
-    // For a robust model we should carry the exact requested PC through stages;
-    // For simplicity, assume the packet base pc is m_pc (or predicted target if pred)
-    pc_t base_pc = m_pc;
-    // TODO: in real design, the exact requested PC (pred target or m_pc) should be carried.
+    LOG_LEVEL1("F3 Combine", "buffer_bytes:%zu base_pc:0x%lx",
+               s_f3_buffer.size(), s_f3_base_pc);
 
-    fetch_packet_t pkt;
+    FetchPacket pkt;
     pkt.valid = true;
     pkt.fetch_id = m_next_fetch_id++;
-    pkt.base_pc = base_pc;
+    pkt.base_pc = s_f3_base_pc;
     pkt.insts.clear();
 
-    // assemble up to k_fetch_width instructions from the line data
-    const bytes_t &line = m_f2_line.data;
-    size_t offset = base_pc % ICache::k_line_bytes;   // approximate offset inside line
-    // Safety clamp
-    if (offset >= line.size())
-        offset = 0;
+    // 从缓冲头部开始，逐条解析变长指令
+    size_t buf_idx = 0;
+    pc_t cur_pc  = s_f3_base_pc;
 
-    for (unsigned i = 0; i < m_fetch_width; ++i) {
-        if (offset + 4 > line.size())
-            break;   // would cross line -> stop here (simple behaviour)
+    for (u8 i = 0; i < m_fetch_width; ++i) {
+        // 至少需要 2 字节才能判断长度
+        if (s_f3_buffer.size() - buf_idx < 2) {
+            break;
+        }
+
+        u16 first2 =
+            static_cast<u16>(s_f3_buffer[buf_idx]) |
+            (static_cast<u16>(s_f3_buffer[buf_idx + 1]) << 8);
+
+        // RISC-V 规则：最低 2 bit 不等于 0b11 -> 2B 压缩指令，否则至少 4B
+        u8 inst_len = (first2 & 0x3) != 0x3 ? 2 : 4;
+
+        // 若缓冲区剩余字节不足以容纳完整指令，则等待下一条 line
+        if (s_f3_buffer.size() - buf_idx < inst_len)
+            break;
+
         insn_t insn = 0;
-        // little endian assemble
-        for (int b = 0; b < 4; ++b)
-            insn |= static_cast<insn_t>(line[offset + b]) << (8 * b);
-        fetch_inst_t finst;
-        finst.valid = true;
-        finst.pc = base_pc + i * 4;
-        finst.insn = insn;
+        for (u8 b = 0; b < inst_len; ++b) {
+            insn |= static_cast<insn_t>(s_f3_buffer[buf_idx + b]) << (8 * b);
+        }
+
+        FetchInst finst;
+        finst.valid    = true;
+        finst.pc       = cur_pc;
+        finst.insn     = insn;
         finst.fetch_id = pkt.fetch_id;
+        finst.size     = inst_len;
+
         pkt.insts.push_back(finst);
-        offset += 4;
+
+        buf_idx += inst_len;
+        cur_pc  += inst_len;
     }
 
-    // Merge prediction metadata from F0 (if available)
+    // 若本轮一个指令都没解析出来，则无法前进，等待更多字节
+    if (pkt.insts.empty()) {
+        m_f3_pkt.clear();
+        return;
+    }
+
+    // 消费掉已经被解析的前缀字节，保留下一条指令的起始处，便于跨 line 拼接
+    s_f3_buffer.erase(s_f3_buffer.begin(), s_f3_buffer.begin() + buf_idx);
+    s_f3_base_pc = cur_pc;
+    if (s_f3_buffer.empty()) {
+        s_f3_buf_valid = false;
+    }
+
+    // 合并来自 F0 的预测元数据
     if (m_pred.valid) {
-        pkt.pred_taken = m_pred.data.taken;
+        pkt.pred_taken  = m_pred.data.taken;
         pkt.pred_target = m_pred.data.target;
     } else {
-        pkt.pred_taken = false;
+        pkt.pred_taken  = false;
         pkt.pred_target = 0;
     }
 
     m_f3_pkt.valid = true;
-    m_f3_pkt.data = std::move(pkt);
+    m_f3_pkt.data  = std::move(pkt);
 
-    // advance m_pc to the next fetch point in this simplified model
-    // note: real logic must consider instruction sizes and predicted taken
-    if (!m_f3_pkt.data.insts.empty()) {
-        m_pc = m_f3_pkt.data.insts.back().pc + 4;
-    }
+    // 根据最后一条指令的真实长度推进 m_pc
+    const auto &last = m_f3_pkt.data.insts.back();
+    m_pc = last.pc + last.size;
 }
 
 /*
@@ -284,6 +343,7 @@ void FetchUnit::fetch4()
     m_dispatch_q.push_back(m_f3_pkt.data);
     m_f4_pkt.valid = true;
     m_f4_pkt.data = m_f3_pkt.data;
+    m_fetch_decode_q->write(m_f4_pkt.data);
 }
 
 /* -------------------- Debug / state dump -------------------- */
