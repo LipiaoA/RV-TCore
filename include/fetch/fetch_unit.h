@@ -5,6 +5,7 @@
 #include "icache.h"
 #include "dcache.h"
 #include "branch_predictor.h"
+#include "module_comm.h"
 
 /* -------------------- 数据结构：流水寄存器与包 -------------------- */
 #define STATE_F0
@@ -25,23 +26,6 @@ struct pipe_reg_t {
     }
 };
 
-struct fetch_inst_t {
-    pc_t pc { 0 };
-    insn_t insn { 0 };
-    bool valid { false };
-    u64 fetch_id { 0 };  // 用于 squash 精确识别
-};
-
-struct fetch_packet_t {
-    pc_t base_pc { 0 };                    // 起始 PC
-    std::vector<fetch_inst_t> insts;       // insts.size() <= k_fetch_width
-    bool valid { false };
-    u64 fetch_id { 0 };
-    // 预测相关元数据
-    bool pred_taken { false };
-    pc_t pred_target { 0 };
-};
-
 class FetchUnit : public IFetch {
 public:
     FetchUnit(const std::string& n);
@@ -51,8 +35,10 @@ public:
     void                                tick();
     void                                commit() {}
     void                                redirct(pc_t new_pc, u64 fetch_id = 0);
-    std::optional<fetch_packet_t>       try_dispatch();
+    std::optional<FetchPacket>          try_dispatch();
     void                                dump_state() const;
+
+    void                                set_fetch_decode_q(ASyncQueue<FetchPacket>* q);
 
 private:
     void                                fetch0();
@@ -73,11 +59,9 @@ private:
     STATE_F0 pipe_reg_t<branch_pred_t>  m_pred;
     STATE_F1 pipe_reg_t<pc_t>           m_f1_req;
     STATE_F2 pipe_reg_t<bytes_t>        m_f2_line;
-    STATE_F3 pipe_reg_t<fetch_packet_t> m_f3_pkt;
-    STATE_F4 pipe_reg_t<fetch_packet_t> m_f4_pkt;
+    STATE_F3 pipe_reg_t<FetchPacket>    m_f3_pkt;
+    STATE_F4 pipe_reg_t<FetchPacket>    m_f4_pkt;
 
-    // small queue to hold completed packets before dispatch
-    std::deque<fetch_packet_t>          m_dispatch_q;
     size_t                              m_dispatch_q_capacity {8};
 
     bool                                m_icache_req_pending { false };
@@ -89,6 +73,8 @@ private:
     GCache*                             m_l2_cache;
     MultiLevelTLB*                      m_tlb;
     CycleScheduler*                     m_sched;
+
+    OUTPUT ASyncQueue<FetchPacket>*     m_fetch_decode_q { nullptr };
 };
 
 #endif

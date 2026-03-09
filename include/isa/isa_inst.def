@@ -1,0 +1,368 @@
+
+#include "opcode.h"
+
+static const InstPattern rv64i_table[] = {
+{
+  .mask  = 0xfe00707f,
+  .match = 0x00000033,
+  .opcode = OP_ADD,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x40000033,
+  .opcode = OP_SUB,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x00001033,
+  .opcode = OP_SLL,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x00002033,
+  .opcode = OP_SLT,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x00003033,
+  .opcode = OP_SLTU,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x00004033,
+  .opcode = OP_XOR,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x00005033,
+  .opcode = OP_SRL,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x40005033,
+  .opcode = OP_SRA,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x00006033,
+  .opcode = OP_OR,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x00007033,
+  .opcode = OP_AND,
+  .format = RV_FMT_R
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00000013,
+  .opcode = OP_ADDI,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00002013,
+  .opcode = OP_SLTI,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00003013,
+  .opcode = OP_SLTIU,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00004013,
+  .opcode = OP_XORI,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00006013,
+  .opcode = OP_ORI,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00007013,
+  .opcode = OP_ANDI,
+  .format = RV_FMT_I
+},{
+  // RV64: 只匹配 funct6（bit31:26），bit25 属于 shamt[5]
+  .mask  = 0xfc00707f,
+  .match = 0x00001013,
+  .opcode = OP_SLLI,
+  .format = RV_FMT_I
+},{
+  .mask  = 0xfc00707f,
+  .match = 0x00005013,
+  .opcode = OP_SRLI,
+  .format = RV_FMT_I
+},{
+  .mask  = 0xfc00707f,
+  .match = 0x40005013,
+  .opcode = OP_SRAI,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00000003,
+  .opcode = OP_LB,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00001003,
+  .opcode = OP_LH,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00002003,
+  .opcode = OP_LW,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00003003,
+  .opcode = OP_LD,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00004003,
+  .opcode = OP_LBU,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00005003,
+  .opcode = OP_LHU,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00006003,
+  .opcode = OP_LWU,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00000023,
+  .opcode = OP_SB,
+  .format = RV_FMT_S
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00001023,
+  .opcode = OP_SH,
+  .format = RV_FMT_S
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00002023,
+  .opcode = OP_SW,
+  .format = RV_FMT_S
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00003023,
+  .opcode = OP_SD,
+  .format = RV_FMT_S
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00000063,
+  .opcode = OP_BEQ,
+  .format = RV_FMT_B
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00001063,
+  .opcode = OP_BNE,
+  .format = RV_FMT_B
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00004063,
+  .opcode = OP_BLT,
+  .format = RV_FMT_B
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00005063,
+  .opcode = OP_BGE,
+  .format = RV_FMT_B
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00006063,
+  .opcode = OP_BLTU,
+  .format = RV_FMT_B
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00007063,
+  .opcode = OP_BGEU,
+  .format = RV_FMT_B
+},{
+  .mask  = 0x0000007f,
+  .match = 0x00000037,
+  .opcode = OP_LUI,
+  .format = RV_FMT_U
+},{
+  .mask  = 0x0000007f,
+  .match = 0x00000017,
+  .opcode = OP_AUIPC,
+  .format = RV_FMT_U
+},{
+  .mask  = 0x0000007f,
+  .match = 0x0000006f,
+  .opcode = OP_JAL,
+  .format = RV_FMT_J
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00000067,
+  .opcode = OP_JALR,
+  .format = RV_FMT_I
+},{
+  .mask  = 0x0000707f,
+  .match = 0x0000000f,
+  .opcode = OP_FENCE,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0x0000707f,
+  .match = 0x0000100f,
+  .opcode = OP_FENCE_I,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0xffffffff,
+  .match = 0x00000073,
+  .opcode = OP_ECALL,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0xffffffff,
+  .match = 0x00100073,
+  .opcode = OP_EBREAK,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00001073,
+  .opcode = OP_CSRRW,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00002073,
+  .opcode = OP_CSRRS,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00003073,
+  .opcode = OP_CSRRC,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00005073,
+  .opcode = OP_CSRRWI,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00006073,
+  .opcode = OP_CSRRSI,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0x0000707f,
+  .match = 0x00007073,
+  .opcode = OP_CSRRCI,
+  .format = RV_FMT_NONE
+},{
+  .mask  = 0x0000707f,
+  .match = 0x0000001b,
+  .opcode = OP_ADDIW,
+  .format = RV_FMT_I
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0000101b,
+  .opcode = OP_SLLIW,
+  .format = RV_FMT_I
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0000501b,
+  .opcode = OP_SRLIW,
+  .format = RV_FMT_I
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x4000501b,
+  .opcode = OP_SRAIW,
+  .format = RV_FMT_I
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0000003b,
+  .opcode = OP_ADDW,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x4000003b,
+  .opcode = OP_SUBW,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0000103b,
+  .opcode = OP_SLLW,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0000503b,
+  .opcode = OP_SRLW,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x4000503b,
+  .opcode = OP_SRAW,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x02000033,
+  .opcode = OP_MUL,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x02001033,
+  .opcode = OP_MULH,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x02002033,
+  .opcode = OP_MULHSU,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x02003033,
+  .opcode = OP_MULHU,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x02004033,
+  .opcode = OP_DIV,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x02005033,
+  .opcode = OP_DIVU,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x02006033,
+  .opcode = OP_REM,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x02007033,
+  .opcode = OP_REMU,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0200003b,
+  .opcode = OP_MULW,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0200403b,
+  .opcode = OP_DIVW,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0200503b,
+  .opcode = OP_DIVUW,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0200603b,
+  .opcode = OP_REMW,
+  .format = RV_FMT_R
+},{
+  .mask  = 0xfe00707f,
+  .match = 0x0200703b,
+  .opcode = OP_REMUW,
+  .format = RV_FMT_R
+}
+};
+

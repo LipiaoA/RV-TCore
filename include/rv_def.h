@@ -9,12 +9,18 @@ using u32 = uint32_t;
 using u16 = uint16_t;
 using u8  = uint8_t;
 
+using i64 = int64_t;
+using i32 = int32_t;
+using i16 = int16_t;
+using i8  = int8_t;
+
 constexpr u32 PAGE_SIZE = 4096;
 
 using pc_t = u64;
 using insn_t = u64;
 using bytes_t = std::vector<u8>;
 
-
+#define INPUT
+#define OUTPUT
 
 #endif

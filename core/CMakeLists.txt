@@ -19,4 +19,5 @@ target_link_libraries(core
     tools
     memory
     fetch
+    backend
 )
