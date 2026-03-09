@@ -1,6 +1,5 @@
 
 add_library(tools STATIC
-    queue.cpp
     elf/elf_l.cpp
     log/log.cpp
 )

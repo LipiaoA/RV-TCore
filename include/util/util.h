@@ -127,4 +127,10 @@ static inline u64 xor_fold(u64 x, int out_bits) {
     return res & ((1ull<<out_bits)-1);
 }
 
+static inline int64_t sign_extend(uint64_t value, int bits) {
+    if (bits < 64) {
+        return static_cast<int64_t>((value << (64 - bits)) >> (64 - bits));
+    }
+    return static_cast<int64_t>(value);
+}
 #endif
