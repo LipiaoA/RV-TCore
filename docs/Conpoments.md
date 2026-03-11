@@ -1,64 +1,46 @@
 ### 1.各部件设计
 
-#### 1.1.取指单元
+#### 1.1 取指单元
 
-取指单元划分为5各阶段，分别是F0到F4：
+> In the base RV32I ISA, there are four core instruction formats (R/I/S/U), as shown in Base instruction formats. All are a fixed 32 bits in length. The base ISA has IALIGN=32, meaning that instructions must be aligned on a four-byte boundary in memory. An instruction-address-misaligned exception is generated on a taken branch or unconditional jump if the target address is not IALIGN-bit aligned. This exception is reported on the branch or jump instruction, not on the target instruction. No instruction-address-misaligned exception is generated for a conditional branch that is not taken.
 
-F0：确定需要取指的PC并做分支预测
+#### 1.2 L1-ICache 设计
 
-F1：从 F0 的预测结果确定要请求哪条 cache line
-
-F2：检查ICache是否有 Ready line，若有则读入
-
-F3：指令解码准备（拼接、预解码）从上一阶读到的数据中组装k_fetch_width条指令。
-
-F4：将 F3 生成的 packet 放入 dispatch 队列
-
-
-
-#### 1.2.L1-ICache设计 
-
-
-
-C++实现一个ICache模型,考虑DCache，或者L2 Cache等复用情况，支持可配置n路组相联，Cache Line大小可配置，支持每周期取多条指令，支持虚拟地址取指，使用TLB实现，非阻塞取指，Tag与Data分离，提高并行访问能力，替换策略使用LRU策略。
-
-
-
-在Cache Miss 填充 I-Cache 时，需要做预解码，将解码信息缓存在 I-Cahce中。
+在Cache Miss 填充 I-Cache 时，需要做预解码，将解码信息缓存在 I-Cache中。
 
 I-Cache Line 设计大小：64B
 
 Fetch Width：4
 
+#### 1.3 分支预测
 
+---
 
-#### 1.3.分支预测
-
-##### 1.3.1.方案一
+##### 1.3.1 方案一
 
 **跳转方向预测**：PHT使用两位饱和计数器，BHT中表项采用N bits存储分支跳转历史记录，分支历史寄存器表（BHT）采用PC经过hash运算后访问内容，读取到BHR值后组合PC低n位，作为地址访问PHT表，该预测器作为local 分支预测器，针对每个PC自身做预测。使用一个GHR存储全局跳转指令分支跳转记录，补充另一个PHT存储分支预测器状态，作为global分支历史预器。最后使用一个两位饱和计数器在全局分支历史预测与local分支预测器之间做出结果预测选择。
 
 **目标地址预测**：
 
-分直接跳转类型指令，设计一个组相联BTB；针对call/ret，设计一个RAS缓存；对其它间接跳转指令设计一个基于BHT，查到HBR后结合pc通过hash运算索引目标地址缓存，这样一个BTB。
+直接跳转类型：使用组相联BTB
 
+call/ret：RAS缓存
 
+其它间接跳转指令：基于BHT，查到HBR后结合pc通过hash运算索引目标地址缓存。
 
-##### 1.3.2.方案二
+------
+
+##### 1.3.2 方案二
 
 TAGE-SC-L 预测方法
 
 ------
 
+### 3. Instruction Fetch Unit
 
+---
 
-### 3. 前端设计（Front-end）
-
-------
-
-#### 3.1 Fetch 结构
-
-##### 主要模块
+#### 3.1 结构
 
 - Fetch PC Gen
 - BTB
@@ -68,7 +50,7 @@ TAGE-SC-L 预测方法
 
 
 
-| 参数             | 推荐范围     |
+| 参数             | 范围         |
 | ---------------- | ------------ |
 | Fetch Width      | 4            |
 | Fetch Queue 深度 | 8~32 entries |
@@ -77,14 +59,14 @@ TAGE-SC-L 预测方法
 
 ------
 
-#### 3.2. 预测结构
+#### 3.2 预测结构
 
 - BTB：预测跳转目标
 - BPD（GShare 或 TAGE）
 - RAS
 - FTQ（Fetch Target Queue）
 
-#### 3.3.RTL 关键设计
+#### 3.3 RTL 关键设计
 
 FTQ 是恢复核心：
 
@@ -103,19 +85,19 @@ Execute -> Detect Mispredict
 
 
 
-### 4. Decode 设计
+### 4. Instruction Decode Unit
 
 ------
 
 #### 4.1 解码输出信号
 
-- fu_type
+- function unit type
 - src/dst logical reg
 - immediate
 - branch type
 - memory op type
 
-BOOM 将复杂指令拆分为 uop。
+> 注：BOOM 将复杂指令拆分为 uop。
 
 ------
 
@@ -132,56 +114,36 @@ BOOM 将复杂指令拆分为 uop。
 
 ------
 
-### 5. Rename 设计
+### 5. Register Rename  Unit
 
 ------
 
 #### 5.1 Rename 结构
 
-##### 组件：
+使用统一的 PRF 进行寄存器重命名，包含以下组件：
 
-- Map Table（RAT）
-- Free List
-- Busy Table
+**组件：**
+
+- Mapping Table（RAT），即寄存器重命名映射表，记录了逻辑寄存器到对应物理寄存器的映射关系。
+- Free List，记录当前空闲物理寄存器列表。
 - Branch Checkpoint Table
 
-------
+当对一条指令进行重命名时，对于源寄存器，通过 RAT进行查询使用的物理寄存器，对于目的寄存器，查询 Free List 获取未被使用的物理寄存器编号。当需要从外部查看，当前处理器状态时，需要通过额外的 RAT 来记录所有退休状态的指令逻辑寄存器和物理寄存器状态信息。
 
-### 5.2 Checkpoint 设计
+对于 RAT 的实现方案，此处包含使用 基于SRAM表存储，即对于32逻辑寄存器则使用32个表项存储对应的物理寄存器编号即可。另外一种方案基于CAM，即表项个数等于逻辑寄存器个数，而表项内容存储逻辑寄存器编号。此处暂时考虑基于 SRAM 的 RAT，即 sRAT。
 
-**BOOM 做法：**
+吐槽下，sRAT 在流水线中，只允许存在很少的四五个，而 基于CAM方式，流水线的 Checkpoint 则可以针对每条指令都保存一个，可达七八十个，差距也太大了点儿，后续再考虑。
+
+#### 5.2 Checkpoint
+
+**实现：**
 
 - 每个 unresolved branch 创建 rename snapshot
 - 使用 shadow map 或 incremental log
 
-**参数参考**
+对于 Branch Checkpoint Table，该表用于存储分支指令预测时间点需要保存的 RAT信息，用于分支预测失败时做恢复。
 
-| 参数               | 推荐范围 |
-| ------------------ | -------- |
-| 物理寄存器数       | 128~192  |
-| 最大分支 in-flight | 8~16     |
-
-------
-
-## 5.3 Rename 时序
-
-Rename 高扇出模块：
-
-- 每周期 4 读 2 写（4-wide 情况）
-- RAT 多端口压力大
-
-可优化：
-
-- Banked RAT
-- Shadow map
-
-------
-
-### 6. Dispatch 与 ROB
-
-------
-
-#### 6.1 ROB 结构
+#### 5.3 ROB 结构
 
 - Circular buffer
 - 每 entry 包含：
@@ -197,47 +159,162 @@ Rename 高扇出模块：
 | ----------- | -------- |
 | ROB entries | 64~256   |
 
-------
+#### 5.4 Branch Mask 机制
 
-#### 6.2 Branch Mask 机制
-
-BOOM 使用 branch mask：
+使用 branch mask：
 
 - 每条指令记录它依赖的未决分支
 - 分支错误时通过 mask 批量清除
 
-这是 RTL 实现乱序恢复的核心技巧。
+------
+
+### 6. Issue Queue 设计
+
+#### 6.1 Issue  Queue 分类
+
+- Int Issue Queue (ALU0-2, Branch Unit, Multiply / Divide Unit) ，32 entry
+- Load & Store Instruction Issue Queue (连接 Load, Store Unit)，24 entry
+- Float Point Instruction Issue Queue (连接 FPU)，20 entry
+
+
+
+#### 6.2 Integer Issue Queue 结构
+
+整数调度压力最大，所以必须拆结构。
+
+推荐：
+
+```
+Integer Issue Queue = 32 entries
+Banks = 4
+Each bank = 8 entries
+```
+
+结构：
+
+```
+        Integer Issue Queue
+
+        Bank0  Bank1  Bank2  Bank3
+         8e     8e     8e     8e
+          │      │      │      │
+          +------+------+------+
+                 Select Tree
+                      │
+        +-------------+-------------+
+        │             │             │
+      ALU0          ALU1          ALU2
+```
+
+
+
+#### 6.3 Memory Issue Queue 结构
+
+Memory 指令较复杂（需要 LSQ），但 Issue Queue 可以简单。
+
+```
+entries = 24
+bank = 2
+```
+
+#### 6.4 Floating Point Issue Queue 结构
+
+```
+entries = 20
+bank = 2
+```
+
+结构：
+
+```
+FP Issue Queue
+
+Bank0
+Bank1
+
+   │
+ Select
+   │
++----+----+---+
+|         |   |
+FP ALU  FMUL FDIV
+```
+
+
+
+#### 6.5 Issue Queue Entry
+
+```c++
+IssueEntry {
+    bool valid;
+    UOP uop;
+    int src0_tag
+    int src1_tag
+
+    bool src0_ready
+    bool src1_ready
+
+    int dest_tag
+    u64 fu_mask
+    int rob_idx
+    int age
+}
+```
+
+
+
+> 注：machine width 表示每周期能够解码和重命名的指令个数，issue width 用来表示每周期能够发射的指令个数。
+
+队列工作方式分压缩和非压缩两种，此处考虑采用压缩方式（当前CA实现，选什么都ok）。
+
+#### 6.2 Wakeup-Select 机制
+
+Issue Queue 采用经典的 **Wakeup-Select 调度机制**。
+
+该机制分为两个阶段：
+
+```
+Wakeup
+Select
+```
 
 ------
 
-### 7. Issue Queue 设计
+##### 6.2.1 Wakeup
+
+当执行单元产生结果时，会在结果总线上 **广播目标寄存器 tag**。
+
+Wakeup 过程包括：
+
+1. 执行单元广播 dest tag
+2. Issue Queue 中的 CAM 进行 tag 比较
+3. 若匹配成功，则：
+    - 更新 operand value（若使用 payload）
+    - 将对应 src_ready bit 置位
+
+Wakeup 可以分为两类：
+
+Fast Wakeup:
+
+- 由执行阶段 bypass 网络产生
+- 用于降低执行延迟
+
+Slow Wakeup:
+
+- 由 writeback 阶段产生
+- 用于补充未通过 bypass 捕捉的结果
 
 ------
 
-#### 7.1. Issue 类型
+##### 6.2.2 Select
 
-- Int Issue Queue
-- Mem Issue Queue
-- FP Issue Queue
+Select 阶段从所有 ready 的指令中选择可以发射的指令。
 
-分开有利于时序。
+选择策略通常为：**Oldest-first** 或 **Age-based scheduling**
 
-------
+调度逻辑需要同时考虑：指令 ready 状态、执行单元类型、发射端口可用性。
 
-#### 7.2 Wakeup-Select 机制
-
-##### Wakeup
-
-- 执行单元广播 tag
-- CAM 比较
-- 设置 ready bit
-
-##### Select
-
-- oldest-first 或 age-based
-- N 路发射选择
-
-------
+最终在每个周期最多选择 **issue width** 条指令发射到执行单元。
 
 #### 7.3 RTL 难点
 
@@ -264,7 +341,7 @@ Tag Broadcast
 
 ------
 
-### 8. 执行单元
+### 8. Instrcution Execute Unit
 
 ------
 
@@ -286,7 +363,7 @@ branch resolution latency 直接影响 mispredict penalty。
 
 ------
 
-#### 8.3 LSU 设计（BOOM 风格）
+#### 8.3 Load/Store Unit
 
 ------
 
@@ -300,7 +377,7 @@ branch resolution latency 直接影响 mispredict penalty。
 
 ##### 内存相关性处理
 
-BOOM 支持：
+支持：
 
 - Store-to-Load Forward
 - 地址冲突检测
@@ -319,6 +396,21 @@ RTL 要点：
 | ---------- | -------- |
 | LQ entries | 16~48    |
 | SQ entries | 16~48    |
+
+#### 8.4 配置
+
+```
+3 × ALU
+1 × Branch
+1 × Mul/Div
+
+2 × Load
+1 × Store
+
+1 × FP ALU
+1 × FP MUL
+1 × FP DIV
+```
 
 ------
 
@@ -370,9 +462,7 @@ RTL 难点：
 
 ------
 
-### 11. Flush 与恢复路径（必须重点设计）
-
-------
+### 11. Flush 与恢复路径
 
 触发来源：
 
@@ -404,32 +494,6 @@ RTL 上建议：
 | IQ 增大      | ↑ 并行度 | ↑ 时序压力         |
 | 发射宽度     | ↑ IPC    | 广播网络指数级复杂 |
 | 分支预测精度 | ↑ IPC    | ↑ SRAM             |
-
-------
-
-### 13. RTL 设计优先级建议
-
-建议路线：
-
-##### 第一阶段
-
-- 2-wide
-- 64 ROB
-- 32 IQ
-- 128 PRF
-- 简单 GShare
-
-##### 第二阶段
-
-- 加 branch mask
-- 加 replay 机制
-- 加 store-forward
-
-##### 第三阶段
-
-- 优化 wakeup-select
-- 分 bank
-- 优化时序
 
 ------
 
