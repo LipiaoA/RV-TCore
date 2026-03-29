@@ -25,6 +25,10 @@ pair<bool, u64> MultiLevelTLB::lookup(u64 va) {
     return {true, (it->second << m_page_bits) | offset};
 }
 
+pair<bool, u64> MultiLevelTLB::lookup_a(u64 va) {
+    return {true, va};
+}
+
 SimpleFuture<TLBResult> MultiLevelTLB::translate_async(u64 va) {
     SimpleFuture<TLBResult> fut;
     auto pr = lookup(va);

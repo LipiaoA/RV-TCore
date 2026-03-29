@@ -104,4 +104,14 @@ typedef enum {
 
 } InstOp;
 
+inline bool is_load(InstOp op) {
+    return op >= OP_LB && op <= OP_LWU;
+}
+inline bool is_store(InstOp op) {
+    return op >= OP_SB && op <= OP_SD;
+}
+inline bool is_branch(InstOp op) {
+    return op >= OP_BEQ && op <= OP_BGEU;
+}
+
 #endif

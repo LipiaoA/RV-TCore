@@ -17,8 +17,9 @@ public:
     ~BranchPredictor();
 
 public:
-    void                                tick() {}
-    void                                commit() {}
+    void                                tick() override {}
+    void                                commit() override {}
+    void                                build() override {}
     branch_pred_t                       predict(pc_t pc);
     void                                update(pc_t pc, bool taken, pc_t target);
 

@@ -11,19 +11,33 @@
 
 ##### 1.1 Fetch Unit 设计&实现&验证 - OPEN - 80%
 
-##### 1.2 Decode Unit 实现 - OPEN-40%
+##### 1.2 Decode Unit 实现 - OPEN-50%
 
-##### 1.3 Rename Unit 实现 - OPEN-0%
+##### 1.3 Rename Unit 实现 - OPEN-50%
 
-##### 1.4 Dispatch Unit 实现 - PENDING
+##### ~~1.4 Dispatch Unit 实现 - DELETE~~
 
-##### 1.5 Issue Unit 实现 - PENDING
+##### 1.5 Issue Unit 实现 - OPEN-50%
 
-##### 1.6 Exec Unit 实现 - PENDING
+##### 1.6 Exec Unit 实现 - OPEN-50%
 
-##### 1.7 Commit Unit 实现 - PENDING
+##### 1.7 Commit Unit 实现 - OPEN-50%
 
 ##### 1.8 Function Model 实现 - PENDING
+
+
+
+#### 20260415
+
+总体来讲，在原来整体框架的基础上进一步完善了各个模块内部实现，下一步考虑是否添加每个模块的单元测试，先初步调通，再集成测试。
+
+1.新增Top类，用于构造所有模块以及通信队列，不再在Core中进行构造。
+
+2.初步细化了 IFetchUnit，DecodeUnit，RenameUnit，IssueUnit，ExecUnit，CommitUnit 共六个模块。
+
+3.新增 ALU，AGU，BRU，LSU执行单元，并初步实现。
+
+4.定义各组件创建方式，对应的配置类/结构体。
 
 
 

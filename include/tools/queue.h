@@ -1,11 +1,14 @@
 #ifndef RV_TCORE_QUEUES_H
 #define RV_TCORE_QUEUES_H
 
+#include "intf.h"
+
 #include <vector>
 #include <utility>
 #include <deque>
 #include <queue>
 #include <cassert>
+#include <iterator>
 
 #define DEFAULT_QUEUE_CAPACITY 1024
 
@@ -13,7 +16,7 @@ template <typename T>
 class ASyncQueue : public DevIntf {
 public:
     explicit ASyncQueue(size_t capacity)
-        : DevIntf()
+        : DevIntf("as_queue")
         , m_capacity(capacity)
         {
             stalled = false;
@@ -23,18 +26,28 @@ public:
     // 写端接口：向写缓冲区写入数据
     inline bool write(const T &item)
     {
-        return m_write_buffer.push_back(item);
+        if (m_write_buffer.size() >= m_capacity)
+            return false;
+        m_write_buffer.push_back(item);
+        return true;
     }
 
     inline bool write(T &&item)
     {
-        return m_write_buffer.push_back(std::move(item));
+        if (m_write_buffer.size() >= m_capacity)
+            return false;
+        m_write_buffer.push_back(std::move(item));
+        return true;
     }
 
     // 读端接口：从读缓冲区读取
     inline bool read(T &out)
     {
-        return m_read_buffer.pop_front(out);
+        if (m_read_buffer.empty())
+            return false;
+        out = std::move(m_read_buffer.front());
+        m_read_buffer.pop_front();
+        return true;
     }
 
     // 当前读队列是否为空
@@ -44,7 +57,7 @@ public:
     }
 
     // 在周期边界调用，将write缓冲区切换到read缓冲区
-    inline void tick()
+    void tick() override
     {
         if (stalled) {
             return;
@@ -54,6 +67,8 @@ public:
         }
         m_write_buffer.clear();
     }
+
+    void build() override {}
 
     // 获取当前读缓冲区可用元素数量
     inline size_t size() const
@@ -147,11 +162,134 @@ private:
 template <typename T>
 class RingQueue {
 public:
-    explicit RingQueue(size_t capacity)
+    class const_iterator;
+
+    class iterator {
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = T*;
+        using reference = T&;
+
+        inline iterator(RingQueue<T> *queue, size_t offset)
+            : m_queue(queue)
+            , m_offset(offset)
+        {
+        }
+
+        inline reference operator*() const
+        {
+            const size_t index = (m_queue->m_head + m_offset) % m_queue->m_capacity;
+            return m_queue->m_data[index];
+        }
+
+        inline pointer operator->() const
+        {
+            return &(**this);
+        }
+
+        inline iterator &operator++()
+        {
+            ++m_offset;
+            return *this;
+        }
+
+        inline iterator operator++(int)
+        {
+            iterator tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+
+        inline bool operator==(const iterator &other) const
+        {
+            return m_queue == other.m_queue && m_offset == other.m_offset;
+        }
+
+        inline bool operator!=(const iterator &other) const
+        {
+            return !(*this == other);
+        }
+
+    private:
+        friend class const_iterator;
+        RingQueue<T> *m_queue;
+        size_t m_offset;
+    };
+
+    class const_iterator {
+    public:
+        using iterator_category = std::forward_iterator_tag;
+        using value_type = T;
+        using difference_type = std::ptrdiff_t;
+        using pointer = const T*;
+        using reference = const T&;
+
+        inline const_iterator(const RingQueue<T> *queue, size_t offset)
+            : m_queue(queue)
+            , m_offset(offset)
+        {
+        }
+
+        inline const_iterator(const iterator &it)
+            : m_queue(it.m_queue)
+            , m_offset(it.m_offset)
+        {
+        }
+
+        inline reference operator*() const
+        {
+            const size_t index = (m_queue->m_head + m_offset) % m_queue->m_capacity;
+            return m_queue->m_data[index];
+        }
+
+        inline pointer operator->() const
+        {
+            return &(**this);
+        }
+
+        inline const_iterator &operator++()
+        {
+            ++m_offset;
+            return *this;
+        }
+
+        inline const_iterator operator++(int)
+        {
+            const_iterator tmp = *this;
+            ++(*this);
+            return tmp;
+        }
+
+        inline bool operator==(const const_iterator &other) const
+        {
+            return m_queue == other.m_queue && m_offset == other.m_offset;
+        }
+
+        inline bool operator!=(const const_iterator &other) const
+        {
+            return !(*this == other);
+        }
+
+    private:
+        const RingQueue<T> *m_queue;
+        size_t m_offset;
+    };
+
+    explicit RingQueue(size_t capacity = 0)
         : m_capacity(capacity + 1)  // 预留一格区分空/满
         , m_head(0)
         , m_tail(0)
     {
+        m_data.resize(m_capacity);
+    }
+
+    ~RingQueue() {
+        m_data.clear();
+    }
+    void resize(size_t capacity) {
+        m_capacity = capacity + 1;
         m_data.resize(m_capacity);
     }
 
@@ -219,6 +357,36 @@ public:
     {
         assert(!empty());
         return m_data[m_head];
+    }
+
+    inline iterator begin()
+    {
+        return iterator(this, 0);
+    }
+
+    inline iterator end()
+    {
+        return iterator(this, size());
+    }
+
+    inline const_iterator begin() const
+    {
+        return const_iterator(this, 0);
+    }
+
+    inline const_iterator end() const
+    {
+        return const_iterator(this, size());
+    }
+
+    inline const_iterator cbegin() const
+    {
+        return const_iterator(this, 0);
+    }
+
+    inline const_iterator cend() const
+    {
+        return const_iterator(this, size());
     }
 
 private:

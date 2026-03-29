@@ -5,17 +5,22 @@
 #include "intf.h"
 #include "module_comm.h"
 
-class CommitUnit  : public ICommit {
+class ROB;
+class RenameUnit;
+
+class CommitUnit : public ICommit {
 public:
-    CommitUnit(const std::string& n) : ICommit(n) {}
-    ~CommitUnit() {}
+    CommitUnit(const CommitDeps& deps);
+    ~CommitUnit() override = default;
 public:
-    void                                tick() {}
-    void                                commit() {}
-    void                                set_execute_commit_q(ASyncQueue<ExecResult>* q);
+    void                                tick() override;
+    void                                commit() override;
+    void                                build() override;
 
 private:
-    INPUT ASyncQueue<ExecResult>*       m_execute_commit_q { nullptr };
+    ASyncQueue<ExecResult>&             m_execute_commit_q;
+    ROB&                                m_rob;
+    RenameUnit&                         m_rename;
 };
 
 #endif

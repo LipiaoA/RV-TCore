@@ -2,6 +2,17 @@
 #define RV_TCORE_INST_H
 
 #include "isa/opcode.h"
+#include <cstdint>
+
+struct PredecodeInfo {
+    bool     valid    { false };
+    bool     is_branch{ false };
+    bool     is_load  { false };
+    bool     is_store { false };
+    bool     is_fp    { false };
+    u8  length   { 4 };   // 指令字节数，当前仅支持 4
+    u8  slot     { 0 };    // 在 line 内的 slot 索引
+};
 
 typedef struct {
     uint32_t mask;
@@ -11,50 +22,78 @@ typedef struct {
 } InstPattern;
 
 typedef struct {
-    uint64_t raw_inst;
-    uint64_t pc;
-
-    InstOp type;
-    uint8_t rd;
-    uint8_t rs1;
-    uint8_t rs2;
-    int32_t imm;
-} SInst;
+    u64 val { 0 };
+    bool valid { false };
+    i32 atag;
+    i32 ptag;
+    bool ready { false };
+} RegType;
 
 typedef struct {
-    InstOp op_type;
-
-    bool reads_rs1;
-    bool reads_rs2;
-    bool writes_rd;
-    bool is_mem;
-    bool is_branch;
-    int latency;
-} SUop;
+    u32 idx;
+    u32 direct {0};
+} ROBID;
 
 typedef struct {
-    // 指向静态语义
-    const SInst* sinst;
+    InstOp opcode;
+    u64 raw_inst;
+    u64 pc;
+    bool valid { false };
+    InstFmt format;
+    RegType rs1;
+    RegType rs2;
+    RegType rd;
+    i64 imm;
+    u64 inst_id { 0 };
+    ROBID rob_id {};
+    bool issued { false };
+} DecodeInst;
 
-    // ROB 信息
-    int rob_id;
+enum class InstType {
+    STA = 0,
+    STD = 1,
+    LOAD = 2,
+    BRANCH = 3,
+    INT = 4,
+    FP = 5,
+    INVALID = 6,
+};
 
-    // 重命名后的物理寄存器
-    int phys_rs1;
-    int phys_rs2;
-    int phys_rd;
+typedef struct MicroOp {
+    u64 raw_inst;
+    u64 pc;
 
-    bool rs1_ready;
-    bool rs2_ready;
+    InstOp opcode;
+    InstType type;
+    bool valid { false };
+    bool pred_taken { false };
+    InstFmt format;
+    RegType rs1;
+    RegType rs2;
+    RegType rd;
+    i64 imm;
+    u64 inst_id { 0 };
+    ROBID rob_id {};
+    i32 latency;
+    uint64_t base;
+    int64_t  offset;
+    uint64_t addr;
+    bool     addr_ready = false;
+    uint64_t data;
+    bool     data_ready = false;
+    uint64_t store_idx;
+    uint64_t load_idx;
+    uint64_t load_data;
+    bool executed = false;
+    bool replay = false;
+    uint32_t ssid = 0;
 
-    // 执行状态
-    bool issued;
-    bool executing;
-    bool executed;
-    bool committed;
+    bool rs1_ready = false;
+    bool rs2_ready = false;
+    bool issued = false;
 
-    uint64_t result;
+} MicroOp, *MicroOpPtr;
 
-} DynInst;
+using DynInst = MicroOp;
 
 #endif

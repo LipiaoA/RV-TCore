@@ -5,6 +5,7 @@
 #include "mem.h"
 #include "elf_l.h"
 #include "core.h"
+#include "top.h"
 #include "peripheral.h"
 
 class Model {

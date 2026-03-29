@@ -15,9 +15,10 @@ struct PTWLevelConfig {
 class MultiLevelTLB {
 public:
     MultiLevelTLB(CycleScheduler* sched, size_t page_bits=12, std::vector<PTWLevelConfig> levels = {});
-
+    ~MultiLevelTLB() { return; };
     // Synchronous lookup: consult cached mappings
     std::pair<bool, u64>                        lookup(u64 va);
+    std::pair<bool, u64>                        lookup_a(u64 va);
 
     // Asynchronous translate that models PTW across levels and possible faults.
     SimpleFuture<TLBResult>                     translate_async(u64 va);

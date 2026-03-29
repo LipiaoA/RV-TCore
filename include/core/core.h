@@ -6,10 +6,18 @@
 #include "util.h"
 #include "intf.h"
 #include "module_comm.h"
+#include "commit_unit.h"
+#include "decode_unit.h"
+#include "execute_unit.h"
+#include "issue_unit.h"
+#include "rename_unit.h"
+#include "rob/rob.h"
+#include "fetch_unit.h"
 
 class Core : public ICore {
 public:
-    Core(const std::string &n) : ICore(n) {}
+    explicit Core(const CoreDeps & deps);
+    explicit Core();
     virtual ~Core() override;
 
 public:
@@ -17,8 +25,13 @@ public:
     void                                    tick() override;
 
 private:
-    std::vector<DevIntf*>                   m_queues;
-    ModuleCommQueues                        m_comm_queues;
+    CommitUnit&                             m_commit;
+    DecodeUnit&                             m_decode;
+    ExecuteUnit&                            m_execute;
+    IssueUnit&                              m_issue;
+    RenameUnit&                             m_rename;
+    ROB&                                    m_rob;
+    FetchUnit&                              m_ifetch;
 };
 
 #endif // TCORE_CORE_H
