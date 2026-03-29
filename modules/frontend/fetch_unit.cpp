@@ -8,75 +8,47 @@
 #include <cassert>
 
 #include "fetch_unit.h"
+#include "branch_predictor.h"
+#include "decode/decode_unit.h"
+#include "icache/dcache.h"
 #include "log.h"
+#include "memory/tlb.h"
+#include "util/util.h"
 
-FetchUnit::FetchUnit(const std::string& n)
-    : IFetch(n)
+FetchUnit::FetchUnit(const IFetchDeps& deps)
+    : m_sched(*deps.sched)
+    , m_icache(*deps.icache)
+    , m_itlb(*deps.tlb)
+    , m_bpu(*deps.bpu)
+    , m_fetch_decode_q(*deps.fetch_decode_q)
 {
-    // 初始化寄存器都默认为 invalid
     m_pred.clear();
     m_f1_req.clear();
     m_f2_line.clear();
     m_f3_pkt.clear();
     m_f4_pkt.clear();
 
-    m_pc         = 0x1000;   // default reset PC
-    m_fetch_width = 4;       // 简化模型：每周期最多取 4 条指令
+    m_pc          = 0x1000;
+    m_fetch_width = 4;
     m_squash_id   = 0;
 }
 
-void FetchUnit::set_fetch_decode_q(ASyncQueue<FetchPacket>* q) {
-    m_fetch_decode_q = q;
-}
-
-void FetchUnit::build() {
-    m_sched = new CycleScheduler();
-
-    CacheConfig l2cfg(512 * 1024, 64, 8);
-    l2cfg.hit_latency = 10;
-    l2cfg.miss_penalty = 30;
-    l2cfg.install_latency = 5;
-    l2cfg.writeback_latency = 12;
-
-    m_l2_cache = new DCache(m_sched, l2cfg, InclusionPolicy::Inclusive);
-    m_l2_cache->set_name("l2 Cache");
-
-
-    std::vector<PTWLevelConfig> levels = {{3}, {5}, {7}};
-    m_tlb = new MultiLevelTLB(m_sched, 12, levels);
-
-    CacheConfig icfg(32 * 1024, 64, 4, 4);
-    icfg.hit_latency = 1;
-    icfg.miss_penalty = 3;
-    icfg.install_latency = 1;
-    icfg.writeback_latency = 8;
-
-    m_icache = new ICache(m_sched, icfg, m_tlb);
-    m_icache->attach_lower(m_l2_cache);
-    m_icache->set_name("ICache");
-
-    CacheConfig dcfg(64 * 1024, 64, 4);
-    dcfg.hit_latency = 2;
-    dcfg.miss_penalty = 8;
-    dcfg.install_latency = 2;
-
-    m_dcache = new DCache(m_sched, dcfg, InclusionPolicy::NonInclusive);
-    m_dcache->attach_lower(m_l2_cache);
-    m_dcache->set_name("DCache");
-
-    m_bpu = std::make_unique<BranchPredictor>("Branch Predictor");
-}
+void FetchUnit::build() {}
 
 void FetchUnit::tick()
 {
-    // 1) 先推进外设（ICache 内部计时）
-    m_sched->tick();
+    m_sched.tick();
 
     fetch4();
     fetch3();
     fetch2();
     fetch1();
     fetch0();
+}
+
+void FetchUnit::commit()
+{
+    m_fetch_decode_q.commit();
 }
 
 void FetchUnit::redirct(pc_t new_pc, u64 fetch_id)
@@ -112,7 +84,7 @@ std::optional<FetchPacket> FetchUnit::try_dispatch()
 void FetchUnit::fetch0()
 {
     // 如果有 squash 阈值阻止旧包进入，仍允许预测新的PC
-    branch_pred_t pred = m_bpu->predict(m_pc);
+    branch_pred_t pred = m_bpu.predict(m_pc);
 
     m_pred.valid = true;
     m_pred.data = pred;
@@ -143,7 +115,7 @@ void FetchUnit::fetch1()
     }
 
     // attempt request
-    bool accepted = m_icache->request(line_addr);
+    bool accepted = m_icache.request(line_addr);
     if (accepted) {
         m_icache_req_pending = true;
         m_pending_line_addr = line_addr;
@@ -170,8 +142,8 @@ void FetchUnit::fetch2()
         return;
     }
 
-    if (m_icache->line_ready(m_pending_line_addr)) {
-        bytes_t line = m_icache->read_line(m_pending_line_addr);
+    if (m_icache.line_ready(m_pending_line_addr)) {
+        bytes_t line = m_icache.read_line(m_pending_line_addr);
         m_icache_req_pending = false;
         m_pending_line_addr = 0;
 
@@ -189,12 +161,11 @@ void FetchUnit::fetch2()
  * - 从 F2 的 line bytes 组装最多 k_fetch_width 条 inst
  * - 注入预测信息（来自 F0）
  * - 产生 fetch_packet 写入 m_f3_pkt_nxt
+ * - 取指 PC 必须 4 字节对齐；仅支持 4 字节指令（不支持 2 字节压缩指令）。
  */
 void FetchUnit::fetch3()
 {
-    // - 每次从缓冲头部解析最多 m_fetch_width 条指令，每条指令根据低 2 bit 判断长度：
-    //      bits[1:0] != 0b11 -> 2 字节压缩指令
-    //      bits[1:0] == 0b11 -> 4 字节指令（此处暂不考虑 >4B 的极端扩展）
+    // - 每条指令固定 4 字节，不支持 2 字节压缩指令。
     // - 若当前剩余字节不足以组成一条完整指令，则停在这里，等待下一条 cache line 合并后再解析。
 
     static bytes_t s_f3_buffer;      // 累积尚未完全解析的字节
@@ -210,6 +181,12 @@ void FetchUnit::fetch3()
             pc_t base_pc = m_f1_req.valid
                 ? m_f1_req.data
                 : (m_pred.valid && m_pred.data.taken ? m_pred.data.target : m_pc);
+
+            // 取指 PC 必须 4 字节对齐
+            if ((base_pc & 3u) != 0) {
+                m_f3_pkt.clear();
+                return;
+            }
 
             s_f3_base_pc = base_pc;
             s_f3_buffer.clear();
@@ -232,6 +209,12 @@ void FetchUnit::fetch3()
         return;
     }
 
+    // 取指 PC 4 字节对齐检查（解析前再次确认）
+    if ((s_f3_base_pc & 3u) != 0) {
+        m_f3_pkt.clear();
+        return;
+    }
+
     LOG_LEVEL1("F3 Combine", "buffer_bytes:%zu base_pc:0x%lx",
                s_f3_buffer.size(), s_f3_base_pc);
 
@@ -241,29 +224,19 @@ void FetchUnit::fetch3()
     pkt.base_pc = s_f3_base_pc;
     pkt.insts.clear();
 
-    // 从缓冲头部开始，逐条解析变长指令
+    // 从缓冲头部开始，逐条解析 4 字节定长指令（不支持 2 字节压缩指令）
+    constexpr u8 k_inst_bytes = 4;
     size_t buf_idx = 0;
     pc_t cur_pc  = s_f3_base_pc;
 
     for (u8 i = 0; i < m_fetch_width; ++i) {
-        // 至少需要 2 字节才能判断长度
-        if (s_f3_buffer.size() - buf_idx < 2) {
+        // 至少需要 4 字节才能组成一条指令
+        if (s_f3_buffer.size() - buf_idx < k_inst_bytes) {
             break;
         }
 
-        u16 first2 =
-            static_cast<u16>(s_f3_buffer[buf_idx]) |
-            (static_cast<u16>(s_f3_buffer[buf_idx + 1]) << 8);
-
-        // RISC-V 规则：最低 2 bit 不等于 0b11 -> 2B 压缩指令，否则至少 4B
-        u8 inst_len = (first2 & 0x3) != 0x3 ? 2 : 4;
-
-        // 若缓冲区剩余字节不足以容纳完整指令，则等待下一条 line
-        if (s_f3_buffer.size() - buf_idx < inst_len)
-            break;
-
         insn_t insn = 0;
-        for (u8 b = 0; b < inst_len; ++b) {
+        for (u8 b = 0; b < k_inst_bytes; ++b) {
             insn |= static_cast<insn_t>(s_f3_buffer[buf_idx + b]) << (8 * b);
         }
 
@@ -272,12 +245,19 @@ void FetchUnit::fetch3()
         finst.pc       = cur_pc;
         finst.insn     = insn;
         finst.fetch_id = pkt.fetch_id;
-        finst.size     = inst_len;
+        finst.size     = k_inst_bytes;
 
         pkt.insts.push_back(finst);
 
-        buf_idx += inst_len;
-        cur_pc  += inst_len;
+        PredecodeInfo& pd = pkt.predecode[i];
+        DecodeUnit::predecode_one(static_cast<u32>(insn), &pd);
+        pd.slot = static_cast<u8>(i);
+        pkt.valid_mask |= (1u << i);
+        if (pd.is_branch)
+            pkt.br_mask |= (1u << i);
+
+        buf_idx += k_inst_bytes;
+        cur_pc  += k_inst_bytes;
     }
 
     // 若本轮一个指令都没解析出来，则无法前进，等待更多字节
@@ -343,7 +323,7 @@ void FetchUnit::fetch4()
     m_dispatch_q.push_back(m_f3_pkt.data);
     m_f4_pkt.valid = true;
     m_f4_pkt.data = m_f3_pkt.data;
-    m_fetch_decode_q->write(m_f4_pkt.data);
+    m_fetch_decode_q.write(m_f4_pkt.data);
 }
 
 /* -------------------- Debug / state dump -------------------- */
@@ -364,10 +344,4 @@ void FetchUnit::dump_state() const
     }
 }
 
-FetchUnit::~FetchUnit() {
-    delete_ptr(m_l2_cache);
-    delete_ptr(m_dcache);
-    delete_ptr(m_tlb);
-    delete_ptr(m_icache);
-    delete_ptr(m_sched);
-}
+FetchUnit::~FetchUnit() = default;

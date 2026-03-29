@@ -559,7 +559,7 @@ Wakeup 过程包括：
 
 1. 执行单元广播 dest tag
 2. Issue Queue 中的 CAM 进行 tag 比较
-3. 若匹配成功，则更新 operand value（若使用 payload），并将对应 src_ready bit 置位
+3. 若匹配成功，并将对应 src_ready bit 置位
 
 Wakeup 可以分为两类：
 
@@ -679,9 +679,9 @@ FP
 
 #### 8.5 ALU
 
-ALU 通常 1-cycle latency
+ALU 通常 3-cycle latency
 
-```
+```c
 E0  operand read
 E1  execute
 WB  writeback

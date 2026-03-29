@@ -1,141 +1,147 @@
 #include "rename_unit.h"
+#include "rob/rob.h"
+#include "issue/issue_unit.h"
+#include "isa/opcode.h"
 
-void RenameUnit::set_decode_rename_q(ASyncQueue<DecodedInst>* q) {
-    m_decode_rename_q = q;
-}
-
-void RenameUnit::set_rename_dispatch_q(ASyncQueue<DynInst>* q) {
-    m_rename_dispatch_q = q;
-}
-
-RenameUnit::RenameUnit(const std::string& n)
-    : IRename(n)
+RenameUnit::RenameUnit(const RenameDeps& deps)
+    : IRename("rename")
+    , m_decode_rename_q(*deps.decode_rename_q)
+    , m_rob(*deps.rob)
+    , m_integer_issue_q(*deps.integer_issue_q)
+    , m_ls_issue_q(*deps.ls_issue_q)
+    , m_fp_issue_q(*deps.fp_issue_q)
 {
-    // 初始化 RAT：逻辑寄存器 i 映射到物理寄存器 i
-    m_rat.resize(kNumLogicalRegs);
-    for (int i = 0; i < kNumLogicalRegs; ++i) {
+    for (int i = 0; i < RV_GPR_SIZE; ++i) {
         m_rat[i] = i;
+        m_crat[i] = i;
     }
-
-    // 初始化 FreeList：其余物理寄存器可用于重命名
-    for (int p = kNumLogicalRegs; p < kNumPhysicalRegs; ++p) {
+    for (int p = RV_GPR_SIZE; p < RV_PHY_REG_SIZE; ++p)
         m_free_list.push_back(p);
+}
+
+static bool has_rs1(InstOp op) {
+    switch (op) {
+    case OP_LUI: case OP_AUIPC: case OP_JAL:
+        return false;
+    default:
+        return true;
     }
 }
 
-void RenameUnit::push_from_decode(const SInst& s)
-{
-    m_decoded_q.push_back(s);
-}
-
-bool RenameUnit::has_renamed() const
-{
-    return !m_renamed_q.empty();
-}
-
-bool RenameUnit::try_pop_renamed(DynInst& out)
-{
-    if (m_renamed_q.empty())
+static bool has_rs2(InstOp op) {
+    switch (op) {
+    case OP_LUI: case OP_AUIPC: case OP_JAL:
+    case OP_JALR:
+    case OP_ADDI: case OP_SLTI: case OP_SLTIU: case OP_XORI: case OP_ORI: case OP_ANDI:
+    case OP_SLLI: case OP_SRLI: case OP_SRAI:
+    case OP_ADDIW: case OP_SLLIW: case OP_SRLIW: case OP_SRAIW:
         return false;
-    out = m_renamed_q.front();
-    m_renamed_q.pop_front();
-    return true;
+    default:
+        return true;
+    }
 }
 
-void RenameUnit::tick()
-{
-    size_t renamed_this_cycle = 0;
+static bool writes_rd(InstOp op) {
+    switch (op) {
+    case OP_BEQ: case OP_BNE: case OP_BLT: case OP_BGE: case OP_BLTU: case OP_BGEU:
+    case OP_SB: case OP_SH: case OP_SW: case OP_SD:
+    case OP_FENCE: case OP_FENCE_I:
+    case OP_ECALL: case OP_EBREAK:
+        return false;
+    default:
+        return true;
+    }
+}
 
-    while (!m_decoded_q.empty() && renamed_this_cycle < m_rename_width) {
-        SInst s = m_decoded_q.front();
-        m_decoded_q.pop_front();
+void RenameUnit::r0() {
+    if (m_decode_rename_q.empty())
+        return;
+    size_t n = 0;
+    MicroOp inst;
+    while (n < m_rename_width && m_decode_rename_q.read(inst)) {
+        if (!inst.valid)
+            continue;
+        m_r1_buf.push_back(std::move(inst));
+        ++n;
+    }
+}
 
-        DynInst d{};
-        d.sinst = nullptr;  // 简化：不直接持有指针，由上层按需管理
-        d.rob_id = -1;
+void RenameUnit::r1() {
+    if (m_r1_buf.empty())
+        return;
+    size_t n = 0;
+    while (n < m_rename_width && !m_r1_buf.empty()) {
+        MicroOp inst = std::move(m_r1_buf.front());
+        m_r1_buf.pop_front();
 
-        // 源寄存器映射
-        auto has_rs1 = true;
-        auto has_rs2 = true;
-
-        // 简单依据 opcode 约定源寄存器使用情况（后续可扩展为查 SUop 表）
-        switch (s.type) {
-        case OP_LUI:
-        case OP_AUIPC:
-        case OP_JAL:
-            has_rs1 = false;
-            has_rs2 = false;
-            break;
-        case OP_JALR:
-            has_rs2 = false;
-            break;
-        case OP_ADDI:
-        case OP_SLTI:
-        case OP_SLTIU:
-        case OP_XORI:
-        case OP_ORI:
-        case OP_ANDI:
-        case OP_SLLI:
-        case OP_SRLI:
-        case OP_SRAI:
-        case OP_ADDIW:
-        case OP_SLLIW:
-        case OP_SRLIW:
-        case OP_SRAIW:
-            has_rs2 = false;
-            break;
-        default:
-            break;
-        }
-
-        if (has_rs1 && s.rs1 < kNumLogicalRegs)
-            d.phys_rs1 = m_rat[s.rs1];
-        else
-            d.phys_rs1 = -1;
-
-        if (has_rs2 && s.rs2 < kNumLogicalRegs)
-            d.phys_rs2 = m_rat[s.rs2];
-        else
-            d.phys_rs2 = -1;
-
-        d.rs1_ready = false;
-        d.rs2_ready = false;
-
-        // 目的寄存器重命名
-        bool writes_rd = true;
-        switch (s.type) {
-        case OP_BEQ: case OP_BNE: case OP_BLT: case OP_BGE:
-        case OP_BLTU: case OP_BGEU:
-        case OP_SB: case OP_SH: case OP_SW: case OP_SD:
-        case OP_FENCE: case OP_FENCE_I:
-        case OP_ECALL: case OP_EBREAK:
-            writes_rd = false;
-            break;
-        default:
-            break;
-        }
-
-        if (writes_rd && s.rd != 0 && s.rd < kNumLogicalRegs) {
+        int new_prd = -1;
+        if (inst.rd.valid && inst.rd.atag < RV_GPR_SIZE) {
             if (m_free_list.empty()) {
-                // 无可用物理寄存器，前端暂时阻塞：将本条重新放回队列，并停止本周期重命名
-                m_decoded_q.push_front(s);
+                m_r1_buf.push_front(std::move(inst));
                 break;
             }
-            int new_p = m_free_list.front();
+            new_prd = m_free_list.front();
             m_free_list.pop_front();
-
-            m_rat[s.rd] = new_p;
-            d.phys_rd = new_p;
-        } else {
-            d.phys_rd = -1;
+            inst.rd.ptag = new_prd;
         }
-
-        m_renamed_q.push_back(d);
-        ++renamed_this_cycle;
+        if (m_rob.full()) {
+            m_r1_buf.push_front(std::move(inst));
+            break;
+        }
+        inst.rob_id = m_rob.alloc(inst);
+        m_r2_buf.push_back(std::move(inst));
+        ++n;
     }
 }
 
-void RenameUnit::commit()
-{
-    // 未来可在此根据 ROB 提交信息回收旧映射并归还物理寄存器
+void RenameUnit::r2() {
+    size_t n = 0;
+    while (n < m_rename_width && !m_r2_buf.empty()) {
+        MicroOp uop = std::move(m_r2_buf.front());
+        m_r2_buf.pop_front();
+        dispatch(uop);
+        ++n;
+    }
+}
+
+void RenameUnit::tick() {
+    r2();
+    r1();
+    r0();
+}
+
+void RenameUnit::recycle_phys(int phys) {
+    if (phys >= 0) {
+        m_free_list.push_back(phys);
+    }
+}
+
+void RenameUnit::build() {
+    for (int i = 0; i < RV_GPR_SIZE; ++i) {
+        m_rat[i] = i;
+        m_crat[i] = i;
+    }
+    for (int i = RV_GPR_SIZE; i < RV_PHY_REG_SIZE; ++i) {
+        m_free_list.push_back(i);
+    }
+    return;
+}
+
+void RenameUnit::commit() {
+    m_fp_issue_q.commit();
+    m_ls_issue_q.commit();
+    m_integer_issue_q.commit();
+}
+
+bool RenameUnit::dispatch(MicroOp& inst) {
+    if (!inst.valid)
+        return false;
+    if (IssueUnit::is_fp(inst.opcode)) {
+        m_fp_issue_q.write(std::move(inst));
+    } else if (IssueUnit::is_load_store(inst.opcode)) {
+        m_ls_issue_q.write(std::move(inst));
+    } else {
+        m_integer_issue_q.write(std::move(inst));
+    }
+    return true;
 }

@@ -3,6 +3,28 @@
 #include "log.h"
 #include "isa/isa_inst.def"
 
+void DecodeUnit::predecode(u32 raw, PredecodeInfo* out) {
+    out->valid = false;
+    out->is_branch = out->is_load = out->is_store = out->is_fp = false;
+    out->length = 4;
+    out->slot = 0;
+    static const u32 rv64i_sz = sizeof(rv64i_table) / sizeof(rv64i_table[0]);
+    for (u32 i = 0; i < rv64i_sz; ++i) {
+        if ((raw & rv64i_table[i].mask) != rv64i_table[i].match)
+            continue;
+        InstOp op = rv64i_table[i].opcode;
+        out->valid = true;
+        if (op >= OP_BEQ && op <= OP_BGEU)
+            out->is_branch = true;
+        else if (op >= OP_LB && op <= OP_LWU)
+            out->is_load = true;
+        else if (op >= OP_SB && op <= OP_SD)
+            out->is_store = true;
+        out->is_fp = false;  // RV64I 无浮点，预留
+        break;
+    }
+}
+
 i64 DecodeUnit::extract_imm(u64 raw, InstFmt fmt, InstOp op) {
 
     switch (fmt) {
@@ -54,7 +76,7 @@ i64 DecodeUnit::extract_imm(u64 raw, InstFmt fmt, InstOp op) {
     }
 }
 
-bool DecodeUnit::decode(u64 raw, u64 pc, SInst *out) {
+bool DecodeUnit::decode(u64 raw, MicroOp *out) {
     static const u32 rv64i_inst_size = sizeof(rv64i_table) / sizeof(rv64i_table[0]);
     for (size_t i = 0; i < rv64i_inst_size; i++) {
         if ((raw & rv64i_table[i].mask) == rv64i_table[i].match) {
@@ -62,46 +84,28 @@ bool DecodeUnit::decode(u64 raw, u64 pc, SInst *out) {
             const InstFmt fmt = rv64i_table[i].format;
 
             out->raw_inst = raw;
-            out->pc       = pc;
-            out->type     = op;
+            out->opcode   = op;
+            out->format   = fmt;
 
-            out->rd  = (raw >> 7)  & 0x1f;
-            out->rs1 = (raw >> 15) & 0x1f;
-            out->rs2 = (raw >> 20) & 0x1f;
-
-            // 对于 CSR / FENCE 等 RV_FMT_NONE 类型，这里 imm 保持为 0，
-            // 具体语义由执行阶段使用 raw_inst 自行解析。
-            if (fmt != RV_FMT_NONE)
-                out->imm = (int32_t)extract_imm(raw, fmt, op);
-            else
-                out->imm = 0;
+            out->rd.atag  = static_cast<i32>((raw >> 7) & 0x1f);
+            out->rs1.atag = static_cast<i32>((raw >> 15) & 0x1f);
+            out->rs2.atag = static_cast<i32>((raw >> 20) & 0x1f);
+            out->rd.valid = out->rs1.valid = out->rs2.valid = true;
 
             return true;
         }
     }
 
-    out->type = OP_INVALID;
+    out->opcode = OP_INVALID;
     return false;
 }
 
-DecodeUnit::DecodeUnit(const std::string& n)
-    : IDecode(n)
+DecodeUnit::DecodeUnit(const DecodeDeps& deps)
+    : m_fetch_decode_q(*deps.fetch_decode_q)
+    , m_decode_rename_q(*deps.decode_rename_q)
 {
     m_decoded_q.clear();
     rv64i_insts_size = sizeof(rv64i_table) / sizeof(rv64i_table[0]);
-}
-
-void DecodeUnit::set_fetch_decode_q(ASyncQueue<FetchPacket>* q) {
-    m_fetch_decode_q = q;
-}
-
-void DecodeUnit::set_decode_rename_q(ASyncQueue<DecodedInst>* q) {
-    m_decode_rename_q = q;
-}
-
-void DecodeUnit::attach_fetch(FetchUnit* f)
-{
-    m_fetch = f;
 }
 
 bool DecodeUnit::has_decoded() const
@@ -109,7 +113,7 @@ bool DecodeUnit::has_decoded() const
     return !m_decoded_q.empty();
 }
 
-bool DecodeUnit::try_pop_decoded(SInst& out)
+bool DecodeUnit::try_pop_decoded(MicroOp& out)
 {
     if (m_decoded_q.empty())
         return false;
@@ -120,35 +124,50 @@ bool DecodeUnit::try_pop_decoded(SInst& out)
 
 void DecodeUnit::tick()
 {
-    if (!m_fetch)
+    if (m_stall)
+        return;
+    d1();
+    d0();
+}
+
+void DecodeUnit::d0() {
+    FetchPacket pkt;
+    if (!m_fetch_decode_q.read(pkt))
         return;
 
-    size_t decoded_this_cycle = 0;
-
-    // 从 FetchUnit 拉取一个 fetch_packet（若有）
-    auto pkt_opt = m_fetch->try_dispatch();
-    if (!pkt_opt.has_value())
-        return;
-
-    const FetchPacket& pkt = pkt_opt.value();
-    for (const auto& finst : pkt.insts) {
-        if (!finst.valid)
+    size_t inst_count = 0;
+    for (size_t i = 0; i < pkt.insts.size() && inst_count < m_decode_width; ++i) {
+        const auto& finst = pkt.insts[i];
+        if (!finst.valid || !(pkt.valid_mask & (1u << i)))
             continue;
-        if (decoded_this_cycle >= m_decode_width)
-            break;
 
-        SInst sinst{};
-        if (decode(static_cast<u32>(finst.insn), finst.pc, &sinst)) {
-            if (sinst.type != OP_INVALID) {
-                m_decoded_q.push_back(sinst);
-                ++decoded_this_cycle;
-            }
-        }
+        MicroOp dinst;
+        dinst.pc = finst.pc;
+        if (!decode(finst.insn, &dinst) || dinst.opcode == OP_INVALID)
+            continue;
+
+        dinst.valid = true;
+        dinst.inst_id = m_next_decode_id++;
+        m_d0_pkt.emplace_back(std::move(dinst));
+        ++inst_count;
+    }
+}
+
+void DecodeUnit::d1() {
+    for (auto& dinst : m_d0_pkt) {
+        if (!dinst.valid)
+            continue;
+        // 对于 CSR / FENCE 等 RV_FMT_NONE 类型，这里 imm 保持为 0，
+        // 具体语义由执行阶段使用 raw_inst 自行解析。
+        if (dinst.format != RV_FMT_NONE)
+            dinst.imm = extract_imm(dinst.raw_inst, dinst.format, dinst.opcode);
+        else
+            dinst.imm = 0;
+        m_decode_rename_q.write(std::move(dinst));
     }
 }
 
 void DecodeUnit::commit()
 {
-    // 当前实现中，DecodeUnit 没有跨周期的“next/current”状态需要在此阶段生效，
-    // 保留为空实现以符合接口约定。
+    m_decode_rename_q.commit();
 }

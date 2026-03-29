@@ -1,8 +1,9 @@
 add_library(core STATIC
-    core.cpp
+    top.cpp
 )
 
 target_include_directories(core PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
     ${CMAKE_SOURCE_DIR}/include/core
     ${CMAKE_SOURCE_DIR}/include/rob
     ${CMAKE_SOURCE_DIR}/include/commit
@@ -11,6 +12,10 @@ target_include_directories(core PUBLIC
     ${CMAKE_SOURCE_DIR}/include/execute
     ${CMAKE_SOURCE_DIR}/include/issue
     ${CMAKE_SOURCE_DIR}/include/rename
+    ${CMAKE_SOURCE_DIR}/include/icache
+    ${CMAKE_SOURCE_DIR}/include/memory
+    ${CMAKE_SOURCE_DIR}/include/fetch
+    ${CMAKE_SOURCE_DIR}/include/bpred
 )
 
 target_link_libraries(core

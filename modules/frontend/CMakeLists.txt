@@ -1,7 +1,6 @@
 add_library(fetch STATIC
     fetch_unit.cpp
     decode_unit.cpp
-    dispatch_unit.cpp
     rename_unit.cpp
     branch_predictor.cpp
     bpred/hybrid_predictor.cpp

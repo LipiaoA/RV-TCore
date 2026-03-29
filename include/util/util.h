@@ -12,6 +12,7 @@
 #include <vector>
 #include <mutex>
 #include <memory>
+#include <cassert>
 
 #include "rv_def.h"
 #include "log.h"
@@ -133,4 +134,24 @@ static inline int64_t sign_extend(uint64_t value, int bits) {
     }
     return static_cast<int64_t>(value);
 }
+
+template<typename T, size_t MaxN>
+class FixedStorage {
+public:
+    template<typename Config>
+    void init(size_t n, const Config& cfg) {
+        assert(n <= MaxN);
+        size_ = n;
+        for (size_t i = 0; i < size_; i++)
+            new (&data_[i]) T(cfg);
+    }
+
+    T& operator[](size_t i) { return data_[i]; }
+    size_t size() const { return size_; }
+
+private:
+    size_t size_ = 0;
+    std::aligned_storage_t<sizeof(T), alignof(T)> raw_[MaxN];
+    T* data_ = reinterpret_cast<T*>(raw_);
+};
 #endif

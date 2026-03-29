@@ -7,8 +7,8 @@
 #include "rv_def.h"
 #include "tlb.h"
 #include "cache.h"
+#include "rv_def.h"
 
-static constexpr unsigned k_fetch_width = 4;     // 每包最大指令数
 static constexpr unsigned k_icache_line_bytes = 64;
 static constexpr unsigned k_icache_latency = 2;  // 模拟 I$ 2 cycle latency
 

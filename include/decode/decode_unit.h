@@ -2,44 +2,50 @@
 #ifndef RV_TCORE_DECODEUNIT_H
 #define RV_TCORE_DECODEUNIT_H
 
+#include <deque>
+#include <vector>
+
 #include "intf.h"
-#include "fetch_unit.h"
 #include "decode/inst.h"
 #include "module_comm.h"
 
-// Decode 单元：从 FetchUnit 拉取 fetch_packet_t，解码成 SInst 流
+class FetchUnit;
+
 class DecodeUnit : public IDecode {
 public:
-    DecodeUnit(const std::string& n);
+    DecodeUnit(const DecodeDeps& deps);
     ~DecodeUnit() {}
 public:
     void                                tick() override;
     void                                commit() override;
+    void                                build() override {}
 
-    // 由 Core 或上层调用，绑定上游取指单元
-    void                                attach_fetch(FetchUnit* f);
-
-    // 对下游（RenameUnit）暴露的解码结果访问接口
     bool                                has_decoded() const;
-    bool                                try_pop_decoded(SInst& out);
+    bool                                try_pop_decoded(MicroOp& out);
 
-    void                                set_fetch_decode_q(ASyncQueue<FetchPacket>* q);
-    void                                set_decode_rename_q(ASyncQueue<DecodedInst>* q);
+    static void                         predecode(u32 raw, PredecodeInfo* out);
+    static void                         predecode_one(u32 raw, PredecodeInfo* out) { predecode(raw, out); }
 
 private:
-    bool                                decode(u64 raw, u64 pc, SInst *out);
+    void                                d0();
+    void                                d1();
+
+    bool                                decode(u64 raw, MicroOp *out);
     i64                                 extract_imm(u64 raw, InstFmt fmt, InstOp op);
 
 private:
     FetchUnit*                          m_fetch { nullptr };
     u32                                 rv64i_insts_size;
-    // 解码后静态指令队列
-    std::deque<SInst>                   m_decoded_q;
+    std::deque<MicroOp>                 m_decoded_q;
     size_t                              m_decode_width { 4 };
 
-    INPUT ASyncQueue<FetchPacket>*      m_fetch_decode_q { nullptr };
-    OUTPUT ASyncQueue<DecodedInst>*     m_decode_rename_q { nullptr };
+    std::vector<MicroOp>                m_d0_pkt;
 
+    ASyncQueue<FetchPacket>&            m_fetch_decode_q;
+    ASyncQueue<MicroOp>&                m_decode_rename_q;
+
+    u64                                 m_next_decode_id { 0 };
+    bool                                m_stall { false };
 };
 
 #endif

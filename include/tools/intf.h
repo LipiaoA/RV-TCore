@@ -17,7 +17,7 @@ public:
     virtual void tick() = 0;                    // 组合逻辑评估
     virtual void commit() = 0;                    // 将 next->current 生效（子类覆盖）
     virtual void reset() {}                     // 复位
-    virtual void build() {}
+    virtual void build() = 0;
 
     virtual std::string dev_name() const { return m_name; }
 
@@ -27,63 +27,70 @@ private:
 
 class IPredictor : public DevIntf {
 public:
-    IPredictor(const std::string& n) : DevIntf(n) {}
+    IPredictor() : DevIntf() {}
+    explicit IPredictor(const std::string& n) : DevIntf(n) {}
     virtual ~IPredictor() = default;
 };
 
 class ICommit  : public DevIntf {
 public:
-    ICommit(const std::string& n) : DevIntf(n) {}
+    ICommit() : DevIntf() {}
+    explicit ICommit(const std::string& n) : DevIntf(n) {}
     virtual ~ICommit() = default;
 };
 
 class IDecode : public DevIntf {
 public:
-    IDecode(const std::string& n) : DevIntf(n) {}
+    IDecode() : DevIntf() {}
     virtual ~IDecode() = default;
 };
 
 class IDispatch : public DevIntf {
 public:
-    IDispatch(const std::string& n) : DevIntf(n) {}
+    IDispatch() : DevIntf() {}
     virtual ~IDispatch() = default;
 };
 
 class IExecute : public DevIntf {
 public:
-    IExecute(const std::string& n) : DevIntf(n) {}
+    IExecute() : DevIntf() {}
+    explicit IExecute(const std::string& n) : DevIntf(n) {}
     virtual ~IExecute() = default;
 };
 
 
 class IFetch : public DevIntf {
 public:
-    IFetch(const std::string& n) : DevIntf(n) {}
+    IFetch() : DevIntf() {}
     virtual ~IFetch() = default;
 };
 
 class IIssue : public DevIntf {
 public:
-    IIssue(const std::string& n) : DevIntf(n) {}
+    IIssue() : DevIntf() {}
+    explicit IIssue(const std::string& n) : DevIntf(n) {}
     virtual ~IIssue() = default;
 };
 
 class IRename : public DevIntf {
 public:
-    IRename(const std::string& n) : DevIntf(n) {}
+    IRename() : DevIntf() {}
+    explicit IRename(const std::string& n) : DevIntf(n) {}
     virtual ~IRename() = default;
 };
 
 class IRob : public DevIntf {
 public:
-    IRob(const std::string& n) : DevIntf(n) {}
+    IRob() : DevIntf() {}
+    explicit IRob(const std::string& n) : DevIntf(n) {}
     virtual ~IRob() = default;
 };
 
 
 class ICore : public DevIntf {
 public:
-    ICore(const std::string& n) : DevIntf(n), m_exit(false){}
+    ICore() : DevIntf(), m_exit(false){}
+    explicit ICore(const std::string& n) : DevIntf(n), m_exit(false) {}
     virtual ~ICore() {
         for (auto &m : m_modules) {
             delete_ptr(m);
@@ -117,7 +124,9 @@ protected:
 
 private:
     bool m_exit;
-    std::vector<DevIntf *> m_modules;
+
+protected:
+    std::vector<DevIntf*> m_modules;
 };
 
 

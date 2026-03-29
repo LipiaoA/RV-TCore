@@ -1,42 +1,47 @@
-
 #ifndef RV_TCORE_RENAMEUNIT_H
 #define RV_TCORE_RENAMEUNIT_H
 
 #include "intf.h"
 #include "decode/inst.h"
 #include "module_comm.h"
+#include "rename/prf.h"
+#include "rename/checkpoint.h"
+#include <deque>
+#include <vector>
+#include <array>
 
-// 简化寄存器配置：32 逻辑寄存器，64 物理寄存器（含额外的重命名空间）
-constexpr int kNumLogicalRegs  = 32;
-constexpr int kNumPhysicalRegs = 64;
+class ROB;
 
 class RenameUnit : public IRename {
 public:
-    RenameUnit(const std::string& n);
-    ~RenameUnit() {}
+    RenameUnit(const RenameDeps& deps);
+    ~RenameUnit() override = default;
 public:
     void                                tick() override;
     void                                commit() override;
-
-    // 由 DecodeUnit 推入解码好的静态指令
-    void                                push_from_decode(const SInst& s);
-    bool                                has_renamed() const;
-    bool                                try_pop_renamed(DynInst& out);
-
-    void                                set_decode_rename_q(ASyncQueue<DecodedInst>* q);
-    void                                set_rename_dispatch_q(ASyncQueue<DynInst>* q);
+    void                                build() override;
+    bool                                dispatch(MicroOp& inst);
+    void                                recycle_phys(int phys);
 
 private:
-    INPUT  ASyncQueue<DecodedInst>*     m_decode_rename_q  { nullptr };
-    OUTPUT ASyncQueue<DynInst>*         m_rename_dispatch_q{ nullptr };
-    // 逻辑->物理映射表
-    std::vector<int>                    m_rat;          // size = kNumLogicalRegs
-    // 空闲物理寄存器列表
-    std::deque<int>                     m_free_list;    // 存 [kNumLogicalRegs, kNumPhysicalRegs)
+    void                                r0();
+    void                                r1();
+    void                                r2();
 
-    // 输入/输出队列
-    std::deque<SInst>                   m_decoded_q;
-    std::deque<DynInst>                 m_renamed_q;
+    ASyncQueue<MicroOp>&                m_decode_rename_q;
+    ROB&                                m_rob;
+    ASyncQueue<MicroOp>&                m_integer_issue_q;
+    ASyncQueue<MicroOp>&                m_ls_issue_q;
+    ASyncQueue<MicroOp>&                m_fp_issue_q;
+
+    std::array<int, RV_GPR_SIZE>        m_rat {};
+    std::array<int, RV_GPR_SIZE>        m_crat {};
+    std::deque<int>                     m_free_list;
+    std::vector<RatCheckpoint>          m_checkpoints;
+    PRF                                 m_prf;
+
+    std::deque<MicroOp>                 m_r1_buf;
+    std::deque<MicroOp>                 m_r2_buf;
 
     size_t                              m_rename_width { 4 };
 };
