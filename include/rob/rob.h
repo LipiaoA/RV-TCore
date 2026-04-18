@@ -1,11 +1,13 @@
 #ifndef RV_TCORE_ROB_H
 #define RV_TCORE_ROB_H
 
+#include <optional>
+#include <vector>
+
 #include "intf.h"
 #include "module_comm.h"
 #include "decode/inst.h"
-#include <optional>
-#include <vector>
+#include "config.h"
 
 struct RobEntry {
     bool          valid     { false };
@@ -17,9 +19,10 @@ struct RobEntry {
 };
 
 class ROB : public IRob {
+    constexpr static u32 MAX_ROB_ENTRIES = 512;
 public:
-    explicit ROB(const ROBDeps& deps);
-    ~ROB() override = default;
+    explicit ROB(const ROBConfig& conf, const ROBDeps& deps);
+    ~ROB() override {};
 public:
     void                                tick() override;
     void                                commit() override;

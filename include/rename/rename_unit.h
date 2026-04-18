@@ -1,20 +1,22 @@
 #ifndef RV_TCORE_RENAMEUNIT_H
 #define RV_TCORE_RENAMEUNIT_H
 
+#include <deque>
+#include <vector>
+#include <array>
+
 #include "intf.h"
+#include "config.h"
 #include "decode/inst.h"
 #include "module_comm.h"
 #include "rename/prf.h"
 #include "rename/checkpoint.h"
-#include <deque>
-#include <vector>
-#include <array>
 
 class ROB;
 
 class RenameUnit : public IRename {
 public:
-    RenameUnit(const RenameDeps& deps);
+    RenameUnit(const RenameConfig& conf, const RenameDeps& deps);
     ~RenameUnit() override = default;
 public:
     void                                tick() override;

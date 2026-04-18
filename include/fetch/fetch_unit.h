@@ -8,6 +8,7 @@
 #include "branch_predictor.h"
 #include "icache.h"
 #include "module_comm.h"
+#include "config.h"
 
 class GCache;
 class MultiLevelTLB;
@@ -33,8 +34,8 @@ struct pipe_reg_t {
 
 class FetchUnit : public IFetch {
 public:
-    FetchUnit(const IFetchDeps& deps);
-    ~FetchUnit();
+    FetchUnit(const FetchConfig& conf, const IFetchDeps& deps);
+    ~FetchUnit() override;
 public:
     void                                build() override;
     void                                tick() override;

@@ -24,7 +24,6 @@ using bytes_t = std::vector<u8>;
 #define OUTPUT
 
 // 内存分配 MAX 配置大小定义
-constexpr u32 MAX_ROB_ENTRIES = 512;
 constexpr u32 MAX_PRF_ENTRIES = 512;
 constexpr u32 MAX_IQ_ENTRIES = 32;
 constexpr u32 MAX_FTQ_ENTRIES = 8;

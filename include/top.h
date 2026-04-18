@@ -3,6 +3,7 @@
 
 #include "intf.h"
 #include "module_comm.h"
+#include "config.h"
 
 class CycleScheduler;
 class MultiLevelTLB;
@@ -17,17 +18,20 @@ class CommitUnit;
 class IssueUnit;
 class ExecuteUnit;
 class LSU;
+class ROB;
 
-class Top : public ICore {
+class Top {
 public:
-    explicit Top(const std::string& n);
-    ~Top() override;
+    explicit Top();
+    explicit Top(const TCoreConfig& config);
+    ~Top();
 
-    void build() override;
-    void tick() override;
+    void build();
 
 private:
-    std::vector<DevIntf*>                   m_queues;
+    void init();
+
+private:
     ModuleCommQueues                        m_comm_queues;
 
     CycleScheduler*                         m_sched { nullptr };
@@ -44,6 +48,7 @@ private:
     ExecuteUnit*                            m_execute { nullptr };
     ROB*                                    m_rob { nullptr };
     LSU*                                    m_lsu { nullptr };
+    TCoreConfig                             m_config;
 };
 
 #endif

@@ -2,11 +2,12 @@
 #include "rob/rob.h"
 #include "rename/rename_unit.h"
 
-CommitUnit::CommitUnit(const CommitDeps& deps)
+CommitUnit::CommitUnit(const CommitConfig& conf, const CommitDeps& deps)
     : ICommit()
     , m_execute_commit_q(*deps.execute_commit_q)
     , m_rob(*deps.rob)
     , m_rename(*deps.rename)
+    , m_commit_width(conf.width)
 {}
 
 void CommitUnit::build() {}

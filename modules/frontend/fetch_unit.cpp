@@ -15,12 +15,13 @@
 #include "memory/tlb.h"
 #include "util/util.h"
 
-FetchUnit::FetchUnit(const IFetchDeps& deps)
+FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     : m_sched(*deps.sched)
     , m_icache(*deps.icache)
     , m_itlb(*deps.tlb)
     , m_bpu(*deps.bpu)
     , m_fetch_decode_q(*deps.fetch_decode_q)
+    , m_fetch_width(conf.fetch_width)
 {
     m_pred.clear();
     m_f1_req.clear();
@@ -344,4 +345,4 @@ void FetchUnit::dump_state() const
     }
 }
 
-FetchUnit::~FetchUnit() = default;
+FetchUnit::~FetchUnit() { }

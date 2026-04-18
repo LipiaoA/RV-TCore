@@ -3,7 +3,6 @@
 
 #include <array>
 
-#include "config.h"
 #include "tools/queue.h"
 #include "rv_def.h"
 #include "decode/inst.h"
@@ -144,6 +143,12 @@ class BranchPredictor;
 class ROB;
 class RenameUnit;
 class LSU;
+class FetchUnit;
+class DecodeUnit;
+class RenameUnit;
+class CommitUnit;
+class IssueUnit;
+class ExecuteUnit;
 
 typedef struct {
     CycleScheduler*             sched;
@@ -180,25 +185,12 @@ typedef struct {
 } IssueDeps;
 
 typedef struct {
-    u32 alu_num { 0 };
-    u32 fpu_num { 0 };
-    u32 bru_num { 0 };
-} ExecConfig;
-
-typedef struct {
-    u32 int_issue_width { 4 };
-    u32 ls_issue_width { 2 };
-    u32 fp_issue_width { 2 };
-} IssueConfig;
-
-typedef struct {
     ASyncQueue<MicroOp>*        issue_execute_q;
     ASyncQueue<ExecResult>*     execute_commit_q;
     LSU*                        lsu;
 } ExecDeps;
 
 typedef struct {
-    ROBConfig conf;
     ASyncQueue<ExecResult>*     execute_commit_q;
 } ROBDeps;
 
@@ -208,18 +200,19 @@ typedef struct {
     MultiLevelTLB*              tlb;
     ASyncQueue<MicroOp>*        dispatch_issue_q;
     ASyncQueue<ExecResult>*     execute_commit_q;
-    LSUConfig                   conf;
-
 } LSUDeps;
 
 typedef struct {
-    IFetchDeps*                 fetch;
-    DecodeDeps*                 decode;
-    RenameDeps*                 rename;
-    CommitDeps*                 commit;
-    IssueDeps*                  issue;
-    ExecDeps*                execute;
-    ROBDeps*                    rob;
+    FetchUnit*                  fetch;
+    DecodeUnit*                 decode;
+    RenameUnit*                 rename;
+    CommitUnit*                 commit;
+    IssueUnit*                  issue;
+    ExecuteUnit*                execute;
+    ROB*                        rob;
+    LSU*                        lsu;
+    BranchPredictor*            bpu;
+    CycleScheduler*             sched;
 } CoreDeps;
 
 

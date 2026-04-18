@@ -8,12 +8,13 @@
 #include "intf.h"
 #include "decode/inst.h"
 #include "module_comm.h"
+#include "config.h"
 
 class FetchUnit;
 
 class DecodeUnit : public IDecode {
 public:
-    DecodeUnit(const DecodeDeps& deps);
+    DecodeUnit(const DecodeConfig& conf, const DecodeDeps& deps);
     ~DecodeUnit() {}
 public:
     void                                tick() override;

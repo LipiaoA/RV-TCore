@@ -3,6 +3,7 @@
 
 #include "module_comm.h"
 #include "tools/intf.h"
+#include "config.h"
 
 class BRU : public DevIntf {
 public:

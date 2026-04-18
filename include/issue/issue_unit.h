@@ -5,6 +5,7 @@
 #include "module_comm.h"
 #include "decode/inst.h"
 #include <deque>
+#include "config.h"
 
 class IssueUnit : public IIssue {
 public:

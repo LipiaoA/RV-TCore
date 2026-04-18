@@ -13,6 +13,7 @@
 #include "memory/tlb.h"
 #include "rob/rob.h"
 #include "util.h"
+#include "config.h"
 
 static const int SSIT_SIZE = 1024;
 static const int LFST_SIZE = 1024;

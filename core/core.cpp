@@ -3,7 +3,6 @@
 #include "rob.h"
 #include "commit_unit.h"
 #include "decode_unit.h"
-#include "dispatch_unit.h"
 #include "execute_unit.h"
 #include "fetch_unit.h"
 #include "issue_unit.h"
@@ -13,24 +12,25 @@
 
 
 Core::Core(const CoreDeps &deps)
- : m_ifetch(*deps.fetch),
+ : m_fetch(*deps.fetch),
    m_decode(*deps.decode),
-   m_rename(*deps.rename),
-   m_issue(*deps.issue),
    m_execute(*deps.execute),
+   m_issue(*deps.issue),
+   m_rename(*deps.rename),
    m_rob(*deps.rob),
-   m_commit(*deps.commit) {
+   m_commit(*deps.commit)
+{ }
 
-}
-
-Core::Core() {}
-
-Core::~Core() = default;
+Core::~Core() { }
 
 void Core::tick() {
-    ICore::tick();
-    for (auto& q : m_queues)
-        q->tick();
+    m_fetch.tick();
+    m_commit.tick();
+    m_decode.tick();
+    m_execute.tick();
+    m_issue.tick();
+    m_rename.tick();
+    m_rob.tick();
 }
 
 void Core::build()
@@ -42,12 +42,5 @@ void Core::build()
     m_issue.build();
     m_rename.build();
     m_rob.build();
-    add_module(&m_ifetch);
-    add_module(&m_commit);
-    add_module(&m_decode);
-    add_module(&m_execute);
-    add_module(&m_issue);
-    add_module(&m_rename);
-    add_module(&m_rob);
 }
 

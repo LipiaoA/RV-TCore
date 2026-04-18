@@ -27,6 +27,7 @@ private:
     Memory                              *m_mem;
     ICore                               *m_core;
     LogSystem                           *m_log;
+    Top                                 *m_top;
 };
 
 #endif

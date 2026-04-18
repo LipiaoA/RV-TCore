@@ -100,9 +100,10 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
     return false;
 }
 
-DecodeUnit::DecodeUnit(const DecodeDeps& deps)
+DecodeUnit::DecodeUnit(const DecodeConfig& conf, const DecodeDeps& deps)
     : m_fetch_decode_q(*deps.fetch_decode_q)
     , m_decode_rename_q(*deps.decode_rename_q)
+    , m_decode_width(conf.width)
 {
     m_decoded_q.clear();
     rv64i_insts_size = sizeof(rv64i_table) / sizeof(rv64i_table[0]);

@@ -1,8 +1,8 @@
 #include "rob/rob.h"
 
-ROB::ROB(const ROBDeps& deps)
+ROB::ROB(const ROBConfig& conf, const ROBDeps& deps)
     : m_execute_commit_q(*deps.execute_commit_q),
-      m_capacity(deps.conf.capacity)
+      m_capacity(conf.capacity)
 { }
 
 void ROB::build() {

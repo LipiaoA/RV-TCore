@@ -17,7 +17,6 @@
 class Core : public ICore {
 public:
     explicit Core(const CoreDeps & deps);
-    explicit Core();
     virtual ~Core() override;
 
 public:
@@ -31,7 +30,7 @@ private:
     IssueUnit&                              m_issue;
     RenameUnit&                             m_rename;
     ROB&                                    m_rob;
-    FetchUnit&                              m_ifetch;
+    FetchUnit&                              m_fetch;
 };
 
 #endif // TCORE_CORE_H

@@ -4,13 +4,14 @@
 
 #include "intf.h"
 #include "module_comm.h"
+#include "config.h"
 
 class ROB;
 class RenameUnit;
 
 class CommitUnit : public ICommit {
 public:
-    CommitUnit(const CommitDeps& deps);
+    CommitUnit(const CommitConfig& conf, const CommitDeps& deps);
     ~CommitUnit() override = default;
 public:
     void                                tick() override;
@@ -21,6 +22,7 @@ private:
     ASyncQueue<ExecResult>&             m_execute_commit_q;
     ROB&                                m_rob;
     RenameUnit&                         m_rename;
+    u32                                 m_commit_width;
 };
 
 #endif
