@@ -77,7 +77,6 @@ int main()
     IFetchDeps deps {};
     deps.sched = &sched;
     deps.icache = &icache;
-    deps.tlb = &tlb;
     deps.bpu = &bpu;
     deps.fetch_decode_q = &fetch_decode_q;
 

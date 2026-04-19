@@ -13,11 +13,11 @@
 
 int main()
 {
-    ASyncQueue<MicroOp> dispatch_issue_q(32);
+    ASyncQueue<MicroOp> rename_issue_q(32);
     ASyncQueue<MicroOp> issue_execute_q(32);
 
     IssueDeps deps {};
-    deps.dispatch_issue_q = &dispatch_issue_q;
+    deps.rename_issue_q = &rename_issue_q;
     deps.issue_execute_q = &issue_execute_q;
 
     IssueConfig conf {};
@@ -36,13 +36,13 @@ int main()
     uop.issued = false;
 
     // 周期 0：dispatch 写侧注入 → tick 后读侧可见；issue.tick 发射到 issue_execute 写侧（读侧仍空）
-    assert(dispatch_issue_q.write(uop));
-    assert(dispatch_issue_q.empty());
-    dispatch_issue_q.tick();
-    assert(dispatch_issue_q.size() == 1);
+    assert(rename_issue_q.write(uop));
+    assert(rename_issue_q.empty());
+    rename_issue_q.tick();
+    assert(rename_issue_q.size() == 1);
 
     issue.tick();
-    assert(dispatch_issue_q.empty());
+    assert(rename_issue_q.empty());
     assert(issue_execute_q.empty());
 
     // 周期 1：issue_execute.tick 后读侧可见上周期发射结果

@@ -28,6 +28,9 @@ public:
 
     void build();
 
+public:
+    CoreDeps                              get_core_deps() const;
+
 private:
     void init();
 
@@ -35,19 +38,21 @@ private:
     ModuleCommQueues                        m_comm_queues;
 
     CycleScheduler*                         m_sched { nullptr };
-    MultiLevelTLB*                          m_tlb { nullptr };
     GCache*                                 m_l2 { nullptr };
+    MultiLevelTLB*                          m_dtlb { nullptr };
+    MultiLevelTLB*                          m_itlb { nullptr };
     DCache*                                 m_dcache { nullptr };
     ICache*                                 m_icache { nullptr };
     BranchPredictor*                        m_bpu { nullptr };
     FetchUnit*                              m_fetch { nullptr };
     DecodeUnit*                             m_decode { nullptr };
     RenameUnit*                             m_rename { nullptr };
-    CommitUnit*                             m_commit { nullptr };
     IssueUnit*                              m_issue { nullptr };
     ExecuteUnit*                            m_execute { nullptr };
+    CommitUnit*                             m_commit { nullptr };
     ROB*                                    m_rob { nullptr };
     LSU*                                    m_lsu { nullptr };
+
     TCoreConfig                             m_config;
 };
 

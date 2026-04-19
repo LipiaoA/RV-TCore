@@ -2,12 +2,15 @@
 #include "cache.h"
 #include "log.h"
 
-GCache::GCache(CycleScheduler *sched, const CacheConfig &cfg, InclusionPolicy pol)
-    : m_sched(sched), m_cfg(cfg), m_policy(pol),m_mem(nullptr)
+GCache::GCache(CycleScheduler *sched, const CacheConfig &cfg)
+    : m_sched(sched),
+      m_cfg(cfg),
+      m_policy(cfg.inclusion_policy),
+      m_mem(nullptr)
 {
     if ((m_cfg.line_size & (m_cfg.line_size - 1)) != 0)
         throw std::runtime_error("line_size must be power of two");
-    m_sets = (m_cfg.size_bytes) / (m_cfg.line_size * m_cfg.ways);
+    m_sets = (m_cfg.size) / (m_cfg.line_size * m_cfg.ways);
     if (m_sets == 0)
         throw std::runtime_error("invalid cache configuration");
     m_data.resize(m_sets);

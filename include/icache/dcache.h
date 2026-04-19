@@ -5,8 +5,8 @@
 
 class DCache : public GCache {
 public:
-    DCache(CycleScheduler *sched, const CacheConfig &cfg, InclusionPolicy pol = InclusionPolicy::NonInclusive)
-    : GCache(sched, cfg, pol) {}
+    DCache(CycleScheduler *sched, const CacheConfig &cfg)
+    : GCache(sched, cfg) {}
     virtual ~DCache() {}
 
 };

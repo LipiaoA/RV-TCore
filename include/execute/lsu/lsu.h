@@ -95,7 +95,7 @@ private:
     StoreSetPredictor                   m_ssp;
     ROB&                                m_rob;
     GCache&                             m_dcache;
-    MultiLevelTLB&                      m_tlb;
+    MultiLevelTLB&                      m_dtlb;
     LSUConfig                           m_conf;
     CycleScheduler                      m_sched;
     LSUStallType                        m_stall { NO_STALL };

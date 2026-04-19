@@ -2,15 +2,16 @@
 #include "isa/opcode.h"
 
 IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
-    : IIssue("issue_unit")
-    , m_dispatch_issue_q(*deps.dispatch_issue_q)
-    , m_issue_execute_q(*deps.issue_execute_q)
-    , m_int_issue_width(conf.int_issue_width)
-    , m_ls_issue_width(conf.ls_issue_width)
-    , m_fp_issue_width(conf.fp_issue_width)
+    : IIssue("issue_unit"),
+      m_rename_issue_q(*deps.rename_issue_q),
+      m_issue_execute_q(*deps.issue_execute_q),
+      m_int_issue_width(conf.int_issue_width),
+      m_ls_issue_width(conf.ls_issue_width),
+      m_fp_issue_width(conf.fp_issue_width)
 {}
 
-void IssueUnit::build() {}
+void IssueUnit::build() {
+}
 
 bool IssueUnit::is_load_store(InstOp op) {
     return (op >= OP_LB && op <= OP_LWU) || (op >= OP_SB && op <= OP_SD);
@@ -23,7 +24,7 @@ bool IssueUnit::is_fp(InstOp op) {
 
 void IssueUnit::tick() {
     MicroOp inst;
-    while (m_dispatch_issue_q.read(inst)) {
+    while (m_rename_issue_q.read(inst)) {
         InstOp op = inst.opcode;
         if (is_load_store(op))
             m_ls_q.push_back(std::move(inst));
@@ -38,7 +39,8 @@ void IssueUnit::tick() {
         for (auto it = q.begin(); it != q.end() && issued < width; ) {
             if (it->rs1.ready && it->rs2.ready && !it->issued) {
                 it->issued = true;
-                m_issue_execute_q.write(*it);
+                // TODO: dispatch to issue_execute_q
+                assert(false);
                 it = q.erase(it);
                 ++issued;
             } else

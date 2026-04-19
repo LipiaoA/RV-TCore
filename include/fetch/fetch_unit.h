@@ -56,7 +56,6 @@ private:
 private:
     CycleScheduler&                     m_sched;
     ICache&                             m_icache;
-    MultiLevelTLB&                      m_itlb;
     BranchPredictor&                    m_bpu;
     OUTPUT ASyncQueue<FetchPacket>&     m_fetch_decode_q;
 

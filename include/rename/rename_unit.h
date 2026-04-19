@@ -30,11 +30,10 @@ private:
     void                                r1();
     void                                r2();
 
-    ASyncQueue<MicroOp>&                m_decode_rename_q;
+    INPUT ASyncQueue<MicroOp>&          m_decode_rename_q;
+    OUTPUT ASyncQueue<MicroOp>&         m_rename_issue_q;
     ROB&                                m_rob;
-    ASyncQueue<MicroOp>&                m_integer_issue_q;
-    ASyncQueue<MicroOp>&                m_ls_issue_q;
-    ASyncQueue<MicroOp>&                m_fp_issue_q;
+
 
     std::array<int, RV_GPR_SIZE>        m_rat {};
     std::array<int, RV_GPR_SIZE>        m_crat {};

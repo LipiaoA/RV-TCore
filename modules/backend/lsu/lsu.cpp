@@ -5,7 +5,7 @@
 LSU::LSU(const LSUConfig& conf, const LSUDeps& deps)
     : m_conf(conf)
     , m_dcache(*deps.dcache)
-    , m_tlb(*deps.tlb)
+    , m_dtlb(*deps.dtlb)
     , m_rob(*deps.rob)
 {
 }
@@ -80,7 +80,7 @@ void LSU::exec_store(SQEntry& st)
 
 void LSU::exec_load(LQEntry& load_entry)
 {
-    auto [ok, pa] = m_tlb.lookup_a(load_entry.addr);
+    auto [ok, pa] = m_dtlb.lookup_a(load_entry.addr);
     if (!ok) {
         load_entry.state = LdStState::WAIT_TLB;
         return;

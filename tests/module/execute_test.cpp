@@ -30,16 +30,18 @@ int main()
     MultiLevelTLB tlb(&sched, 12, levels);
 
     CacheConfig l2cfg(static_cast<size_t>(512 * 1024), 64, 8, 4);
-    DCache l2(&sched, l2cfg, InclusionPolicy::Inclusive);
+    l2cfg.inclusion_policy = InclusionPolicy::Inclusive;
+    DCache l2(&sched, l2cfg);
     l2.set_name("l2");
 
     CacheConfig dcfg(static_cast<size_t>(64 * 1024), 64, 4, 4);
-    DCache dcache(&sched, dcfg, InclusionPolicy::NonInclusive);
+    dcfg.inclusion_policy = InclusionPolicy::NonInclusive;
+    DCache dcache(&sched, dcfg);
     dcache.attach_lower(&l2);
     dcache.set_name("dcache");
 
     ASyncQueue<ExecResult> execute_commit_q(64);
-    ASyncQueue<MicroOp> lsu_dispatch_stub(8);
+    ASyncQueue<MicroOp> lsu_rename_issue_q(8);
     ASyncQueue<ExecResult> lsu_exec_stub(8);
     ROBDeps rob_deps {};
     rob_deps.execute_commit_q = &execute_commit_q;
@@ -50,8 +52,8 @@ int main()
     LSUDeps lsu_deps {};
     lsu_deps.rob = &rob;
     lsu_deps.dcache = &dcache;
-    lsu_deps.tlb = &tlb;
-    lsu_deps.dispatch_issue_q = &lsu_dispatch_stub;
+    lsu_deps.dtlb = &tlb;
+    lsu_deps.rename_issue_q = &lsu_rename_issue_q;
     lsu_deps.execute_commit_q = &lsu_exec_stub;
 
     LSUConfig lsu_conf {};

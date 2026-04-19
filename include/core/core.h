@@ -24,13 +24,13 @@ public:
     void                                    tick() override;
 
 private:
-    CommitUnit&                             m_commit;
-    DecodeUnit&                             m_decode;
-    ExecuteUnit&                            m_execute;
-    IssueUnit&                              m_issue;
-    RenameUnit&                             m_rename;
-    ROB&                                    m_rob;
     FetchUnit&                              m_fetch;
+    DecodeUnit&                             m_decode;
+    RenameUnit&                             m_rename;
+    IssueUnit&                              m_issue;
+    ExecuteUnit&                            m_execute;
+    CommitUnit&                             m_commit;
+    CycleScheduler&                         m_sched;
 };
 
 #endif // TCORE_CORE_H

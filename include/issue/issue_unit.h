@@ -22,12 +22,13 @@ public:
     static bool                         is_fp(InstOp op);
 
 private:
-    ASyncQueue<MicroOp>&                m_dispatch_issue_q;
-    ASyncQueue<MicroOp>&                m_issue_execute_q;
 
     std::deque<MicroOp>                 m_int_q;
     std::deque<MicroOp>                 m_ls_q;
     std::deque<MicroOp>                 m_fp_q;
+
+    ASyncQueue<MicroOp>&                m_rename_issue_q;
+    ASyncQueue<MicroOp>&                m_issue_execute_q;
 
     size_t                              m_int_issue_width  { 4 };
     size_t                              m_ls_issue_width   { 2 };

@@ -8,8 +8,10 @@ extern u64 g_max_cycles;
 
 bool Model::build() {
     m_top = new Top(TCoreConfig::get_instance());
-    CoreDeps deps;
+    m_top->build();
+    CoreDeps deps = m_top->get_core_deps();
     m_core = new Core(deps);
+    m_core->build();
     m_log = &LogSystem::instance();
     return true;
 }

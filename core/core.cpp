@@ -14,33 +14,31 @@
 Core::Core(const CoreDeps &deps)
  : m_fetch(*deps.fetch),
    m_decode(*deps.decode),
-   m_execute(*deps.execute),
-   m_issue(*deps.issue),
    m_rename(*deps.rename),
-   m_rob(*deps.rob),
-   m_commit(*deps.commit)
+   m_issue(*deps.issue),
+   m_execute(*deps.execute),
+   m_commit(*deps.commit),
+   m_sched(*deps.sched)
 { }
 
 Core::~Core() { }
 
 void Core::tick() {
     m_fetch.tick();
-    m_commit.tick();
     m_decode.tick();
-    m_execute.tick();
-    m_issue.tick();
     m_rename.tick();
-    m_rob.tick();
+    m_issue.tick();
+    m_execute.tick();
+    m_commit.tick();
 }
 
 void Core::build()
 {
     m_fetch.build();
-    m_commit.build();
     m_decode.build();
-    m_execute.build();
-    m_issue.build();
     m_rename.build();
-    m_rob.build();
+    m_issue.build();
+    m_execute.build();
+    m_commit.build();
 }
 

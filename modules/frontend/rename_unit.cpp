@@ -6,10 +6,8 @@
 RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
     : IRename("rename")
     , m_decode_rename_q(*deps.decode_rename_q)
+    , m_rename_issue_q(*deps.rename_issue_q)
     , m_rob(*deps.rob)
-    , m_integer_issue_q(*deps.integer_issue_q)
-    , m_ls_issue_q(*deps.ls_issue_q)
-    , m_fp_issue_q(*deps.fp_issue_q)
     , m_rename_width(conf.width)
 {
     for (int i = 0; i < RV_GPR_SIZE; ++i) {
@@ -129,20 +127,12 @@ void RenameUnit::build() {
 }
 
 void RenameUnit::commit() {
-    m_fp_issue_q.commit();
-    m_ls_issue_q.commit();
-    m_integer_issue_q.commit();
+    m_rename_issue_q.commit();
 }
 
 bool RenameUnit::dispatch(MicroOp& inst) {
     if (!inst.valid)
         return false;
-    if (IssueUnit::is_fp(inst.opcode)) {
-        m_fp_issue_q.write(std::move(inst));
-    } else if (IssueUnit::is_load_store(inst.opcode)) {
-        m_ls_issue_q.write(std::move(inst));
-    } else {
-        m_integer_issue_q.write(std::move(inst));
-    }
+    m_rename_issue_q.write(std::move(inst));
     return true;
 }

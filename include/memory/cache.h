@@ -7,24 +7,7 @@
 #include "util.h"
 #include "mem.h"
 #include "pseudo_lru.h"
-
-// ----------------------------- Configs ---------------------------------
-struct CacheConfig {
-    u32 size_bytes = 32 * 1024;
-    u32 line_size = 64;
-    u32 ways = 4;
-    u32 fetch_width = 4;
-    // latencies in cycles
-    u32 hit_latency = 1;
-    u32 miss_penalty = 10;   // time to start lower request
-    u32 install_latency = 1; // time to install after data arrives
-    u32 writeback_latency = 5;
-    CacheConfig() = default;
-    CacheConfig(u32 s, u32 l, u32 w, u32 fw=4):
-        size_bytes(s), line_size(l), ways(w), fetch_width(fw) {}
-};
-
-enum class InclusionPolicy { NonInclusive, Inclusive, Exclusive };
+#include "config.h"
 
 // --------------------------- Generic Cache ------------------------------
 struct LineMeta { bool valid=false; u64 tag=0; bool dirty=false; u64 last_access=0; };
@@ -34,7 +17,7 @@ class GCache {
     typedef struct Stats { u64 accesses=0, hits=0, misses=0, total_latency=0; } Stats;
 
 public:
-    GCache(CycleScheduler *sched, const CacheConfig &cfg, InclusionPolicy pol = InclusionPolicy::NonInclusive);
+    GCache(CycleScheduler *sched, const CacheConfig &cfg);
     virtual ~GCache();
 
     void                                set_name(std::string name) {m_name = move(name);}

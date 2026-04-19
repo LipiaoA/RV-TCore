@@ -129,8 +129,7 @@ typedef struct {
 struct ModuleCommQueues {
     ASyncQueue<FetchPacket>*        fetch_to_decode   { nullptr };  // Fetch 写 -> Decode 读
     ASyncQueue<MicroOp>*            decode_to_rename  { nullptr };  // Decode 写 -> Rename 读
-    ASyncQueue<MicroOp>*            rename_to_dispatch{ nullptr };  // Rename 写 -> Dispatch 读
-    ASyncQueue<MicroOp>*            dispatch_to_issue { nullptr };  // Dispatch 写 -> Issue 读
+    ASyncQueue<MicroOp>*            rename_to_issue{ nullptr };  // Rename 写 -> Dispatch 读
     ASyncQueue<MicroOp>*            issue_to_execute  { nullptr };  // Issue 写 -> Execute 读
     ASyncQueue<ExecResult>*         execute_to_commit { nullptr };  // Execute 写 -> Commit/ROB 读
 };
@@ -153,9 +152,6 @@ class ExecuteUnit;
 typedef struct {
     CycleScheduler*             sched;
     ICache*                     icache;
-    GCache*                     dcache;
-    GCache*                     l2;
-    MultiLevelTLB*              tlb;
     BranchPredictor*            bpu;
     ASyncQueue<FetchPacket>*    fetch_decode_q;
 } IFetchDeps;
@@ -166,11 +162,9 @@ typedef struct {
 } DecodeDeps;
 
 typedef struct {
-    ASyncQueue<MicroOp>*        decode_rename_q;
     ROB*                        rob;
-    ASyncQueue<MicroOp>*        integer_issue_q;
-    ASyncQueue<MicroOp>*        ls_issue_q;
-    ASyncQueue<MicroOp>*        fp_issue_q;
+    ASyncQueue<MicroOp>*        decode_rename_q;
+    ASyncQueue<MicroOp>*        rename_issue_q;
 } RenameDeps;
 
 typedef struct {
@@ -180,14 +174,15 @@ typedef struct {
 } CommitDeps;
 
 typedef struct {
-    ASyncQueue<MicroOp>*        dispatch_issue_q;
+    ExecuteUnit*                exec;
+    ASyncQueue<MicroOp>*        rename_issue_q;
     ASyncQueue<MicroOp>*        issue_execute_q;
 } IssueDeps;
 
 typedef struct {
+    LSU*                        lsu;
     ASyncQueue<MicroOp>*        issue_execute_q;
     ASyncQueue<ExecResult>*     execute_commit_q;
-    LSU*                        lsu;
 } ExecDeps;
 
 typedef struct {
@@ -197,8 +192,8 @@ typedef struct {
 typedef struct {
     ROB*                        rob;
     GCache*                     dcache;
-    MultiLevelTLB*              tlb;
-    ASyncQueue<MicroOp>*        dispatch_issue_q;
+    MultiLevelTLB*              dtlb;
+    ASyncQueue<MicroOp>*        rename_issue_q;
     ASyncQueue<ExecResult>*     execute_commit_q;
 } LSUDeps;
 
@@ -206,15 +201,10 @@ typedef struct {
     FetchUnit*                  fetch;
     DecodeUnit*                 decode;
     RenameUnit*                 rename;
-    CommitUnit*                 commit;
     IssueUnit*                  issue;
     ExecuteUnit*                execute;
-    ROB*                        rob;
-    LSU*                        lsu;
-    BranchPredictor*            bpu;
+    CommitUnit*                 commit;
     CycleScheduler*             sched;
 } CoreDeps;
-
-
 
 #endif // RV_TCORE_MODULE_COMM_H

@@ -1,6 +1,23 @@
 #ifndef RV_TCORE_CONFIG_H
 #define RV_TCORE_CONFIG_H
 #include "rv_def.h"
+enum class InclusionPolicy { NonInclusive = 0, Inclusive = 1, Exclusive = 2 };
+
+struct CacheConfig {
+    u32 size = 32 * 1024;
+    u32 line_size = 64;
+    u32 ways = 4;
+    u32 fetch_width = 4;
+    // latencies in cycles
+    u32 hit_latency = 1;
+    u32 miss_penalty = 10;   // time to start lower request
+    u32 install_latency = 1; // time to install after data arrives
+    u32 writeback_latency = 5;
+    InclusionPolicy inclusion_policy = InclusionPolicy::Inclusive;
+    CacheConfig() = default;
+    CacheConfig(u32 sz, u32 ls, u32 ways, u32 fw=4):
+        size(sz), line_size(ls), ways(ways), fetch_width(fw) {}
+};
 
 typedef struct {
     u32 fetch_width { 4 };
@@ -37,48 +54,7 @@ typedef struct {
     u32 agus_num { 4 };
     u32 mshr_buffer_size { 128 };
     u32 issue_width { 2 };
-    u32 dcache_hit_latency { 2 };
-    u32 dcache_miss_penalty { 8 };
-    u32 dcache_install_latency { 2 };
-    u32 tlb_hit_latency { 12 };
-    u32 tlb_miss_penalty { 3 };
-    u32 tlb_install_latency { 1 };
 } LSUConfig;
-
-typedef struct {
-    u32 size { 512 * 1024 };
-    u32 ways { 8 };
-    u32 line_size { 64 };
-    u32 fetch_width { 4 };
-    u32 hit_latency { 10 };
-    u32 miss_penalty { 30 };
-    u32 install_latency { 5 };
-    u32 writeback_latency { 12 };
-    bool inclusive { true };
-} L2Config;
-
-typedef struct {
-    u32 size { 32 * 1024 };
-    u32 line_size { 64 };
-    u32 ways { 4 };
-    u32 fetch_width { 4 };
-    u32 hit_latency { 1 };
-    u32 miss_penalty { 3 };
-    u32 install_latency { 1 };
-    u32 writeback_latency { 8 };
-} ICacheConfig;
-
-typedef struct {
-    u32 size { 64 * 1024 };
-    u32 line_size { 64 };
-    u32 ways { 4 };
-    u32 fetch_width { 4 };
-    u32 hit_latency { 2 };
-    u32 miss_penalty { 8 };
-    u32 install_latency { 2 };
-    u32 writeback_latency { 5 };
-    bool inclusive { false };
-} DCacheConfig;
 
 typedef struct {
     u32 width { 4 };
@@ -144,9 +120,6 @@ typedef struct {
     u32 agus_num = 4;
     u32 mshr_buffer_size = 128;
     u32 lsu_issue_width = 2;
-    u32 tlb_hit_latency = 12;
-    u32 tlb_miss_penalty = 3;
-    u32 tlb_install_latency = 1;
 
     // issue / execute widths
     u32 int_issue_width = 4;
@@ -156,12 +129,28 @@ typedef struct {
     u32 fpu_num = 2;
     u32 bru_num = 1;
 
+    // i-TLB related
+    u32 itlb_hit_latency = 12;
+    u32 itlb_miss_penalty = 3;
+    u32 itlb_install_latency = 1;
+
     // d-TLB / LSU-facing dcache timing (kept in sync with dcache_* below by init)
+    u32 dtlb_hit_latency = 12;
+    u32 dtlb_miss_penalty = 3;
+    u32 dtlb_install_latency = 1;
+
+    // d-cache related
+    u32 dcache_size = 64 * 1024;
     u32 dcache_hit_latency = 2;
     u32 dcache_miss_penalty = 8;
     u32 dcache_install_latency = 2;
+    u32 dcache_inclusive = 1;       // 0: NonInclusive, 1: Inclusive, 2: Exclusive
+    u32 dcache_line_size = 64;
+    u32 dcache_ways = 4;
+    u32 dcache_fetch_width = 4;
+    u32 dcache_wb_latency = 5;
 
-    // I$
+    // i-cache related
     u32 icache_size = 32 * 1024;
     u32 icache_line_size = 64;
     u32 icache_ways = 4;
@@ -170,16 +159,9 @@ typedef struct {
     u32 icache_miss_penalty = 3;
     u32 icache_install_latency = 1;
     u32 icache_writeback_latency = 8;
+    u32 icache_inclusive = 1;       // 0: NonInclusive, 1: Inclusive, 2: Exclusive
 
-    // D$
-    u32 dcache_size = 64 * 1024;
-    u32 dcache_line_size = 64;
-    u32 dcache_ways = 4;
-    u32 dcache_fetch_width = 4;
-    u32 dcache_wb_latency = 5;
-    bool dcache_inclusive = false;
-
-    // L2
+    // L2 cache related
     u32 l2_size = 512 * 1024;
     u32 l2_ways = 8;
     u32 l2_line_size = 64;
@@ -188,7 +170,7 @@ typedef struct {
     u32 l2_miss_penalty = 30;
     u32 l2_install_latency = 5;
     u32 l2_writeback_latency = 12;
-    bool l2_inclusive = true;
+    u32 l2_inclusive = 1;       // 0: NonInclusive, 1: Inclusive, 2: Exclusive
 
     // legacy aliases (optional consumers)
     int l1iSize = 32 * 1024;
@@ -209,9 +191,9 @@ public:
 
     DecodeConfig                            decode_config() const;
     LSUConfig                               lsu_config() const;
-    L2Config                                l2_config() const;
-    ICacheConfig                            icache_config() const;
-    DCacheConfig                            dcache_config() const;
+    CacheConfig                             l2_config() const;
+    CacheConfig                             icache_config() const;
+    CacheConfig                             dcache_config() const;
     IssueConfig                             issue_config() const;
     ROBConfig                               rob_config() const;
     RenameConfig                            rename_config() const;

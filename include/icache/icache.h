@@ -15,8 +15,8 @@ static constexpr unsigned k_icache_latency = 2;  // 模拟 I$ 2 cycle latency
 class ICache : public GCache {
 public:
     ICache() = default;
-    ICache(CycleScheduler* sched, const CacheConfig& cfg, MultiLevelTLB* tlb, InclusionPolicy pol=InclusionPolicy::NonInclusive) :
-        GCache(sched, cfg, pol), m_tlb(tlb) {}
+    ICache(CycleScheduler* sched, const CacheConfig& cfg, MultiLevelTLB* tlb) :
+        GCache(sched, cfg), m_tlb(tlb) {}
     ~ICache() {}
 
 public:

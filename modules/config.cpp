@@ -36,11 +36,8 @@ void TCoreConfig::init_config() {
     m_core_config.agus_num          = 4;
     m_core_config.mshr_buffer_size  = 128;
     m_core_config.lsu_issue_width   = 2;
-    m_core_config.tlb_hit_latency   = 12;
-    m_core_config.tlb_miss_penalty  = 3;
-    m_core_config.tlb_install_latency = 1;
 
-    // issue / execute
+    // issue / executetop
     m_core_config.int_issue_width = 4;
     m_core_config.ls_issue_width  = 2;
     m_core_config.fp_issue_width  = 2;
@@ -48,7 +45,7 @@ void TCoreConfig::init_config() {
     m_core_config.fpu_num         = 2;
     m_core_config.bru_num         = 1;
 
-    // I$
+    // i-cache configuration
     m_core_config.icache_size             = 32 * 1024;
     m_core_config.icache_line_size        = 64;
     m_core_config.icache_ways             = 4;
@@ -58,7 +55,7 @@ void TCoreConfig::init_config() {
     m_core_config.icache_install_latency  = 1;
     m_core_config.icache_writeback_latency = 8;
 
-    // D$
+    // d-cache configuration
     m_core_config.dcache_size            = 64 * 1024;
     m_core_config.dcache_line_size       = 64;
     m_core_config.dcache_ways            = 4;
@@ -69,7 +66,7 @@ void TCoreConfig::init_config() {
     m_core_config.dcache_wb_latency      = 5;
     m_core_config.dcache_inclusive       = false;
 
-    // L2
+    // L2 cache configuration
     m_core_config.l2_size             = 512 * 1024;
     m_core_config.l2_ways             = 8;
     m_core_config.l2_line_size        = 64;
@@ -107,12 +104,6 @@ LSUConfig TCoreConfig::lsu_config() const {
     conf.agus_num               = m_core_config.agus_num;
     conf.mshr_buffer_size       = m_core_config.mshr_buffer_size;
     conf.issue_width            = m_core_config.lsu_issue_width;
-    conf.dcache_hit_latency     = m_core_config.dcache_hit_latency;
-    conf.dcache_miss_penalty    = m_core_config.dcache_miss_penalty;
-    conf.dcache_install_latency = m_core_config.dcache_install_latency;
-    conf.tlb_hit_latency        = m_core_config.tlb_hit_latency;
-    conf.tlb_miss_penalty       = m_core_config.tlb_miss_penalty;
-    conf.tlb_install_latency    = m_core_config.tlb_install_latency;
     return conf;
 }
 
@@ -156,8 +147,8 @@ ExecConfig TCoreConfig::execute_config() const {
     return conf;
 }
 
-L2Config TCoreConfig::l2_config() const {
-    L2Config conf;
+CacheConfig TCoreConfig::l2_config() const {
+    CacheConfig conf;
     conf.size             = m_core_config.l2_size;
     conf.ways             = m_core_config.l2_ways;
     conf.line_size        = m_core_config.l2_line_size;
@@ -166,12 +157,12 @@ L2Config TCoreConfig::l2_config() const {
     conf.miss_penalty     = m_core_config.l2_miss_penalty;
     conf.install_latency  = m_core_config.l2_install_latency;
     conf.writeback_latency = m_core_config.l2_writeback_latency;
-    conf.inclusive        = m_core_config.l2_inclusive;
+    conf.inclusion_policy   = static_cast<InclusionPolicy>(m_core_config.l2_inclusive);
     return conf;
 }
 
-ICacheConfig TCoreConfig::icache_config() const {
-    ICacheConfig conf;
+CacheConfig TCoreConfig::icache_config() const {
+    CacheConfig conf;
     conf.size               = m_core_config.icache_size;
     conf.line_size          = m_core_config.icache_line_size;
     conf.ways               = m_core_config.icache_ways;
@@ -180,11 +171,12 @@ ICacheConfig TCoreConfig::icache_config() const {
     conf.miss_penalty       = m_core_config.icache_miss_penalty;
     conf.install_latency    = m_core_config.icache_install_latency;
     conf.writeback_latency  = m_core_config.icache_writeback_latency;
+    conf.inclusion_policy   = static_cast<InclusionPolicy>(m_core_config.icache_inclusive);
     return conf;
 }
 
-DCacheConfig TCoreConfig::dcache_config() const {
-    DCacheConfig conf;
+CacheConfig TCoreConfig::dcache_config() const {
+    CacheConfig conf;
     conf.size               = m_core_config.dcache_size;
     conf.line_size          = m_core_config.dcache_line_size;
     conf.ways               = m_core_config.dcache_ways;
@@ -193,6 +185,6 @@ DCacheConfig TCoreConfig::dcache_config() const {
     conf.miss_penalty       = m_core_config.dcache_miss_penalty;
     conf.install_latency    = m_core_config.dcache_install_latency;
     conf.writeback_latency  = m_core_config.dcache_wb_latency;
-    conf.inclusive          = m_core_config.dcache_inclusive;
+    conf.inclusion_policy   = static_cast<InclusionPolicy>(m_core_config.dcache_inclusive);
     return conf;
 }

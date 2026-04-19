@@ -25,9 +25,7 @@ int main()
     RenameDeps rename_deps {};
     rename_deps.decode_rename_q = &decode_rename_q;
     rename_deps.rob = &rob;
-    rename_deps.integer_issue_q = &dispatch_issue_q;
-    rename_deps.ls_issue_q = &dispatch_issue_q;
-    rename_deps.fp_issue_q = &dispatch_issue_q;
+    rename_deps.rename_issue_q = &dispatch_issue_q;
     RenameConfig rename_conf {};
     RenameUnit rename(rename_conf, rename_deps);
     rename.build();

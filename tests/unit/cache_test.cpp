@@ -20,7 +20,8 @@ int main()
     l2cfg.miss_penalty = 30;
     l2cfg.install_latency = 5;
     l2cfg.writeback_latency = 12;
-    GCache L2(&sched, l2cfg, InclusionPolicy::Inclusive);
+    l2cfg.inclusion_policy = InclusionPolicy::Inclusive;
+    GCache L2(&sched, l2cfg);
     L2.set_name("L2 Cache");
 
     CacheConfig icfg(32 * 1024, 64, 4, 4);
@@ -28,7 +29,8 @@ int main()
     icfg.miss_penalty = 3;
     icfg.install_latency = 1;
     icfg.writeback_latency = 8;
-    ICache ic(&sched, icfg, &tlb, InclusionPolicy::NonInclusive);
+    icfg.inclusion_policy = InclusionPolicy::Inclusive;
+    ICache ic(&sched, icfg, &tlb);
     ic.attach_lower(&L2);
     ic.set_name("ICache");
 
@@ -36,7 +38,8 @@ int main()
     dcfg.hit_latency = 2;
     dcfg.miss_penalty = 8;
     dcfg.install_latency = 2;
-    GCache dc(&sched, dcfg, InclusionPolicy::NonInclusive);
+    dcfg.inclusion_policy = InclusionPolicy::Inclusive;
+    GCache dc(&sched, dcfg);
     dc.attach_lower(&L2);
     dc.set_name("DCache");
     // fetch a bundle of instructions
