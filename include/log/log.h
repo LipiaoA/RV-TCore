@@ -11,6 +11,7 @@
 #include <memory>
 #include <thread>
 #include <atomic>
+#include <iomanip>
 #include <condition_variable>
 
 typedef enum LogLevel { LEVEL1 = 0, LEVEL2, LEVEL3, LEVEL4, LEVEL5, LEVEL6, TOTAL_LEVEL } LogLevel;
@@ -95,7 +96,8 @@ public:
         std::ostringstream line;
 
         // line << "[" << current_time() << "] ";
-        line << "[" << prefix << "] ";
+        // line << "[" << prefix << "] ";
+        line << "[" << std::left << std::setw(16) << prefix << "] ";
 
         if constexpr (std::is_convertible_v<Mut, const char*>) {
             std::string formatted_msg = format_string(mut, std::forward<Args>(args)...);

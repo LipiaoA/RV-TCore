@@ -146,7 +146,7 @@ void DecodeUnit::d0() {
         dinst.pc = finst.pc;
         if (!decode(finst.insn, &dinst) || dinst.opcode == OP_INVALID)
             continue;
-
+        LOG_LEVEL1("DecodeUnit", "d0 decode inst: 0x%lx", finst.insn);
         dinst.valid = true;
         dinst.inst_id = m_next_decode_id++;
         m_d0_pkt.emplace_back(std::move(dinst));
@@ -164,8 +164,10 @@ void DecodeUnit::d1() {
             dinst.imm = extract_imm(dinst.raw_inst, dinst.format, dinst.opcode);
         else
             dinst.imm = 0;
+        LOG_LEVEL1("DecodeUnit", "d1 decode op: %d", dinst.opcode);
         m_decode_rename_q.write(std::move(dinst));
     }
+    m_d0_pkt.clear();
 }
 
 void DecodeUnit::commit()

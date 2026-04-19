@@ -10,17 +10,17 @@
 
 // ----------------------------- Configs ---------------------------------
 struct CacheConfig {
-    size_t size_bytes = 32 * 1024;
-    size_t line_size = 64;
-    size_t ways = 4;
-    size_t fetch_width = 4;
+    u32 size_bytes = 32 * 1024;
+    u32 line_size = 64;
+    u32 ways = 4;
+    u32 fetch_width = 4;
     // latencies in cycles
-    u64 hit_latency = 1;
-    u64 miss_penalty = 10;   // time to start lower request
-    u64 install_latency = 1; // time to install after data arrives
-    u64 writeback_latency = 5;
+    u32 hit_latency = 1;
+    u32 miss_penalty = 10;   // time to start lower request
+    u32 install_latency = 1; // time to install after data arrives
+    u32 writeback_latency = 5;
     CacheConfig() = default;
-    CacheConfig(size_t s, size_t l, size_t w, size_t fw=4):
+    CacheConfig(u32 s, u32 l, u32 w, u32 fw=4):
         size_bytes(s), line_size(l), ways(w), fetch_width(fw) {}
 };
 

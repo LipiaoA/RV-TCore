@@ -1,7 +1,8 @@
 
 #include "branch_predictor.h"
 
-BranchPredictor::BranchPredictor(const std::string& n) : IPredictor(n)
+BranchPredictor::BranchPredictor(const std::string& n)
+ : IPredictor(n)
 {
     size_t bht_entries = 2048;
     unsigned bhr_bits = 6;
@@ -9,6 +10,11 @@ BranchPredictor::BranchPredictor(const std::string& n) : IPredictor(n)
     unsigned ghr_bits = 8;
     bool chooser_table = false;
     m_hpred = new HybridPredictor(bht_entries, pc_low_bits, bhr_bits, ghr_bits, chooser_table);
+}
+
+BranchPredictor::BranchPredictor()
+    : BranchPredictor("BranchPredictor")
+{
 }
 
 branch_pred_t BranchPredictor::predict(u64 pc) {

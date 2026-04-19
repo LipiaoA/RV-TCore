@@ -1,6 +1,8 @@
 #ifndef RV_TCORE_BRANCHPREDICTOR_H
 #define RV_TCORE_BRANCHPREDICTOR_H
 
+#include <string>
+
 #include "intf.h"
 #include "hybrid_predictor.h"
 
@@ -13,7 +15,8 @@ struct branch_pred_t {
 class BranchPredictor : public IPredictor {
 
 public:
-    BranchPredictor(const std::string& n);
+    BranchPredictor();
+    explicit BranchPredictor(const std::string& n);
     ~BranchPredictor();
 
 public:

@@ -21,12 +21,12 @@ public:
 
 public:
     void                                        tick() {}
-    bool                                        request(pc_t line_addr) { return true;}
-    bytes_t read_line(pc_t line_addr) {}
+    virtual bool                                request(pc_t line_addr) { (void)line_addr; return true; }
+    virtual bytes_t                             read_line(pc_t line_addr) { (void)line_addr; return bytes_t(); }
 
     // fetch multiple instructions starting at VA. Each future resolves to instruction bytes or empty on fault.
     std::vector<SimpleFuture<std::vector<u8>>>  fetch_instructions_async(u64 vaddr, size_t inst_size, size_t fetch_count);
-    bool                                        line_ready(pc_t line_addr) const {return false;}
+    virtual bool                                line_ready(pc_t line_addr) const { (void)line_addr; return false; }
 
 private:
     void                                        set_latency(uint32_t latency) {}

@@ -58,7 +58,7 @@ private:
     ICache&                             m_icache;
     MultiLevelTLB&                      m_itlb;
     BranchPredictor&                    m_bpu;
-    ASyncQueue<FetchPacket>&            m_fetch_decode_q;
+    OUTPUT ASyncQueue<FetchPacket>&     m_fetch_decode_q;
 
     u64                                 m_squash_id;
     u64                                 m_next_fetch_id { 1 };
