@@ -67,7 +67,7 @@ bool ArgParser::has(char short_name) const
 
 std::string ArgParser::get_string(const std::string &long_name) const
 {
-	return get_option_by_long(long_name).value;
+	return trim(get_option_by_long(long_name).value);
 }
 
 std::string ArgParser::get_string(char short_name) const

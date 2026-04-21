@@ -19,6 +19,7 @@ class IssueUnit;
 class ExecuteUnit;
 class LSU;
 class ROB;
+class Memory;
 
 class Top {
 public:
@@ -30,13 +31,14 @@ public:
 
 public:
     CoreDeps                              get_core_deps() const;
+    Memory*                               get_mem() {return m_mem;}
 
 private:
     void init();
 
 private:
     ModuleCommQueues                        m_comm_queues;
-
+    Memory*                                 m_mem { nullptr };
     CycleScheduler*                         m_sched { nullptr };
     GCache*                                 m_l2 { nullptr };
     MultiLevelTLB*                          m_dtlb { nullptr };

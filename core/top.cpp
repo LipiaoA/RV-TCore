@@ -47,24 +47,33 @@ void Top::build() {
     m_comm_queues.rename_to_issue    = new ASyncQueue<MicroOp>(DEFAULT_QUEUE_CAPACITY);
     m_comm_queues.issue_to_execute   = new ASyncQueue<MicroOp>(DEFAULT_QUEUE_CAPACITY);
     m_comm_queues.execute_to_commit  = new ASyncQueue<ExecResult>(DEFAULT_QUEUE_CAPACITY);
-
     const std::string dev_name = "top";
+    const CacheConfig l2_conf           = m_config.l2_config();
+    const CacheConfig ic_conf           = m_config.icache_config();
+    const CacheConfig dc_conf           = m_config.dcache_config();
+    std::vector<PTWLevelConfig> levels  = {{3}, {5}, {7}};
 
-    m_sched = new CycleScheduler();
+    ROBConfig       rob_conf        = m_config.rob_config();
+    FetchConfig     fetch_conf      = m_config.fetch_config();
+    DecodeConfig    decode_conf     = m_config.decode_config();
+    RenameConfig    rename_conf     = m_config.rename_config();
+    IssueConfig     issue_conf      = m_config.issue_config();
+    ExecConfig      exec_conf       = m_config.execute_config();
+    CommitConfig    commit_conf     = m_config.commit_config();
+    LSUConfig       lsu_conf        = m_config.lsu_config();
 
-    const CacheConfig     l2_conf  = m_config.l2_config();
-    const CacheConfig     ic_conf  = m_config.icache_config();
-    const CacheConfig     dc_conf  = m_config.dcache_config();
+    m_sched             =   new CycleScheduler();
+    m_mem               =   new Memory();
+    m_bpu               =   new BranchPredictor("bpu");
 
-    m_l2 = new DCache(m_sched, l2_conf);
+    m_l2                =   new DCache(m_sched, l2_conf);
     m_l2->set_name("l2 Cache");
+    m_l2->set_mem(m_mem);
 
-    std::vector<PTWLevelConfig> levels = {{3}, {5}, {7}};
+    m_dtlb              = new MultiLevelTLB(m_sched, 12, levels);
+    m_itlb              = new MultiLevelTLB(m_sched, 12, levels);
+    m_icache            = new ICache(m_sched, ic_conf, m_itlb);
 
-    m_dtlb = new MultiLevelTLB(m_sched, 12, levels);
-
-    m_itlb = new MultiLevelTLB(m_sched, 12, levels);
-    m_icache = new ICache(m_sched, ic_conf, m_itlb);
     m_icache->attach_lower(m_l2);
     m_icache->set_name("ICache");
 
@@ -72,27 +81,20 @@ void Top::build() {
     m_dcache->attach_lower(m_l2);
     m_dcache->set_name("DCache");
 
-    ROBConfig rob_conf = m_config.rob_config();
-
     ROBDeps rob_deps;
     rob_deps.execute_commit_q = m_comm_queues.execute_to_commit;
     m_rob = new ROB(rob_conf, rob_deps);
 
-    auto* predictor = new BranchPredictor(dev_name);
-    m_bpu = predictor;
-
     IFetchDeps fetch_deps;
     fetch_deps.sched = m_sched;
     fetch_deps.icache = m_icache;
-    fetch_deps.bpu = predictor;
+    fetch_deps.bpu = m_bpu;
     fetch_deps.fetch_decode_q = m_comm_queues.fetch_to_decode;
-    FetchConfig fetch_conf = m_config.fetch_config();
     m_fetch = new FetchUnit(fetch_conf, fetch_deps);
 
     DecodeDeps decode_deps;
     decode_deps.fetch_decode_q = m_comm_queues.fetch_to_decode;
     decode_deps.decode_rename_q = m_comm_queues.decode_to_rename;
-    DecodeConfig decode_conf = m_config.decode_config();
     m_decode = new DecodeUnit(decode_conf, decode_deps);
 
 
@@ -100,21 +102,18 @@ void Top::build() {
     rename_deps.rob = m_rob;
     rename_deps.decode_rename_q = m_comm_queues.decode_to_rename;
     rename_deps.rename_issue_q = m_comm_queues.rename_to_issue;
-    RenameConfig rename_conf = m_config.rename_config();
     m_rename = new RenameUnit(rename_conf, rename_deps);
 
     CommitDeps commit_deps;
     commit_deps.rob = m_rob;
     commit_deps.rename = m_rename;
     commit_deps.execute_commit_q = m_comm_queues.execute_to_commit;
-    CommitConfig commit_conf = m_config.commit_config();
     m_commit = new CommitUnit(commit_conf, commit_deps);
 
     IssueDeps issue_deps;
     issue_deps.exec = m_execute;
     issue_deps.rename_issue_q = m_comm_queues.rename_to_issue;
     issue_deps.issue_execute_q = m_comm_queues.issue_to_execute;
-    IssueConfig issue_conf = m_config.issue_config();
     m_issue = new IssueUnit(issue_conf, issue_deps);
 
     LSUDeps lsu_deps;
@@ -124,7 +123,6 @@ void Top::build() {
     lsu_deps.rename_issue_q = m_comm_queues.rename_to_issue;
     lsu_deps.execute_commit_q = m_comm_queues.execute_to_commit;
 
-    LSUConfig lsu_conf = m_config.lsu_config();
 
     m_lsu = new LSU(lsu_conf, lsu_deps);
 
@@ -132,7 +130,6 @@ void Top::build() {
     exec_deps.issue_execute_q = m_comm_queues.issue_to_execute;
     exec_deps.execute_commit_q = m_comm_queues.execute_to_commit;
     exec_deps.lsu = m_lsu;
-    ExecConfig exec_conf = m_config.execute_config();
 
     m_execute = new ExecuteUnit(exec_conf, exec_deps);
 }

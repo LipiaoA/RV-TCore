@@ -91,9 +91,16 @@ class SimpleFuture {
 
 public:
     SimpleFuture() : m_state(std::make_shared<State>()) {}
-    bool ready() const { std::lock_guard<std::mutex> lk(m_state->mtx); return m_state->ready; }
-    void set_value(const T &v) {
+
+    bool ready() const {
+        std::lock_guard<std::mutex> lk(m_state->mtx);
+        return m_state->ready;
+    }
+
+    void set_value(const T &v)
+    {
         std::vector<std::function<void(const T&)>> cbs;
+
         {
             std::lock_guard<std::mutex> lk(m_state->mtx);
             if (m_state->ready) return;
@@ -103,6 +110,7 @@ public:
         }
         for (auto &cb : cbs) cb(m_state->val);
     }
+
     void then(std::function<void(const T&)> cb) {
         bool call_now = false;
         T copy;
@@ -114,7 +122,6 @@ public:
         if (call_now) cb(copy);
     }
 private:
-
     std::shared_ptr<State> m_state;
 };
 
@@ -154,4 +161,7 @@ private:
     std::aligned_storage_t<sizeof(T), alignof(T)> raw_[MaxN];
     T* data_ = reinterpret_cast<T*>(raw_);
 };
+
+std::string trim(const std::string& s);
+
 #endif

@@ -27,7 +27,6 @@ branch_pred_t BranchPredictor::predict(u64 pc) {
 
 void BranchPredictor::update(u64 pc, bool taken, pc_t target) {
     m_hpred->update(pc, taken);
-
     return;
 }
 

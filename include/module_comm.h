@@ -129,7 +129,7 @@ typedef struct {
 struct ModuleCommQueues {
     ASyncQueue<FetchPacket>*        fetch_to_decode   { nullptr };  // Fetch 写 -> Decode 读
     ASyncQueue<MicroOp>*            decode_to_rename  { nullptr };  // Decode 写 -> Rename 读
-    ASyncQueue<MicroOp>*            rename_to_issue{ nullptr };  // Rename 写 -> Dispatch 读
+    ASyncQueue<MicroOp>*            rename_to_issue{ nullptr };     // Rename 写 -> Dispatch 读
     ASyncQueue<MicroOp>*            issue_to_execute  { nullptr };  // Issue 写 -> Execute 读
     ASyncQueue<ExecResult>*         execute_to_commit { nullptr };  // Execute 写 -> Commit/ROB 读
 };

@@ -14,14 +14,18 @@
 #include "rob/rob.h"
 #include "fetch_unit.h"
 
-class Core : public ICore {
+class Core {
 public:
     explicit Core(const CoreDeps & deps);
-    virtual ~Core() override;
+    virtual ~Core();
 
 public:
-    void                                    build() override;
-    void                                    tick() override;
+    void                                    build();
+    void                                    init(pc_t start_pc);
+    void                                    tick();
+    void                                    reset();
+    void                                    commit();
+    bool                                    exit() const;
 
 private:
     FetchUnit&                              m_fetch;
@@ -31,6 +35,7 @@ private:
     ExecuteUnit&                            m_execute;
     CommitUnit&                             m_commit;
     CycleScheduler&                         m_sched;
+    bool                                    m_exit { false };
 };
 
 #endif // TCORE_CORE_H

@@ -27,8 +27,7 @@ FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     m_f3_pkt.clear();
     m_f4_pkt.clear();
 
-    m_pc          = 0x1000;
-    m_fetch_width = 4;
+    m_pc          = 0;
     m_squash_id   = 0;
 }
 
@@ -87,6 +86,7 @@ void FetchUnit::fetch0()
 
     m_pred.valid = true;
     m_pred.data = pred;
+    m_pc = pred.taken ? pred.target : m_pc + m_fetch_width * 4;
     LOG_LEVEL1("F0 Predict", "pc:0x%lx  valid:%d taken:%d target:%lx", m_pc, pred.valid, pred.taken, pred.target);
 
 }
@@ -106,7 +106,7 @@ void FetchUnit::fetch1()
 
     // choose PC to request: if predicted taken -> pred.target else current PC
     pc_t req_pc = m_pred.data.taken ? m_pred.data.target : m_pc;
-    pc_t line_addr = align_line(req_pc);
+    pc_t line_addr = m_icache.align_line(req_pc);
 
     // if there's already a pending request to same line, reuse it
     if (m_icache_req_pending && m_pending_line_addr == line_addr) {
@@ -191,7 +191,7 @@ void FetchUnit::fetch3()
             s_f3_buffer.clear();
 
             // 跳过 line 中 base_pc 之前的字节，使 s_f3_buffer[0] 与 base_pc 对齐。
-            size_t offset = base_pc % ICache::k_line_bytes;
+            size_t offset = base_pc - m_icache.align_line(base_pc);
             if (offset > line.size())
                 offset = line.size();
             s_f3_buffer.insert(s_f3_buffer.end(), line.begin() + offset, line.end());

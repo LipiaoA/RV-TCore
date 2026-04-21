@@ -9,10 +9,16 @@ extern u64 g_max_cycles;
 bool Model::build() {
     m_top = new Top(TCoreConfig::get_instance());
     m_top->build();
+    m_mem = m_top->get_mem();
     CoreDeps deps = m_top->get_core_deps();
     m_core = new Core(deps);
     m_core->build();
+    m_core->reset();
     m_log = &LogSystem::instance();
+    m_log->set_level(LogLevel::LEVEL3);
+    m_log->add_writer(std::make_shared<ConsoleSink>());
+    // m_log->add_writer(std::make_shared<FileSink>("system.log"));
+    g_max_cycles = 100;
     return true;
 }
 
@@ -24,17 +30,11 @@ void Model::run() {
     u16 op = 0;
     u64 addr = m_entry;
 
-    m_core->reset();
-
     while(g_cycles < g_max_cycles) {
         g_cycles++;
-        op = m_mem->load16(addr);
         m_log->write("\nCycle:%d \n-------------------------", g_cycles);
-        LOG_LEVEL1("Total INFO", " addr:0x%lx, op:%lx", addr, op);
-        addr += 2;
         m_core->tick();
         m_core->commit();
-
         if (m_core->exit()) {
             break;
         }
@@ -45,12 +45,12 @@ void Model::run() {
 bool Model::init(const std::string& path) {
     MappedFile elf;
     if (!elf.map(path.c_str())) {
-        return false;
+        assert(false);
     }
     ELFReader reader(elf.data, elf.size);
-    m_mem = new Memory();
     reader.read(*m_mem);
     m_entry = reader.get_entry();
+    m_core->init(m_entry);
     return true;
 }
 
@@ -58,4 +58,5 @@ bool Model::init(const std::string& path) {
 Model::~Model() {
     delete_ptr(m_mem);
     delete_ptr(m_core);
+    delete_ptr(m_top);
 }

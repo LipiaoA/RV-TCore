@@ -20,7 +20,7 @@ public:
     GCache(CycleScheduler *sched, const CacheConfig &cfg);
     virtual ~GCache();
 
-    void                                set_name(std::string name) {m_name = move(name);}
+    void                                set_name(std::string name);
     void                                attach_lower(GCache* lower);
     void                                register_upper(GCache* up);
 
@@ -36,7 +36,7 @@ public:
     // expose invalidate used by inclusive policy
     void                                invalidate_line(u64 line_addr);
     virtual std::vector<u8>             on_lower_fetch(u64 line_addr);
-    void                                set_mem(Memory* mem) {m_mem = mem;}
+    void                                set_mem(Memory* mem);
 
 protected:
 
@@ -50,6 +50,7 @@ protected:
     void                                install_line(u64 line_addr, const std::vector<u8>& data, bool mark_dirty);
 
     void                                fulfill_mshr(u64 line_addr, const std::vector<u8>& data, u64 start_cycle);
+
 protected:
     CycleScheduler*                                                 m_sched;
     CacheConfig                                                     m_cfg;

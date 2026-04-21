@@ -4,51 +4,50 @@
 #include "icache.h"
 #include "log.h"
 
-std::vector<SimpleFuture<std::vector<u8>>>
-ICache::fetch_instructions_async(u64 vaddr, size_t inst_size, size_t fetch_count)
-{
-    std::vector<SimpleFuture<std::vector<u8>>> outs;
-    outs.reserve(fetch_count);
-    for (size_t i = 0; i < fetch_count; ++i) {
-        u64 cur_va = vaddr + i * inst_size;
-        SimpleFuture<std::vector<u8>> inst_fut;
-        auto tfut = m_tlb->translate_async(cur_va);
-        auto fuc = [this, cur_va, inst_size, inst_fut](const TLBResult &res) mutable {
-            if (!res.ok) {
-                // fault: return empty std::vector (caller can interpret as fault)
-                std::vector<u8> empty;
-                inst_fut.set_value(empty);
-                LOG_LEVEL1("TLB", "tlb translate error !!!");
-                return;
-            }
-            u64 pa = res.pa;
-            u64 line_addr = round_down(pa, m_cfg.line_size);
-            size_t offset = pa - line_addr;
-            if (offset + inst_size <= m_cfg.line_size) {
-                auto lf = fetch_line_async(line_addr);
-                lf.then([offset, inst_size, inst_fut](const std::vector<u8>& line) mutable {
-                    std::vector<u8> inst(inst_size);
-                    memcpy(inst.data(), line.data()+offset, inst_size);
-                    inst_fut.set_value(inst);
-                });
-            } else {
-                u64 next_line = line_addr + m_cfg.line_size;
-                auto lf1 = fetch_line_async(line_addr);
-                auto lf2 = fetch_line_async(next_line);
-                lf1.then([lf2, offset, inst_size, inst_fut, this](const std::vector<u8> &l1) mutable {
-                    lf2.then([l1, offset, inst_size, inst_fut, this](const std::vector<u8> &l2) mutable {
-                        std::vector<u8> inst(inst_size);
-                        size_t part1 = m_cfg.line_size - offset;
-                        memcpy(inst.data(), l1.data() + offset, part1);
-                        memcpy(inst.data() + part1, l2.data(), inst_size - part1);
-                        inst_fut.set_value(inst);
-                    });
-                });
-            }
-        };
 
-        tfut.then(fuc);
-        outs.push_back(inst_fut);
+ICache::ICache(CycleScheduler* sched, const CacheConfig& cfg, MultiLevelTLB* tlb) :
+    GCache(sched, cfg), m_tlb(tlb) {}
+
+ICache::~ICache() {}
+
+bool ICache::request(pc_t pc)
+{
+    pc_t line_addr = align_line(pc);
+    if (m_pending_futures.find(line_addr) != m_pending_futures.end()) {
+        return true;
     }
-    return outs;
+    auto fut = fetch_line_async(line_addr);
+    fut.then([this, line_addr](const std::vector<u8>& line) {
+        ready_entry entry(line_addr, line);
+        m_ready.emplace_back(std::move(entry));
+    });
+    m_pending_futures.insert({line_addr, std::move(fut)});
+    return true;
+}
+
+bytes_t ICache::read_line(pc_t line_addr)
+{
+    for (auto &entry : m_ready) {
+        if (entry.line_addr == line_addr) {
+            bytes_t line = entry.line;
+            m_ready.erase(std::find(m_ready.begin(), m_ready.end(), entry));
+            m_pending_futures.erase(line_addr);
+            return line;
+        }
+    }
+    return bytes_t();
+}
+
+bool ICache::line_ready(pc_t line_addr)
+{
+    auto it = m_pending_futures.find(line_addr);
+    if (it != m_pending_futures.end()) {
+        return it->second.ready();
+    }
+    return false;
+}
+
+pc_t ICache::align_line(pc_t pc) const
+{
+    return (pc / m_cfg.line_size) * m_cfg.line_size;
 }

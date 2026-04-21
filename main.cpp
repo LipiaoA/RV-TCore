@@ -24,8 +24,8 @@ int main(int argc, char *argv[]) {
 
     model = new Model("top model");
 
-    model->init(elf_path);
     model->build();
+    model->init(elf_path);
     model->run();
 
     delete model;

@@ -89,44 +89,9 @@ public:
 
 class ICore : public DevIntf {
 public:
-    ICore() : DevIntf(), m_exit(false){}
-    explicit ICore(const std::string& n) : DevIntf(n), m_exit(false) {}
-    virtual ~ICore() {
-        for (auto &m : m_modules) {
-            delete_ptr(m);
-        }
-    };
-
-public:
-    void tick() {
-        for(auto m : m_modules) {
-            m->tick();
-        }
-    }
-
-    void commit() {
-        for (auto m : m_modules) {
-            m->commit();
-        }
-    }
-    void reset() {
-        for (auto m : m_modules) {
-            m->reset();
-        }
-    };
-
-    virtual bool exit() {return m_exit;}
-
-protected:
-    void add_module(DevIntf *module) {
-        m_modules.emplace_back(module);
-    }
-
-private:
-    bool m_exit;
-
-protected:
-    std::vector<DevIntf*> m_modules;
+    ICore() : DevIntf(){}
+    explicit ICore(const std::string& n) : DevIntf(n) {}
+    virtual ~ICore() = default;
 };
 
 

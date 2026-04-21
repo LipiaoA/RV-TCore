@@ -30,6 +30,8 @@ void Core::tick() {
     m_issue.tick();
     m_execute.tick();
     m_commit.tick();
+
+    m_sched.tick();
 }
 
 void Core::build()
@@ -42,3 +44,34 @@ void Core::build()
     m_commit.build();
 }
 
+void Core::init(pc_t start_pc)
+{
+    m_fetch.redirct(start_pc);
+}
+
+void Core::reset()
+{
+    m_fetch.reset();
+    m_decode.reset();
+    m_rename.reset();
+    m_issue.reset();
+    m_execute.reset();
+    m_commit.reset();
+
+    m_exit = false;
+}
+
+bool Core::exit() const
+{
+    return m_exit;
+}
+
+void Core::commit()
+{
+    m_fetch.commit();
+    m_decode.commit();
+    m_rename.commit();
+    m_issue.commit();
+    m_execute.commit();
+    m_commit.commit();
+}

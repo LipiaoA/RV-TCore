@@ -51,8 +51,6 @@ private:
     void                                fetch3();
     void                                fetch4();
 
-    static pc_t align_line(pc_t pc) { return (pc / ICache::k_line_bytes) * ICache::k_line_bytes; }
-
 private:
     CycleScheduler&                     m_sched;
     ICache&                             m_icache;

@@ -29,7 +29,8 @@ GCache::GCache(CycleScheduler *sched, const CacheConfig &cfg)
     m_name = "unknown";
 }
 
-void GCache::attach_lower(GCache *lower) {
+void GCache::attach_lower(GCache *lower)
+{
     m_lower = lower;
     if (m_lower) {
         m_lower->register_upper(this);
@@ -37,12 +38,14 @@ void GCache::attach_lower(GCache *lower) {
     return;
 }
 
-void GCache::register_upper(GCache *up) {
+void GCache::register_upper(GCache *up)
+{
     std::lock_guard<std::mutex> lk(m_up_mtx);
     m_uppers.push_back(up);
 }
 
-SimpleFuture<std::vector<u8>> GCache::fetch_line_async(u64 line_addr) {
+SimpleFuture<std::vector<u8>> GCache::fetch_line_async(u64 line_addr)
+{
     m_stats.accesses++;
     SimpleFuture<std::vector<u8>> fut;
     auto start_cycle = m_sched->cycle();
@@ -108,13 +111,15 @@ SimpleFuture<std::vector<u8>> GCache::fetch_line_async(u64 line_addr) {
 }
 
 
-void GCache::update_lru_list_on_access(size_t set_idx, size_t way) {
+void GCache::update_lru_list_on_access(size_t set_idx, size_t way)
+{
     auto &lst = m_lru_lists[set_idx];
     auto it = find(lst.begin(), lst.end(), way);
     if (it != lst.end()) { lst.erase(it); lst.insert(lst.begin(), way); }
 }
 
-void GCache::install_line(u64 line_addr, const std::vector<u8>& data, bool mark_dirty) {
+void GCache::install_line(u64 line_addr, const std::vector<u8>& data, bool mark_dirty)
+{
     auto [set_idx, tag] = decode(line_addr);
     size_t victim = SIZE_MAX;
     bool used_plru = false;
@@ -167,12 +172,16 @@ void GCache::install_line(u64 line_addr, const std::vector<u8>& data, bool mark_
     }
 }
 
-void GCache::fulfill_mshr(u64 line_addr, const std::vector<u8>& data, u64 start_cycle) {
+void GCache::fulfill_mshr(u64 line_addr, const std::vector<u8>& data, u64 start_cycle)
+{
     std::vector<SimpleFuture<std::vector<u8>>> prom;
     {
         std::lock_guard<std::mutex> lk(m_mtx);
         auto it = m_mshr.find(line_addr);
-        if (it!=m_mshr.end()) { prom = move(it->second.promises); m_mshr.erase(it); }
+        if (it!=m_mshr.end()) {
+            prom = move(it->second.promises);
+            m_mshr.erase(it);
+        }
     }
     for (auto &f : prom) {
         m_stats.total_latency += (m_sched->cycle() - start_cycle);
@@ -181,7 +190,8 @@ void GCache::fulfill_mshr(u64 line_addr, const std::vector<u8>& data, u64 start_
 }
 
 // default lower fetch
-std::vector<u8> GCache::on_lower_fetch(u64 line_addr) {
+std::vector<u8> GCache::on_lower_fetch(u64 line_addr)
+{
     if (m_mem) {
         return m_mem->load_cache_line(line_addr, m_cfg.line_size);
     }
@@ -195,7 +205,8 @@ std::vector<u8> GCache::on_lower_fetch(u64 line_addr) {
 }
 
 
-SimpleFuture<bool> GCache::write_line_async(u64 line_addr, const std::vector<u8>& data) {
+SimpleFuture<bool> GCache::write_line_async(u64 line_addr, const std::vector<u8>& data)
+{
     SimpleFuture<bool> out;
     // write-allocate: fetch or install then mark dirty
     auto f = fetch_line_async(line_addr);
@@ -210,7 +221,8 @@ SimpleFuture<bool> GCache::write_line_async(u64 line_addr, const std::vector<u8>
 }
 
 // expose invalidate used by inclusive policy
-void GCache::invalidate_line(u64 line_addr) {
+void GCache::invalidate_line(u64 line_addr)
+{
     auto [set_idx, tag] = decode(line_addr);
     std::lock_guard<std::mutex> lk(m_mtx);
     for (size_t w=0; w<m_cfg.ways; ++w) {
@@ -238,4 +250,14 @@ std::pair<size_t, u64> GCache::decode(u64 line_addr) const
 u64 GCache::reconstruct_line_addr(size_t set_idx, u64 tag) const
 {
     return (tag * (m_cfg.line_size * m_sets));
+}
+
+void GCache::set_name(std::string name)
+{
+    m_name = name;
+}
+
+void GCache::set_mem(Memory *mem)
+{
+    m_mem = mem;
 }

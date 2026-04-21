@@ -2,7 +2,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <unistd.h>
-
+#include <filesystem>
 
 /*
  * 业务无关代码
@@ -28,9 +28,16 @@ void hexdump(const void* p, size_t n)
 bool MappedFile::map(const char* path) {
     struct stat st;
     fd = open(path, O_RDONLY);
-
-    if (fd < 0) return false;
-    if (fstat(fd, &st) < 0) return false;
+    if (fd < 0) {
+        std::cout << "Current path is: " << std::filesystem::current_path() << std::endl;
+        std::cerr << "Open failed: " << strerror(errno) << " (Errno: " << errno << ")" << std::endl;
+        return false;
+    }
+    if (fstat(fd, &st) < 0) {
+        std::cerr << "fstat failed: " << strerror(errno) << " (Errno: " << errno << ")" << std::endl;
+        close(fd);
+        return false;
+    }
     size = st.st_size;
 
     data = mmap(nullptr, size, PROT_READ, MAP_PRIVATE, fd, 0);
@@ -54,3 +61,13 @@ u64 round_down(u64 value, u64 alignment) {
     return value & ~(alignment - 1);
 }
 
+std::string trim(const std::string& s) {
+    std::string temp = s;
+    const std::string whitespace = " \t\n\r\f\v";
+    size_t start = temp.find_first_not_of(whitespace);
+    if (start == std::string::npos) {
+        return "";
+    }
+    size_t end = temp.find_last_not_of(whitespace);
+    return temp.substr(start, end - start + 1);
+}

@@ -3,12 +3,12 @@
 
 LocalPredictor::LocalPredictor(size_t bht_entries, unsigned pc_low_bits, unsigned bhr_bits)
     : m_bht(bht_entries, bhr_bits),
-        m_pc_low_bits(pc_low_bits),
-        m_bhr_bits(bhr_bits)
+      m_pc_low_bits(pc_low_bits),
+      m_bhr_bits(bhr_bits)
 {
     m_pht_bits = m_bhr_bits + m_pc_low_bits;
     m_pht_size = 1ull << m_pht_bits;
-    m_pht.assign(m_pht_size, Sat2(2));
+    m_pht.assign(m_pht_size, Sat2(1));
 }
 
 bool LocalPredictor::predict(u64 pc, int &out_index, u32 &out_bhr) {
