@@ -3,7 +3,7 @@
 #include "log.h"
 #include "isa/isa_inst.def"
 
-void DecodeUnit::predecode(u32 raw, PredecodeInfo* out) {
+void DecodeUnit::predecode(insn_t raw, PredecodeInfo* out) {
     out->valid = false;
     out->is_branch = out->is_load = out->is_store = out->is_fp = false;
     out->length = 4;
@@ -82,7 +82,7 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
         if ((raw & rv64i_table[i].mask) == rv64i_table[i].match) {
             const InstOp op   = rv64i_table[i].opcode;
             const InstFmt fmt = rv64i_table[i].format;
-
+            out->inst_name = rv64i_inst_map.at(op);;
             out->raw_inst = raw;
             out->opcode   = op;
             out->format   = fmt;
@@ -135,7 +135,7 @@ void DecodeUnit::d0() {
     FetchPacket pkt;
     if (!m_fetch_decode_q.read(pkt))
         return;
-
+    std::cout << "d0 pkt ======================== start ======================== " << std::endl;
     size_t inst_count = 0;
     for (size_t i = 0; i < pkt.insts.size() && inst_count < m_decode_width; ++i) {
         const auto& finst = pkt.insts[i];
@@ -146,7 +146,7 @@ void DecodeUnit::d0() {
         dinst.pc = finst.pc;
         if (!decode(finst.insn, &dinst) || dinst.opcode == OP_INVALID)
             continue;
-        LOG_LEVEL1("DecodeUnit", "d0 decode inst: 0x%lx", finst.insn);
+        LOG_LEVEL1("DecodeUnit", "d0 decode inst: %s", dinst.inst_name.c_str());
         dinst.valid = true;
         dinst.inst_id = m_next_decode_id++;
         m_d0_pkt.emplace_back(std::move(dinst));
@@ -164,7 +164,7 @@ void DecodeUnit::d1() {
             dinst.imm = extract_imm(dinst.raw_inst, dinst.format, dinst.opcode);
         else
             dinst.imm = 0;
-        LOG_LEVEL1("DecodeUnit", "d1 decode op: %d", dinst.opcode);
+        LOG_LEVEL1("DecodeUnit", "d1 inst: %s", dinst.inst_name.c_str());
         m_decode_rename_q.write(std::move(dinst));
     }
     m_d0_pkt.clear();

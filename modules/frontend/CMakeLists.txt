@@ -3,12 +3,10 @@ add_library(fetch STATIC
     decode_unit.cpp
     rename_unit.cpp
     branch_predictor.cpp
-    bpred/hybrid_predictor.cpp
-    bpred/direct_btb.cpp
-    bpred/indirect_btb.cpp
-    bpred/local_predictor.cpp
-    bpred/target_predictor.cpp
-    bpred/ras_cache.cpp
+    bpred/bim.cpp
+    bpred/btb.cpp
+    bpred/ras.cpp
+    bpred/tage.cpp
 )
 
 target_include_directories(fetch PUBLIC

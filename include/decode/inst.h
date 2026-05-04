@@ -62,6 +62,7 @@ enum class InstType {
 typedef struct MicroOp {
     u64 raw_inst;
     u64 pc;
+    std::string inst_name;
 
     InstOp opcode;
     InstType type;

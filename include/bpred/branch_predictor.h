@@ -4,31 +4,34 @@
 #include <string>
 
 #include "intf.h"
-#include "hybrid_predictor.h"
+#include "btb.h"
+#include "ras.h"
+#include "bim.h"
+#include "tage.h"
 
-struct branch_pred_t {
-    bool valid { false };
-    bool taken { false };
-    pc_t target { 0 };
-};
-
-class BranchPredictor : public IPredictor {
+class BranchPredictor {
 
 public:
-    BranchPredictor();
-    explicit BranchPredictor(const std::string& n);
+    BranchPredictor(const BPConfig& config);
     ~BranchPredictor();
 
 public:
-    void                                tick() override {}
-    void                                commit() override {}
-    void                                build() override {}
-    branch_pred_t                       predict(pc_t pc);
-    void                                update(pc_t pc, bool taken, pc_t target);
+    void                                update();
+
+    void                                reset();
+    branch_pred                         f1_pred(pc_t pc);
+    branch_pred                         f2_pred(pc_t pc);
+    TagePred                            f3_pred(pc_t pc);
 
 private:
-    /* hybrid predictor */
-    HybridPredictor*                    m_hpred;
+    u64                                 m_time;
+    RAS                                 m_ras;
+    BTB                                 m_ibtb;
+    TAGE                                m_tage;
+    BIM                                 m_bim;
+
+    u32                                 m_fetch_width;
+
 };
 
 #endif

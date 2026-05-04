@@ -33,6 +33,18 @@ struct FetchPacket {
     PredecodeInfo  predecode[MAX_FETCH_WIDTH];
 };
 
+struct branch_pred_t {
+    bool valid { false };
+    bool taken { false };
+    pc_t target { 0 };
+};
+
+constexpr static u32 MAX_PREDICT_WIDTH = 4;
+typedef struct {
+    branch_pred_t pred[MAX_PREDICT_WIDTH];
+    u64 ghr_snapshot = 0;
+} branch_pred;
+
 struct ExecResult {
     DecodeInst inst;
     bool valid { false };
@@ -148,6 +160,23 @@ class RenameUnit;
 class CommitUnit;
 class IssueUnit;
 class ExecuteUnit;
+
+typedef struct IFetchReq {
+    bool valid { false };
+    pc_t pc;
+    pc_t line_addr;
+    u64 epoch;
+} IFetchReq;
+
+constexpr u32 BANK_BYTES = 16;
+typedef struct IFetchResp {
+    bool valid { false };
+    pc_t line_addr;
+    u8 data[64];
+    bool page_fault { false };
+    bool access_fault { false };
+    u64 epoch;
+} IFetchResp;
 
 typedef struct {
     CycleScheduler*             sched;

@@ -1,368 +1,4555 @@
-
+#include <unordered_map>
 #include "opcode.h"
+#include <string>
 
 static const InstPattern rv64i_table[] = {
 {
-  .mask  = 0xfe00707f,
-  .match = 0x00000033,
-  .opcode = OP_ADD,
-  .format = RV_FMT_R
-},{
-  .mask  = 0xfe00707f,
-  .match = 0x40000033,
-  .opcode = OP_SUB,
-  .format = RV_FMT_R
-},{
-  .mask  = 0xfe00707f,
-  .match = 0x00001033,
-  .opcode = OP_SLL,
-  .format = RV_FMT_R
-},{
-  .mask  = 0xfe00707f,
-  .match = 0x00002033,
-  .opcode = OP_SLT,
-  .format = RV_FMT_R
-},{
-  .mask  = 0xfe00707f,
-  .match = 0x00003033,
-  .opcode = OP_SLTU,
-  .format = RV_FMT_R
-},{
-  .mask  = 0xfe00707f,
-  .match = 0x00004033,
-  .opcode = OP_XOR,
-  .format = RV_FMT_R
-},{
-  .mask  = 0xfe00707f,
-  .match = 0x00005033,
-  .opcode = OP_SRL,
-  .format = RV_FMT_R
-},{
-  .mask  = 0xfe00707f,
-  .match = 0x40005033,
-  .opcode = OP_SRA,
-  .format = RV_FMT_R
-},{
-  .mask  = 0xfe00707f,
-  .match = 0x00006033,
-  .opcode = OP_OR,
-  .format = RV_FMT_R
-},{
-  .mask  = 0xfe00707f,
-  .match = 0x00007033,
-  .opcode = OP_AND,
-  .format = RV_FMT_R
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00000013,
-  .opcode = OP_ADDI,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00002013,
-  .opcode = OP_SLTI,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00003013,
-  .opcode = OP_SLTIU,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00004013,
-  .opcode = OP_XORI,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00006013,
-  .opcode = OP_ORI,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00007013,
-  .opcode = OP_ANDI,
-  .format = RV_FMT_I
-},{
-  // RV64: 只匹配 funct6（bit31:26），bit25 属于 shamt[5]
-  .mask  = 0xfc00707f,
-  .match = 0x00001013,
-  .opcode = OP_SLLI,
-  .format = RV_FMT_I
-},{
-  .mask  = 0xfc00707f,
-  .match = 0x00005013,
-  .opcode = OP_SRLI,
-  .format = RV_FMT_I
-},{
-  .mask  = 0xfc00707f,
-  .match = 0x40005013,
-  .opcode = OP_SRAI,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00000003,
-  .opcode = OP_LB,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00001003,
-  .opcode = OP_LH,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00002003,
-  .opcode = OP_LW,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00003003,
-  .opcode = OP_LD,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00004003,
-  .opcode = OP_LBU,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00005003,
-  .opcode = OP_LHU,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00006003,
-  .opcode = OP_LWU,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00000023,
-  .opcode = OP_SB,
-  .format = RV_FMT_S
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00001023,
-  .opcode = OP_SH,
-  .format = RV_FMT_S
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00002023,
-  .opcode = OP_SW,
-  .format = RV_FMT_S
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00003023,
-  .opcode = OP_SD,
-  .format = RV_FMT_S
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00000063,
-  .opcode = OP_BEQ,
-  .format = RV_FMT_B
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00001063,
-  .opcode = OP_BNE,
-  .format = RV_FMT_B
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00004063,
-  .opcode = OP_BLT,
-  .format = RV_FMT_B
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00005063,
-  .opcode = OP_BGE,
-  .format = RV_FMT_B
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00006063,
-  .opcode = OP_BLTU,
-  .format = RV_FMT_B
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00007063,
-  .opcode = OP_BGEU,
-  .format = RV_FMT_B
-},{
-  .mask  = 0x0000007f,
-  .match = 0x00000037,
-  .opcode = OP_LUI,
-  .format = RV_FMT_U
-},{
-  .mask  = 0x0000007f,
-  .match = 0x00000017,
-  .opcode = OP_AUIPC,
-  .format = RV_FMT_U
-},{
-  .mask  = 0x0000007f,
-  .match = 0x0000006f,
-  .opcode = OP_JAL,
-  .format = RV_FMT_J
-},{
-  .mask  = 0x0000707f,
-  .match = 0x00000067,
-  .opcode = OP_JALR,
-  .format = RV_FMT_I
-},{
-  .mask  = 0x0000707f,
-  .match = 0x0000000f,
-  .opcode = OP_FENCE,
-  .format = RV_FMT_NONE
-},{
-  .mask  = 0x0000707f,
-  .match = 0x0000100f,
-  .opcode = OP_FENCE_I,
-  .format = RV_FMT_NONE
-},{
-  .mask  = 0xffffffff,
+  .mask = 0xffffffff,
   .match = 0x00000073,
   .opcode = OP_ECALL,
-  .format = RV_FMT_NONE
+ .format = RV_FMT_R
 },{
-  .mask  = 0xffffffff,
+  .mask = 0xffffffff,
   .match = 0x00100073,
   .opcode = OP_EBREAK,
-  .format = RV_FMT_NONE
+ .format = RV_FMT_R
 },{
-  .mask  = 0x0000707f,
+  .mask = 0xffffffff,
+  .match = 0x10400073,
+  .opcode = OP_SCTRCLR,
+ .format = RV_FMT_R
+},{
+  .mask = 0xffffffff,
+  .match = 0x00200073,
+  .opcode = OP_URET,
+ .format = RV_FMT_R
+},{
+  .mask = 0xffffffff,
+  .match = 0x10200073,
+  .opcode = OP_SRET,
+ .format = RV_FMT_R
+},{
+  .mask = 0xffffffff,
+  .match = 0x30200073,
+  .opcode = OP_MRET,
+ .format = RV_FMT_R
+},{
+  .mask = 0xffffffff,
+  .match = 0x10500073,
+  .opcode = OP_WFI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe007fff,
+  .match = 0x12000073,
+  .opcode = OP_SFENCE_VMA,
+ .format = RV_FMT_S
+},{
+  .mask = 0xffffffff,
+  .match = 0x70200073,
+  .opcode = OP_MNRET,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0000007f,
+  .match = 0x00000037,
+  .opcode = OP_LUI,
+ .format = RV_FMT_U
+},{
+  .mask = 0x0000007f,
+  .match = 0x00000017,
+  .opcode = OP_AUIPC,
+ .format = RV_FMT_U
+},{
+  .mask = 0x0000007f,
+  .match = 0x0000006f,
+  .opcode = OP_JAL,
+ .format = RV_FMT_J
+},{
+  .mask = 0x0000707f,
+  .match = 0x00000067,
+  .opcode = OP_JALR,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00000063,
+  .opcode = OP_BEQ,
+ .format = RV_FMT_B
+},{
+  .mask = 0x0000707f,
+  .match = 0x00001063,
+  .opcode = OP_BNE,
+ .format = RV_FMT_B
+},{
+  .mask = 0x0000707f,
+  .match = 0x00004063,
+  .opcode = OP_BLT,
+ .format = RV_FMT_B
+},{
+  .mask = 0x0000707f,
+  .match = 0x00005063,
+  .opcode = OP_BGE,
+ .format = RV_FMT_B
+},{
+  .mask = 0x0000707f,
+  .match = 0x00006063,
+  .opcode = OP_BLTU,
+ .format = RV_FMT_B
+},{
+  .mask = 0x0000707f,
+  .match = 0x00007063,
+  .opcode = OP_BGEU,
+ .format = RV_FMT_B
+},{
+  .mask = 0x0000707f,
+  .match = 0x00000003,
+  .opcode = OP_LB,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00001003,
+  .opcode = OP_LH,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00002003,
+  .opcode = OP_LW,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00004003,
+  .opcode = OP_LBU,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00005003,
+  .opcode = OP_LHU,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00000023,
+  .opcode = OP_SB,
+ .format = RV_FMT_S
+},{
+  .mask = 0x0000707f,
+  .match = 0x00001023,
+  .opcode = OP_SH,
+ .format = RV_FMT_S
+},{
+  .mask = 0x0000707f,
+  .match = 0x00002023,
+  .opcode = OP_SW,
+ .format = RV_FMT_S
+},{
+  .mask = 0x0000707f,
+  .match = 0x00000013,
+  .opcode = OP_ADDI,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00002013,
+  .opcode = OP_SLTI,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00003013,
+  .opcode = OP_SLTIU,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00004013,
+  .opcode = OP_XORI,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00006013,
+  .opcode = OP_ORI,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00007013,
+  .opcode = OP_ANDI,
+ .format = RV_FMT_I
+},{
+  .mask = 0xf800707f,
+  .match = 0x00001013,
+  .opcode = OP_SLLI,
+ .format = RV_FMT_S
+},{
+  .mask = 0xf800707f,
+  .match = 0x00005013,
+  .opcode = OP_SRLI,
+ .format = RV_FMT_S
+},{
+  .mask = 0xf800707f,
+  .match = 0x40005013,
+  .opcode = OP_SRAI,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfe00707f,
+  .match = 0x00000033,
+  .opcode = OP_ADD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x40000033,
+  .opcode = OP_SUB,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x00001033,
+  .opcode = OP_SLL,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x00002033,
+  .opcode = OP_SLT,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x00003033,
+  .opcode = OP_SLTU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x00004033,
+  .opcode = OP_XOR,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x00005033,
+  .opcode = OP_SRL,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x40005033,
+  .opcode = OP_SRA,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x00006033,
+  .opcode = OP_OR,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x00007033,
+  .opcode = OP_AND,
+ .format = RV_FMT_R
+},{
+  .mask = 0xffffffff,
+  .match = 0x0100000f,
+  .opcode = OP_PAUSE,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0000707f,
   .match = 0x00001073,
   .opcode = OP_CSRRW,
-  .format = RV_FMT_NONE
+ .format = RV_FMT_C
 },{
-  .mask  = 0x0000707f,
+  .mask = 0x0000707f,
   .match = 0x00002073,
   .opcode = OP_CSRRS,
-  .format = RV_FMT_NONE
+ .format = RV_FMT_C
 },{
-  .mask  = 0x0000707f,
+  .mask = 0x0000707f,
   .match = 0x00003073,
   .opcode = OP_CSRRC,
-  .format = RV_FMT_NONE
+ .format = RV_FMT_C
 },{
-  .mask  = 0x0000707f,
+  .mask = 0x0000707f,
   .match = 0x00005073,
   .opcode = OP_CSRRWI,
-  .format = RV_FMT_NONE
+ .format = RV_FMT_C
 },{
-  .mask  = 0x0000707f,
+  .mask = 0x0000707f,
   .match = 0x00006073,
   .opcode = OP_CSRRSI,
-  .format = RV_FMT_NONE
+ .format = RV_FMT_C
 },{
-  .mask  = 0x0000707f,
+  .mask = 0x0000707f,
   .match = 0x00007073,
   .opcode = OP_CSRRCI,
-  .format = RV_FMT_NONE
+ .format = RV_FMT_C
 },{
-  .mask  = 0x0000707f,
+  .mask = 0x0000707f,
+  .match = 0x00006003,
+  .opcode = OP_LWU,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00003003,
+  .opcode = OP_LD,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00003023,
+  .opcode = OP_SD,
+ .format = RV_FMT_S
+},{
+  .mask = 0x0000707f,
   .match = 0x0000001b,
   .opcode = OP_ADDIW,
-  .format = RV_FMT_I
+ .format = RV_FMT_I
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0000101b,
   .opcode = OP_SLLIW,
-  .format = RV_FMT_I
+ .format = RV_FMT_S
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0000501b,
   .opcode = OP_SRLIW,
-  .format = RV_FMT_I
+ .format = RV_FMT_S
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x4000501b,
   .opcode = OP_SRAIW,
-  .format = RV_FMT_I
+ .format = RV_FMT_S
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0000003b,
   .opcode = OP_ADDW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x4000003b,
   .opcode = OP_SUBW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0000103b,
   .opcode = OP_SLLW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0000503b,
   .opcode = OP_SRLW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x4000503b,
   .opcode = OP_SRAW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0x0000707f,
+  .match = 0x00007003,
+  .opcode = OP_LDU,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00004023,
+  .opcode = OP_SQ,
+ .format = RV_FMT_S
+},{
+  .mask = 0x0000707f,
+  .match = 0x0000005b,
+  .opcode = OP_ADDID,
+ .format = RV_FMT_I
+},{
+  .mask = 0xfc00707f,
+  .match = 0x0000105b,
+  .opcode = OP_SLLID,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfc00707f,
+  .match = 0x0000505b,
+  .opcode = OP_SRLID,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfc00707f,
+  .match = 0x4000505b,
+  .opcode = OP_SRAID,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0000007b,
+  .opcode = OP_ADDD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x4000007b,
+  .opcode = OP_SUBD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0000107b,
+  .opcode = OP_SLLD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0000507b,
+  .opcode = OP_SRLD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x4000507b,
+  .opcode = OP_SRAD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
   .match = 0x02000033,
   .opcode = OP_MUL,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x02001033,
   .opcode = OP_MULH,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x02002033,
   .opcode = OP_MULHSU,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x02003033,
   .opcode = OP_MULHU,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x02004033,
   .opcode = OP_DIV,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x02005033,
   .opcode = OP_DIVU,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x02006033,
   .opcode = OP_REM,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x02007033,
   .opcode = OP_REMU,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0200003b,
   .opcode = OP_MULW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0200403b,
   .opcode = OP_DIVW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0200503b,
   .opcode = OP_DIVUW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0200603b,
   .opcode = OP_REMW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
 },{
-  .mask  = 0xfe00707f,
+  .mask = 0xfe00707f,
   .match = 0x0200703b,
   .opcode = OP_REMUW,
-  .format = RV_FMT_R
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0200007b,
+  .opcode = OP_MULD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0200407b,
+  .opcode = OP_DIVD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0200507b,
+  .opcode = OP_DIVUD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0200607b,
+  .opcode = OP_REMD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0200707b,
+  .opcode = OP_REMUD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xf9f0707f,
+  .match = 0x1000202f,
+  .opcode = OP_LR_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x1800202f,
+  .opcode = OP_SC_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x0800202f,
+  .opcode = OP_AMOSWAP_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x4800202f,
+  .opcode = OP_SSAMOSWAP_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x0000202f,
+  .opcode = OP_AMOADD_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x2000202f,
+  .opcode = OP_AMOXOR_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x6000202f,
+  .opcode = OP_AMOAND_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x4000202f,
+  .opcode = OP_AMOOR_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x8000202f,
+  .opcode = OP_AMOMIN_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xa000202f,
+  .opcode = OP_AMOMAX_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xc000202f,
+  .opcode = OP_AMOMINU_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xe000202f,
+  .opcode = OP_AMOMAXU_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf9f0707f,
+  .match = 0x1000302f,
+  .opcode = OP_LR_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x1800302f,
+  .opcode = OP_SC_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x0800302f,
+  .opcode = OP_AMOSWAP_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x4800302f,
+  .opcode = OP_SSAMOSWAP_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x0000302f,
+  .opcode = OP_AMOADD_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x2000302f,
+  .opcode = OP_AMOXOR_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x6000302f,
+  .opcode = OP_AMOAND_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x4000302f,
+  .opcode = OP_AMOOR_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x8000302f,
+  .opcode = OP_AMOMIN_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xa000302f,
+  .opcode = OP_AMOMAX_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xc000302f,
+  .opcode = OP_AMOMINU_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xe000302f,
+  .opcode = OP_AMOMAXU_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0x0000707f,
+  .match = 0x00002007,
+  .opcode = OP_FLW,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00002027,
+  .opcode = OP_FSW,
+ .format = RV_FMT_S
+},{
+  .mask = 0x0600007f,
+  .match = 0x00000043,
+  .opcode = OP_FMADD_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0600007f,
+  .match = 0x00000047,
+  .opcode = OP_FMSUB_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0600007f,
+  .match = 0x0000004b,
+  .opcode = OP_FNMSUB_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0600007f,
+  .match = 0x0000004f,
+  .opcode = OP_FNMADD_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x00000053,
+  .opcode = OP_FADD_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x08000053,
+  .opcode = OP_FSUB_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x10000053,
+  .opcode = OP_FMUL_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x18000053,
+  .opcode = OP_FDIV_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x58000053,
+  .opcode = OP_FSQRT_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x20000053,
+  .opcode = OP_FSGNJ_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x20001053,
+  .opcode = OP_FSGNJN_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x20002053,
+  .opcode = OP_FSGNJX_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x28000053,
+  .opcode = OP_FMIN_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x28001053,
+  .opcode = OP_FMAX_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc0000053,
+  .opcode = OP_FCVT_W_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc0100053,
+  .opcode = OP_FCVT_WU_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe0000053,
+  .opcode = OP_FMV_X_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa0002053,
+  .opcode = OP_FEQ_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa0001053,
+  .opcode = OP_FLT_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa0000053,
+  .opcode = OP_FLE_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe0001053,
+  .opcode = OP_FCLASS_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd0000053,
+  .opcode = OP_FCVT_S_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd0100053,
+  .opcode = OP_FCVT_S_WU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xf0000053,
+  .opcode = OP_FMV_W_X,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc0200053,
+  .opcode = OP_FCVT_L_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc0300053,
+  .opcode = OP_FCVT_LU_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd0200053,
+  .opcode = OP_FCVT_S_L,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd0300053,
+  .opcode = OP_FCVT_S_LU,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0000707f,
+  .match = 0x00003007,
+  .opcode = OP_FLD,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00003027,
+  .opcode = OP_FSD,
+ .format = RV_FMT_S
+},{
+  .mask = 0x0600007f,
+  .match = 0x02000043,
+  .opcode = OP_FMADD_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0600007f,
+  .match = 0x02000047,
+  .opcode = OP_FMSUB_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0600007f,
+  .match = 0x0200004b,
+  .opcode = OP_FNMSUB_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0600007f,
+  .match = 0x0200004f,
+  .opcode = OP_FNMADD_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x02000053,
+  .opcode = OP_FADD_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x0a000053,
+  .opcode = OP_FSUB_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x12000053,
+  .opcode = OP_FMUL_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x1a000053,
+  .opcode = OP_FDIV_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x5a000053,
+  .opcode = OP_FSQRT_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x22000053,
+  .opcode = OP_FSGNJ_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x22001053,
+  .opcode = OP_FSGNJN_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x22002053,
+  .opcode = OP_FSGNJX_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2a000053,
+  .opcode = OP_FMIN_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2a001053,
+  .opcode = OP_FMAX_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x40100053,
+  .opcode = OP_FCVT_S_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x42000053,
+  .opcode = OP_FCVT_D_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa2002053,
+  .opcode = OP_FEQ_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa2001053,
+  .opcode = OP_FLT_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa2000053,
+  .opcode = OP_FLE_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe2001053,
+  .opcode = OP_FCLASS_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc2000053,
+  .opcode = OP_FCVT_W_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc2100053,
+  .opcode = OP_FCVT_WU_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd2000053,
+  .opcode = OP_FCVT_D_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd2100053,
+  .opcode = OP_FCVT_D_WU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc2200053,
+  .opcode = OP_FCVT_L_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc2300053,
+  .opcode = OP_FCVT_LU_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe2000053,
+  .opcode = OP_FMV_X_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd2200053,
+  .opcode = OP_FCVT_D_L,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd2300053,
+  .opcode = OP_FCVT_D_LU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xf2000053,
+  .opcode = OP_FMV_D_X,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x60004073,
+  .opcode = OP_HLV_B,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x60104073,
+  .opcode = OP_HLV_BU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x64004073,
+  .opcode = OP_HLV_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x64104073,
+  .opcode = OP_HLV_HU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x64304073,
+  .opcode = OP_HLVX_HU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x68004073,
+  .opcode = OP_HLV_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x68304073,
+  .opcode = OP_HLVX_WU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe007fff,
+  .match = 0x62004073,
+  .opcode = OP_HSV_B,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe007fff,
+  .match = 0x66004073,
+  .opcode = OP_HSV_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe007fff,
+  .match = 0x6a004073,
+  .opcode = OP_HSV_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe007fff,
+  .match = 0x62000073,
+  .opcode = OP_HFENCE_GVMA,
+ .format = RV_FMT_H
+},{
+  .mask = 0xfe007fff,
+  .match = 0x22000073,
+  .opcode = OP_HFENCE_VVMA,
+ .format = RV_FMT_H
+},{
+  .mask = 0xfff0707f,
+  .match = 0x68104073,
+  .opcode = OP_HLV_WU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x6c004073,
+  .opcode = OP_HLV_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe007fff,
+  .match = 0x6e004073,
+  .opcode = OP_HSV_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x00000007,
+  .opcode = OP_VLE8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x00005007,
+  .opcode = OP_VLE16_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x00006007,
+  .opcode = OP_VLE32_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x00007007,
+  .opcode = OP_VLE64_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x00000027,
+  .opcode = OP_VSE8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x00005027,
+  .opcode = OP_VSE16_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x00006027,
+  .opcode = OP_VSE32_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x00007027,
+  .opcode = OP_VSE64_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x02b00007,
+  .opcode = OP_VLM_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x02b00027,
+  .opcode = OP_VSM_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1c00707f,
+  .match = 0x08000007,
+  .opcode = OP_VLSE8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1c00707f,
+  .match = 0x08005007,
+  .opcode = OP_VLSE16_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1c00707f,
+  .match = 0x08006007,
+  .opcode = OP_VLSE32_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1c00707f,
+  .match = 0x08007007,
+  .opcode = OP_VLSE64_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1c00707f,
+  .match = 0x08000027,
+  .opcode = OP_VSSE8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1c00707f,
+  .match = 0x08005027,
+  .opcode = OP_VSSE16_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1c00707f,
+  .match = 0x08006027,
+  .opcode = OP_VSSE32_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1c00707f,
+  .match = 0x08007027,
+  .opcode = OP_VSSE64_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x01000007,
+  .opcode = OP_VLE8FF_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x01005007,
+  .opcode = OP_VLE16FF_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x01006007,
+  .opcode = OP_VLE32FF_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0x1df0707f,
+  .match = 0x01007007,
+  .opcode = OP_VLE64FF_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x02800007,
+  .opcode = OP_VL1RE8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x02805007,
+  .opcode = OP_VL1RE16_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x02806007,
+  .opcode = OP_VL1RE32_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x02807007,
+  .opcode = OP_VL1RE64_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x22800007,
+  .opcode = OP_VL2RE8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x22805007,
+  .opcode = OP_VL2RE16_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x22806007,
+  .opcode = OP_VL2RE32_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x22807007,
+  .opcode = OP_VL2RE64_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x62800007,
+  .opcode = OP_VL4RE8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x62805007,
+  .opcode = OP_VL4RE16_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x62806007,
+  .opcode = OP_VL4RE32_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x62807007,
+  .opcode = OP_VL4RE64_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe2800007,
+  .opcode = OP_VL8RE8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe2805007,
+  .opcode = OP_VL8RE16_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe2806007,
+  .opcode = OP_VL8RE32_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe2807007,
+  .opcode = OP_VL8RE64_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x02800027,
+  .opcode = OP_VS1R_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x22800027,
+  .opcode = OP_VS2R_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x62800027,
+  .opcode = OP_VS4R_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe2800027,
+  .opcode = OP_VS8R_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x00000057,
+  .opcode = OP_VADD_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x00004057,
+  .opcode = OP_VADD_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x00003057,
+  .opcode = OP_VADD_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x08000057,
+  .opcode = OP_VSUB_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x08004057,
+  .opcode = OP_VSUB_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x0c004057,
+  .opcode = OP_VRSUB_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x0c003057,
+  .opcode = OP_VRSUB_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc0002057,
+  .opcode = OP_VWADDU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc0006057,
+  .opcode = OP_VWADDU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc4002057,
+  .opcode = OP_VWADD_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc4006057,
+  .opcode = OP_VWADD_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc8002057,
+  .opcode = OP_VWSUBU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc8006057,
+  .opcode = OP_VWSUBU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xcc002057,
+  .opcode = OP_VWSUB_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xcc006057,
+  .opcode = OP_VWSUB_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd0002057,
+  .opcode = OP_VWADDU_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd0006057,
+  .opcode = OP_VWADDU_WX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd4002057,
+  .opcode = OP_VWADD_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd4006057,
+  .opcode = OP_VWADD_WX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd8002057,
+  .opcode = OP_VWSUBU_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd8006057,
+  .opcode = OP_VWSUBU_WX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xdc002057,
+  .opcode = OP_VWSUB_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xdc006057,
+  .opcode = OP_VWSUB_WX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x40000057,
+  .opcode = OP_VADC_VVM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x40004057,
+  .opcode = OP_VADC_VXM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x40003057,
+  .opcode = OP_VADC_VIM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x44000057,
+  .opcode = OP_VMADC_VVM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x44004057,
+  .opcode = OP_VMADC_VXM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x44003057,
+  .opcode = OP_VMADC_VIM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x48000057,
+  .opcode = OP_VSBC_VVM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x48004057,
+  .opcode = OP_VSBC_VXM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x4c000057,
+  .opcode = OP_VMSBC_VVM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x4c004057,
+  .opcode = OP_VMSBC_VXM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x24000057,
+  .opcode = OP_VAND_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x24004057,
+  .opcode = OP_VAND_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x24003057,
+  .opcode = OP_VAND_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x28000057,
+  .opcode = OP_VOR_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x28004057,
+  .opcode = OP_VOR_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x28003057,
+  .opcode = OP_VOR_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x2c000057,
+  .opcode = OP_VXOR_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x2c004057,
+  .opcode = OP_VXOR_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x2c003057,
+  .opcode = OP_VXOR_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x94000057,
+  .opcode = OP_VSLL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x94004057,
+  .opcode = OP_VSLL_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x94003057,
+  .opcode = OP_VSLL_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa0000057,
+  .opcode = OP_VSRL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa0004057,
+  .opcode = OP_VSRL_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa0003057,
+  .opcode = OP_VSRL_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa4000057,
+  .opcode = OP_VSRA_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa4004057,
+  .opcode = OP_VSRA_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa4003057,
+  .opcode = OP_VSRA_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb0000057,
+  .opcode = OP_VNSRL_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb0004057,
+  .opcode = OP_VNSRL_WX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb0003057,
+  .opcode = OP_VNSRL_WI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb4000057,
+  .opcode = OP_VNSRA_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb4004057,
+  .opcode = OP_VNSRA_WX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb4003057,
+  .opcode = OP_VNSRA_WI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x60000057,
+  .opcode = OP_VMSEQ_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x60004057,
+  .opcode = OP_VMSEQ_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x60003057,
+  .opcode = OP_VMSEQ_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x64000057,
+  .opcode = OP_VMSNE_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x64004057,
+  .opcode = OP_VMSNE_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x64003057,
+  .opcode = OP_VMSNE_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x68000057,
+  .opcode = OP_VMSLTU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x68004057,
+  .opcode = OP_VMSLTU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x6c000057,
+  .opcode = OP_VMSLT_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x6c004057,
+  .opcode = OP_VMSLT_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x70000057,
+  .opcode = OP_VMSLEU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x70004057,
+  .opcode = OP_VMSLEU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x70003057,
+  .opcode = OP_VMSLEU_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x74000057,
+  .opcode = OP_VMSLE_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x74004057,
+  .opcode = OP_VMSLE_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x74003057,
+  .opcode = OP_VMSLE_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x78004057,
+  .opcode = OP_VMSGTU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x78003057,
+  .opcode = OP_VMSGTU_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x7c004057,
+  .opcode = OP_VMSGT_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x7c003057,
+  .opcode = OP_VMSGT_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x10000057,
+  .opcode = OP_VMINU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x10004057,
+  .opcode = OP_VMINU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x14000057,
+  .opcode = OP_VMIN_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x14004057,
+  .opcode = OP_VMIN_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x18000057,
+  .opcode = OP_VMAXU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x18004057,
+  .opcode = OP_VMAXU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x1c000057,
+  .opcode = OP_VMAX_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x1c004057,
+  .opcode = OP_VMAX_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x94002057,
+  .opcode = OP_VMUL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x94006057,
+  .opcode = OP_VMUL_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x9c002057,
+  .opcode = OP_VMULH_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x9c006057,
+  .opcode = OP_VMULH_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x90002057,
+  .opcode = OP_VMULHU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x90006057,
+  .opcode = OP_VMULHU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x98002057,
+  .opcode = OP_VMULHSU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x98006057,
+  .opcode = OP_VMULHSU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x80002057,
+  .opcode = OP_VDIVU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x80006057,
+  .opcode = OP_VDIVU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x84002057,
+  .opcode = OP_VDIV_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x84006057,
+  .opcode = OP_VDIV_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x88002057,
+  .opcode = OP_VREMU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x88006057,
+  .opcode = OP_VREMU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x8c002057,
+  .opcode = OP_VREM_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x8c006057,
+  .opcode = OP_VREM_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xe0002057,
+  .opcode = OP_VWMULU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xe0006057,
+  .opcode = OP_VWMULU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xe8002057,
+  .opcode = OP_VWMULSU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xe8006057,
+  .opcode = OP_VWMULSU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xec002057,
+  .opcode = OP_VWMUL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xec006057,
+  .opcode = OP_VWMUL_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb4002057,
+  .opcode = OP_VMACC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb4006057,
+  .opcode = OP_VMACC_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xbc002057,
+  .opcode = OP_VNMSAC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xbc006057,
+  .opcode = OP_VNMSAC_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa4002057,
+  .opcode = OP_VMADD_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa4006057,
+  .opcode = OP_VMADD_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xac002057,
+  .opcode = OP_VNMSUB_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xac006057,
+  .opcode = OP_VNMSUB_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf0002057,
+  .opcode = OP_VWMACCU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf0006057,
+  .opcode = OP_VWMACCU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf4002057,
+  .opcode = OP_VWMACC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf4006057,
+  .opcode = OP_VWMACC_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xfc002057,
+  .opcode = OP_VWMACCSU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xfc006057,
+  .opcode = OP_VWMACCSU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf8006057,
+  .opcode = OP_VWMACCUS_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x5e000057,
+  .opcode = OP_VMV_V_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x5e004057,
+  .opcode = OP_VMV_V_X,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x5e003057,
+  .opcode = OP_VMV_V_I,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x5c000057,
+  .opcode = OP_VMERGE_VVM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x5c004057,
+  .opcode = OP_VMERGE_VXM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x5c003057,
+  .opcode = OP_VMERGE_VIM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x80000057,
+  .opcode = OP_VSADDU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x80004057,
+  .opcode = OP_VSADDU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x80003057,
+  .opcode = OP_VSADDU_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x84000057,
+  .opcode = OP_VSADD_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x84004057,
+  .opcode = OP_VSADD_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x84003057,
+  .opcode = OP_VSADD_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x88000057,
+  .opcode = OP_VSSUBU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x88004057,
+  .opcode = OP_VSSUBU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x8c000057,
+  .opcode = OP_VSSUB_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x8c004057,
+  .opcode = OP_VSSUB_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x24002057,
+  .opcode = OP_VAADD_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x24006057,
+  .opcode = OP_VAADD_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x20002057,
+  .opcode = OP_VAADDU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x20006057,
+  .opcode = OP_VAADDU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x2c002057,
+  .opcode = OP_VASUB_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x2c006057,
+  .opcode = OP_VASUB_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x28002057,
+  .opcode = OP_VASUBU_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x28006057,
+  .opcode = OP_VASUBU_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x9c000057,
+  .opcode = OP_VSMUL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x9c004057,
+  .opcode = OP_VSMUL_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa8000057,
+  .opcode = OP_VSSRL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa8004057,
+  .opcode = OP_VSSRL_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa8003057,
+  .opcode = OP_VSSRL_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xac000057,
+  .opcode = OP_VSSRA_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xac004057,
+  .opcode = OP_VSSRA_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xac003057,
+  .opcode = OP_VSSRA_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb8000057,
+  .opcode = OP_VNCLIPU_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb8004057,
+  .opcode = OP_VNCLIPU_WX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb8003057,
+  .opcode = OP_VNCLIPU_WI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xbc000057,
+  .opcode = OP_VNCLIP_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xbc004057,
+  .opcode = OP_VNCLIP_WX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xbc003057,
+  .opcode = OP_VNCLIP_WI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x00001057,
+  .opcode = OP_VFADD_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x00005057,
+  .opcode = OP_VFADD_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x08001057,
+  .opcode = OP_VFSUB_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x08005057,
+  .opcode = OP_VFSUB_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x9c005057,
+  .opcode = OP_VFRSUB_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc0001057,
+  .opcode = OP_VFWADD_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc0005057,
+  .opcode = OP_VFWADD_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd0001057,
+  .opcode = OP_VFWADD_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd0005057,
+  .opcode = OP_VFWADD_WF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc8001057,
+  .opcode = OP_VFWSUB_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc8005057,
+  .opcode = OP_VFWSUB_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd8001057,
+  .opcode = OP_VFWSUB_WV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd8005057,
+  .opcode = OP_VFWSUB_WF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x90001057,
+  .opcode = OP_VFMUL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x90005057,
+  .opcode = OP_VFMUL_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x80001057,
+  .opcode = OP_VFDIV_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x80005057,
+  .opcode = OP_VFDIV_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x84005057,
+  .opcode = OP_VFRDIV_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xe0001057,
+  .opcode = OP_VFWMUL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xe0005057,
+  .opcode = OP_VFWMUL_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb0001057,
+  .opcode = OP_VFMACC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb4001057,
+  .opcode = OP_VFNMACC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb4005057,
+  .opcode = OP_VFNMACC_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb0005057,
+  .opcode = OP_VFMACC_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb8001057,
+  .opcode = OP_VFMSAC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xb8005057,
+  .opcode = OP_VFMSAC_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xbc001057,
+  .opcode = OP_VFNMSAC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xbc005057,
+  .opcode = OP_VFNMSAC_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa0001057,
+  .opcode = OP_VFMADD_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa0005057,
+  .opcode = OP_VFMADD_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa4001057,
+  .opcode = OP_VFNMADD_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa4005057,
+  .opcode = OP_VFNMADD_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa8001057,
+  .opcode = OP_VFMSUB_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xa8005057,
+  .opcode = OP_VFMSUB_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xac001057,
+  .opcode = OP_VFNMSUB_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xac005057,
+  .opcode = OP_VFNMSUB_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf0001057,
+  .opcode = OP_VFWMACC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf0005057,
+  .opcode = OP_VFWMACC_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf4001057,
+  .opcode = OP_VFWNMACC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf4005057,
+  .opcode = OP_VFWNMACC_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf8001057,
+  .opcode = OP_VFWMSAC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xf8005057,
+  .opcode = OP_VFWMSAC_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xfc001057,
+  .opcode = OP_VFWNMSAC_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xfc005057,
+  .opcode = OP_VFWNMSAC_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4c001057,
+  .opcode = OP_VFSQRT_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4c021057,
+  .opcode = OP_VFRSQRT7_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4c029057,
+  .opcode = OP_VFREC7_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x10001057,
+  .opcode = OP_VFMIN_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x10005057,
+  .opcode = OP_VFMIN_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x18001057,
+  .opcode = OP_VFMAX_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x18005057,
+  .opcode = OP_VFMAX_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x20001057,
+  .opcode = OP_VFSGNJ_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x20005057,
+  .opcode = OP_VFSGNJ_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x24001057,
+  .opcode = OP_VFSGNJN_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x24005057,
+  .opcode = OP_VFSGNJN_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x28001057,
+  .opcode = OP_VFSGNJX_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x28005057,
+  .opcode = OP_VFSGNJX_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x38005057,
+  .opcode = OP_VFSLIDE1UP_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x3c005057,
+  .opcode = OP_VFSLIDE1DOWN_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x60001057,
+  .opcode = OP_VMFEQ_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x60005057,
+  .opcode = OP_VMFEQ_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x70001057,
+  .opcode = OP_VMFNE_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x70005057,
+  .opcode = OP_VMFNE_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x6c001057,
+  .opcode = OP_VMFLT_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x6c005057,
+  .opcode = OP_VMFLT_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x64001057,
+  .opcode = OP_VMFLE_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x64005057,
+  .opcode = OP_VMFLE_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x74005057,
+  .opcode = OP_VMFGT_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x7c005057,
+  .opcode = OP_VMFGE_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4c081057,
+  .opcode = OP_VFCLASS_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x5c005057,
+  .opcode = OP_VFMERGE_VFM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x5e005057,
+  .opcode = OP_VFMV_V_F,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48001057,
+  .opcode = OP_VFCVT_XU_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48009057,
+  .opcode = OP_VFCVT_X_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48011057,
+  .opcode = OP_VFCVT_F_XU_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48019057,
+  .opcode = OP_VFCVT_F_X_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48031057,
+  .opcode = OP_VFCVT_RTZ_XU_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48039057,
+  .opcode = OP_VFCVT_RTZ_X_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48041057,
+  .opcode = OP_VFWCVT_XU_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48049057,
+  .opcode = OP_VFWCVT_X_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48051057,
+  .opcode = OP_VFWCVT_F_XU_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48059057,
+  .opcode = OP_VFWCVT_F_X_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48061057,
+  .opcode = OP_VFWCVT_F_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48071057,
+  .opcode = OP_VFWCVT_RTZ_XU_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48079057,
+  .opcode = OP_VFWCVT_RTZ_X_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48081057,
+  .opcode = OP_VFNCVT_XU_F_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48089057,
+  .opcode = OP_VFNCVT_X_F_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48091057,
+  .opcode = OP_VFNCVT_F_XU_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48099057,
+  .opcode = OP_VFNCVT_F_X_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x480a1057,
+  .opcode = OP_VFNCVT_F_F_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x480a9057,
+  .opcode = OP_VFNCVT_ROD_F_F_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x480b1057,
+  .opcode = OP_VFNCVT_RTZ_XU_F_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x480b9057,
+  .opcode = OP_VFNCVT_RTZ_X_F_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x00002057,
+  .opcode = OP_VREDSUM_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x04002057,
+  .opcode = OP_VREDAND_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x08002057,
+  .opcode = OP_VREDOR_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x0c002057,
+  .opcode = OP_VREDXOR_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x10002057,
+  .opcode = OP_VREDMINU_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x14002057,
+  .opcode = OP_VREDMIN_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x18002057,
+  .opcode = OP_VREDMAXU_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x1c002057,
+  .opcode = OP_VREDMAX_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc0000057,
+  .opcode = OP_VWREDSUMU_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc4000057,
+  .opcode = OP_VWREDSUM_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x04001057,
+  .opcode = OP_VFREDUSUM_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x0c001057,
+  .opcode = OP_VFREDOSUM_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x14001057,
+  .opcode = OP_VFREDMIN_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x1c001057,
+  .opcode = OP_VFREDMAX_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xc4001057,
+  .opcode = OP_VFWREDUSUM_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xcc001057,
+  .opcode = OP_VFWREDOSUM_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x66002057,
+  .opcode = OP_VMAND_MM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x76002057,
+  .opcode = OP_VMNAND_MM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x62002057,
+  .opcode = OP_VMANDN_MM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x6e002057,
+  .opcode = OP_VMXOR_MM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x6a002057,
+  .opcode = OP_VMOR_MM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x7a002057,
+  .opcode = OP_VMNOR_MM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x72002057,
+  .opcode = OP_VMORN_MM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x7e002057,
+  .opcode = OP_VMXNOR_MM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x40082057,
+  .opcode = OP_VCPOP_M,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4008a057,
+  .opcode = OP_VFIRST_M,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x5000a057,
+  .opcode = OP_VMSBF_M,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x5001a057,
+  .opcode = OP_VMSIF_M,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x50012057,
+  .opcode = OP_VMSOF_M,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x50082057,
+  .opcode = OP_VIOTA_M,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfdfff07f,
+  .match = 0x5008a057,
+  .opcode = OP_VID_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0x42002057,
+  .opcode = OP_VMV_X_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x42006057,
+  .opcode = OP_VMV_S_X,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0x42001057,
+  .opcode = OP_VFMV_F_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x42005057,
+  .opcode = OP_VFMV_S_F,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x38004057,
+  .opcode = OP_VSLIDEUP_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x38003057,
+  .opcode = OP_VSLIDEUP_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x38006057,
+  .opcode = OP_VSLIDE1UP_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x3c004057,
+  .opcode = OP_VSLIDEDOWN_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x3c003057,
+  .opcode = OP_VSLIDEDOWN_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x3c006057,
+  .opcode = OP_VSLIDE1DOWN_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x30000057,
+  .opcode = OP_VRGATHER_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x38000057,
+  .opcode = OP_VRGATHEREI16_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x30004057,
+  .opcode = OP_VRGATHER_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x30003057,
+  .opcode = OP_VRGATHER_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x5e002057,
+  .opcode = OP_VCOMPRESS_VM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0x9e003057,
+  .opcode = OP_VMV1R_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0x9e00b057,
+  .opcode = OP_VMV2R_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0x9e01b057,
+  .opcode = OP_VMV4R_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0x9e03b057,
+  .opcode = OP_VMV8R_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48032057,
+  .opcode = OP_VZEXT_VF2,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48022057,
+  .opcode = OP_VZEXT_VF4,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48012057,
+  .opcode = OP_VZEXT_VF8,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4803a057,
+  .opcode = OP_VSEXT_VF2,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4802a057,
+  .opcode = OP_VSEXT_VF4,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4801a057,
+  .opcode = OP_VSEXT_VF8,
+ .format = RV_FMT_R
+},{
+  .mask = 0x8000707f,
+  .match = 0x00007057,
+  .opcode = OP_VSETVLI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xc000707f,
+  .match = 0xc0007057,
+  .opcode = OP_VSETIVLI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x80007057,
+  .opcode = OP_VSETVL,
+ .format = RV_FMT_R
+},{
+  .mask = 0xffffffff,
+  .match = 0x00d00073,
+  .opcode = OP_WRS_NTO,
+ .format = RV_FMT_R
+},{
+  .mask = 0xffffffff,
+  .match = 0x01d00073,
+  .opcode = OP_WRS_STO,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x20002033,
+  .opcode = OP_SH1ADD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x20004033,
+  .opcode = OP_SH2ADD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x20006033,
+  .opcode = OP_SH3ADD,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0800003b,
+  .opcode = OP_ADD_UW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2000203b,
+  .opcode = OP_SH1ADD_UW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2000403b,
+  .opcode = OP_SH2ADD_UW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2000603b,
+  .opcode = OP_SH3ADD_UW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xf800707f,
+  .match = 0x0800101b,
+  .opcode = OP_SLLI_UW,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfe00707f,
+  .match = 0x40007033,
+  .opcode = OP_ANDN,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x60001033,
+  .opcode = OP_ROL,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x60005033,
+  .opcode = OP_ROR,
+ .format = RV_FMT_R
+},{
+  .mask = 0xf800707f,
+  .match = 0x60005013,
+  .opcode = OP_RORI,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfff0707f,
+  .match = 0x69805013,
+  .opcode = OP_REV8_32,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x08004033,
+  .opcode = OP_ZEXT_H_32,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x08004033,
+  .opcode = OP_PACK,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x40004033,
+  .opcode = OP_XNOR,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x60001013,
+  .opcode = OP_CLZ,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x60201013,
+  .opcode = OP_CPOP,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x60101013,
+  .opcode = OP_CTZ,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0a006033,
+  .opcode = OP_MAX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0a007033,
+  .opcode = OP_MAXU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0a004033,
+  .opcode = OP_MIN,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0a005033,
+  .opcode = OP_MINU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x28705013,
+  .opcode = OP_ORC_B,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x40006033,
+  .opcode = OP_ORN,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x60401013,
+  .opcode = OP_SEXT_B,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x60501013,
+  .opcode = OP_SEXT_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x68705013,
+  .opcode = OP_BREV8,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x08007033,
+  .opcode = OP_PACKH,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x08f05013,
+  .opcode = OP_UNZIP,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x08f01013,
+  .opcode = OP_ZIP,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x6b805013,
+  .opcode = OP_REV8_64,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x6000103b,
+  .opcode = OP_ROLW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x6000501b,
+  .opcode = OP_RORIW,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfe00707f,
+  .match = 0x6000503b,
+  .opcode = OP_RORW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x0800403b,
+  .opcode = OP_ZEXT_H_64,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0800403b,
+  .opcode = OP_PACKW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x6000101b,
+  .opcode = OP_CLZW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x6010101b,
+  .opcode = OP_CTZW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x6020101b,
+  .opcode = OP_CPOPW,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0a001033,
+  .opcode = OP_CLMUL,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0a003033,
+  .opcode = OP_CLMULH,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0a002033,
+  .opcode = OP_CLMULR,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x28002033,
+  .opcode = OP_XPERM4,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x28004033,
+  .opcode = OP_XPERM8,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x48001033,
+  .opcode = OP_BCLR,
+ .format = RV_FMT_R
+},{
+  .mask = 0xf800707f,
+  .match = 0x48001013,
+  .opcode = OP_BCLRI,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfe00707f,
+  .match = 0x48005033,
+  .opcode = OP_BEXT,
+ .format = RV_FMT_R
+},{
+  .mask = 0xf800707f,
+  .match = 0x48005013,
+  .opcode = OP_BEXTI,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfe00707f,
+  .match = 0x68001033,
+  .opcode = OP_BINV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xf800707f,
+  .match = 0x68001013,
+  .opcode = OP_BINVI,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfe00707f,
+  .match = 0x28001033,
+  .opcode = OP_BSET,
+ .format = RV_FMT_R
+},{
+  .mask = 0xf800707f,
+  .match = 0x28001013,
+  .opcode = OP_BSETI,
+ .format = RV_FMT_S
+},{
+  .mask = 0xfff0707f,
+  .match = 0xf0100053,
+  .opcode = OP_FLI_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xf2100053,
+  .opcode = OP_FLI_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xf4100053,
+  .opcode = OP_FLI_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x28002053,
+  .opcode = OP_FMINM_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x28003053,
+  .opcode = OP_FMAXM_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2a002053,
+  .opcode = OP_FMINM_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2a003053,
+  .opcode = OP_FMAXM_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2c002053,
+  .opcode = OP_FMINM_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2c003053,
+  .opcode = OP_FMAXM_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x40400053,
+  .opcode = OP_FROUND_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x40500053,
+  .opcode = OP_FROUNDNX_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x42400053,
+  .opcode = OP_FROUND_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x42500053,
+  .opcode = OP_FROUNDNX_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x44400053,
+  .opcode = OP_FROUND_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x44500053,
+  .opcode = OP_FROUNDNX_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xc2801053,
+  .opcode = OP_FCVTMOD_W_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe2100053,
+  .opcode = OP_FMVH_X_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xb2000053,
+  .opcode = OP_FMVP_D_X,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa0004053,
+  .opcode = OP_FLEQ_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa0005053,
+  .opcode = OP_FLTQ_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa2004053,
+  .opcode = OP_FLEQ_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa2005053,
+  .opcode = OP_FLTQ_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa4004053,
+  .opcode = OP_FLEQ_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa4005053,
+  .opcode = OP_FLTQ_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0000707f,
+  .match = 0x00001007,
+  .opcode = OP_FLH,
+ .format = RV_FMT_I
+},{
+  .mask = 0x0000707f,
+  .match = 0x00001027,
+  .opcode = OP_FSH,
+ .format = RV_FMT_S
+},{
+  .mask = 0x0600007f,
+  .match = 0x04000043,
+  .opcode = OP_FMADD_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0600007f,
+  .match = 0x04000047,
+  .opcode = OP_FMSUB_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0600007f,
+  .match = 0x0400004b,
+  .opcode = OP_FNMSUB_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0x0600007f,
+  .match = 0x0400004f,
+  .opcode = OP_FNMADD_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x04000053,
+  .opcode = OP_FADD_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x0c000053,
+  .opcode = OP_FSUB_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x14000053,
+  .opcode = OP_FMUL_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00007f,
+  .match = 0x1c000053,
+  .opcode = OP_FDIV_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x5c000053,
+  .opcode = OP_FSQRT_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x24000053,
+  .opcode = OP_FSGNJ_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x24001053,
+  .opcode = OP_FSGNJN_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x24002053,
+  .opcode = OP_FSGNJX_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2c000053,
+  .opcode = OP_FMIN_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x2c001053,
+  .opcode = OP_FMAX_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x44000053,
+  .opcode = OP_FCVT_H_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x40200053,
+  .opcode = OP_FCVT_S_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x44100053,
+  .opcode = OP_FCVT_H_D,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x42200053,
+  .opcode = OP_FCVT_D_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc4000053,
+  .opcode = OP_FCVT_W_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc4100053,
+  .opcode = OP_FCVT_WU_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe4000053,
+  .opcode = OP_FMV_X_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa4002053,
+  .opcode = OP_FEQ_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa4001053,
+  .opcode = OP_FLT_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xa4000053,
+  .opcode = OP_FLE_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xe4001053,
+  .opcode = OP_FCLASS_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd4000053,
+  .opcode = OP_FCVT_H_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd4100053,
+  .opcode = OP_FCVT_H_WU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0xf4000053,
+  .opcode = OP_FMV_H_X,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc4200053,
+  .opcode = OP_FCVT_L_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xc4300053,
+  .opcode = OP_FCVT_LU_H,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd4200053,
+  .opcode = OP_FCVT_H_L,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0xd4300053,
+  .opcode = OP_FCVT_H_LU,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe007fff,
+  .match = 0x16000073,
+  .opcode = OP_SINVAL_VMA,
+ .format = RV_FMT_S
+},{
+  .mask = 0xffffffff,
+  .match = 0x18000073,
+  .opcode = OP_SFENCE_W_INVAL,
+ .format = RV_FMT_R
+},{
+  .mask = 0xffffffff,
+  .match = 0x18100073,
+  .opcode = OP_SFENCE_INVAL_IR,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe007fff,
+  .match = 0x26000073,
+  .opcode = OP_HINVAL_VVMA,
+ .format = RV_FMT_H
+},{
+  .mask = 0xfe007fff,
+  .match = 0x66000073,
+  .opcode = OP_HINVAL_GVMA,
+ .format = RV_FMT_H
+},{
+  .mask = 0x3e00707f,
+  .match = 0x2e000033,
+  .opcode = OP_AES32DSMI,
+ .format = RV_FMT_K
+},{
+  .mask = 0x3e00707f,
+  .match = 0x2a000033,
+  .opcode = OP_AES32DSI,
+ .format = RV_FMT_K
+},{
+  .mask = 0xfe00707f,
+  .match = 0x3e000033,
+  .opcode = OP_AES64DSM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x3a000033,
+  .opcode = OP_AES64DS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x30001013,
+  .opcode = OP_AES64IM,
+ .format = RV_FMT_R
+},{
+  .mask = 0x3e00707f,
+  .match = 0x26000033,
+  .opcode = OP_AES32ESMI,
+ .format = RV_FMT_K
+},{
+  .mask = 0x3e00707f,
+  .match = 0x22000033,
+  .opcode = OP_AES32ESI,
+ .format = RV_FMT_K
+},{
+  .mask = 0xfe00707f,
+  .match = 0x32000033,
+  .opcode = OP_AES64ES,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x36000033,
+  .opcode = OP_AES64ESM,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x7e000033,
+  .opcode = OP_AES64KS2,
+ .format = RV_FMT_R
+},{
+  .mask = 0xff00707f,
+  .match = 0x31001013,
+  .opcode = OP_AES64KS1I,
+ .format = RV_FMT_I
+},{
+  .mask = 0xfff0707f,
+  .match = 0x10301013,
+  .opcode = OP_SHA256SIG1,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0707f,
+  .match = 0x10101013,
+  .opcode = OP_SHA256SUM1,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x52000033,
+  .opcode = OP_SHA512SUM1R,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x56000033,
+  .opcode = OP_SHA512SIG1L,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x5e000033,
+  .opcode = OP_SHA512SIG1H,
+ .format = RV_FMT_R
+},{
+  .mask = 0x3e00707f,
+  .match = 0x30000033,
+  .opcode = OP_SM4ED,
+ .format = RV_FMT_K
+},{
+  .mask = 0x3e00707f,
+  .match = 0x34000033,
+  .opcode = OP_SM4KS,
+ .format = RV_FMT_K
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0e005033,
+  .opcode = OP_CZERO_EQZ,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x0e007033,
+  .opcode = OP_CZERO_NEZ,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x44800053,
+  .opcode = OP_FCVT_BF16_S,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfff0007f,
+  .match = 0x40600053,
+  .opcode = OP_FCVT_S_BF16,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x480e9057,
+  .opcode = OP_VFNCVTBF16_F_F_W,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48069057,
+  .opcode = OP_VFWCVTBF16_F_F_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xec001057,
+  .opcode = OP_VFWMACCBF16_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xec005057,
+  .opcode = OP_VFWMACCBF16_VF,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x30002057,
+  .opcode = OP_VCLMUL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x30006057,
+  .opcode = OP_VCLMUL_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x34002057,
+  .opcode = OP_VCLMULH_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x34006057,
+  .opcode = OP_VCLMULH_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x54000057,
+  .opcode = OP_VROL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x54004057,
+  .opcode = OP_VROL_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x50000057,
+  .opcode = OP_VROR_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x50004057,
+  .opcode = OP_VROR_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xf800707f,
+  .match = 0x50003057,
+  .opcode = OP_VROR_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48042057,
+  .opcode = OP_VBREV8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4804a057,
+  .opcode = OP_VREV8_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x04000057,
+  .opcode = OP_VANDN_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0x04004057,
+  .opcode = OP_VANDN_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48052057,
+  .opcode = OP_VBREV_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48062057,
+  .opcode = OP_VCLZ_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x4806a057,
+  .opcode = OP_VCTZ_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc0ff07f,
+  .match = 0x48072057,
+  .opcode = OP_VCPOP_V,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd4000057,
+  .opcode = OP_VWSLL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd4004057,
+  .opcode = OP_VWSLL_VX,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfc00707f,
+  .match = 0xd4003057,
+  .opcode = OP_VWSLL_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa201a077,
+  .opcode = OP_VAESEF_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa601a077,
+  .opcode = OP_VAESEF_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa200a077,
+  .opcode = OP_VAESDF_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa600a077,
+  .opcode = OP_VAESDF_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa2012077,
+  .opcode = OP_VAESEM_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa6012077,
+  .opcode = OP_VAESEM_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa2002077,
+  .opcode = OP_VAESDM_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa6002077,
+  .opcode = OP_VAESDM_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa603a077,
+  .opcode = OP_VAESZ_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x8a002077,
+  .opcode = OP_VAESKF1_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xaa002077,
+  .opcode = OP_VAESKF2_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xb6002077,
+  .opcode = OP_VSHA2MS_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xba002077,
+  .opcode = OP_VSHA2CH_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xbe002077,
+  .opcode = OP_VSHA2CL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x82002077,
+  .opcode = OP_VSM3ME_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xae002077,
+  .opcode = OP_VSM3C_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0xb2002077,
+  .opcode = OP_VGHSH_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa208a077,
+  .opcode = OP_VGMUL_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe00707f,
+  .match = 0x86002077,
+  .opcode = OP_VSM4K_VI,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa2082077,
+  .opcode = OP_VSM4R_VV,
+ .format = RV_FMT_R
+},{
+  .mask = 0xfe0ff07f,
+  .match = 0xa6082077,
+  .opcode = OP_VSM4R_VS,
+ .format = RV_FMT_R
+},{
+  .mask = 0xf800707f,
+  .match = 0x2800202f,
+  .opcode = OP_AMOCAS_W,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x2800302f,
+  .opcode = OP_AMOCAS_D,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x2800402f,
+  .opcode = OP_AMOCAS_Q,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x0800002f,
+  .opcode = OP_AMOSWAP_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x0000002f,
+  .opcode = OP_AMOADD_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x2000002f,
+  .opcode = OP_AMOXOR_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x6000002f,
+  .opcode = OP_AMOAND_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x4000002f,
+  .opcode = OP_AMOOR_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x8000002f,
+  .opcode = OP_AMOMIN_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xa000002f,
+  .opcode = OP_AMOMAX_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xc000002f,
+  .opcode = OP_AMOMINU_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xe000002f,
+  .opcode = OP_AMOMAXU_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x0800102f,
+  .opcode = OP_AMOSWAP_H,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x0000102f,
+  .opcode = OP_AMOADD_H,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x2000102f,
+  .opcode = OP_AMOXOR_H,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x6000102f,
+  .opcode = OP_AMOAND_H,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x4000102f,
+  .opcode = OP_AMOOR_H,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x8000102f,
+  .opcode = OP_AMOMIN_H,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xa000102f,
+  .opcode = OP_AMOMAX_H,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xc000102f,
+  .opcode = OP_AMOMINU_H,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0xe000102f,
+  .opcode = OP_AMOMAXU_H,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x2800002f,
+  .opcode = OP_AMOCAS_B,
+ .format = RV_FMT_A
+},{
+  .mask = 0xf800707f,
+  .match = 0x2800102f,
+  .opcode = OP_AMOCAS_H,
+ .format = RV_FMT_A
 }
 };
 
+static const std::unordered_map<InstOp, std::string> rv64i_inst_map = {
+  {OP_ECALL, "ecall"},
+  {OP_EBREAK, "ebreak"},
+  {OP_SCTRCLR, "sctrclr"},
+  {OP_URET, "uret"},
+  {OP_SRET, "sret"},
+  {OP_MRET, "mret"},
+  {OP_WFI, "wfi"},
+  {OP_SFENCE_VMA, "sfence_vma"},
+  {OP_MNRET, "mnret"},
+  {OP_LUI, "lui"},
+  {OP_AUIPC, "auipc"},
+  {OP_JAL, "jal"},
+  {OP_JALR, "jalr"},
+  {OP_BEQ, "beq"},
+  {OP_BNE, "bne"},
+  {OP_BLT, "blt"},
+  {OP_BGE, "bge"},
+  {OP_BLTU, "bltu"},
+  {OP_BGEU, "bgeu"},
+  {OP_LB, "lb"},
+  {OP_LH, "lh"},
+  {OP_LW, "lw"},
+  {OP_LBU, "lbu"},
+  {OP_LHU, "lhu"},
+  {OP_SB, "sb"},
+  {OP_SH, "sh"},
+  {OP_SW, "sw"},
+  {OP_ADDI, "addi"},
+  {OP_SLTI, "slti"},
+  {OP_SLTIU, "sltiu"},
+  {OP_XORI, "xori"},
+  {OP_ORI, "ori"},
+  {OP_ANDI, "andi"},
+  {OP_SLLI, "slli"},
+  {OP_SRLI, "srli"},
+  {OP_SRAI, "srai"},
+  {OP_ADD, "add"},
+  {OP_SUB, "sub"},
+  {OP_SLL, "sll"},
+  {OP_SLT, "slt"},
+  {OP_SLTU, "sltu"},
+  {OP_XOR, "xor"},
+  {OP_SRL, "srl"},
+  {OP_SRA, "sra"},
+  {OP_OR, "or"},
+  {OP_AND, "and"},
+  {OP_PAUSE, "pause"},
+  {OP_CSRRW, "csrrw"},
+  {OP_CSRRS, "csrrs"},
+  {OP_CSRRC, "csrrc"},
+  {OP_CSRRWI, "csrrwi"},
+  {OP_CSRRSI, "csrrsi"},
+  {OP_CSRRCI, "csrrci"},
+  {OP_LWU, "lwu"},
+  {OP_LD, "ld"},
+  {OP_SD, "sd"},
+  {OP_ADDIW, "addiw"},
+  {OP_SLLIW, "slliw"},
+  {OP_SRLIW, "srliw"},
+  {OP_SRAIW, "sraiw"},
+  {OP_ADDW, "addw"},
+  {OP_SUBW, "subw"},
+  {OP_SLLW, "sllw"},
+  {OP_SRLW, "srlw"},
+  {OP_SRAW, "sraw"},
+  {OP_LDU, "ldu"},
+  {OP_SQ, "sq"},
+  {OP_ADDID, "addid"},
+  {OP_SLLID, "sllid"},
+  {OP_SRLID, "srlid"},
+  {OP_SRAID, "sraid"},
+  {OP_ADDD, "addd"},
+  {OP_SUBD, "subd"},
+  {OP_SLLD, "slld"},
+  {OP_SRLD, "srld"},
+  {OP_SRAD, "srad"},
+  {OP_MUL, "mul"},
+  {OP_MULH, "mulh"},
+  {OP_MULHSU, "mulhsu"},
+  {OP_MULHU, "mulhu"},
+  {OP_DIV, "div"},
+  {OP_DIVU, "divu"},
+  {OP_REM, "rem"},
+  {OP_REMU, "remu"},
+  {OP_MULW, "mulw"},
+  {OP_DIVW, "divw"},
+  {OP_DIVUW, "divuw"},
+  {OP_REMW, "remw"},
+  {OP_REMUW, "remuw"},
+  {OP_MULD, "muld"},
+  {OP_DIVD, "divd"},
+  {OP_DIVUD, "divud"},
+  {OP_REMD, "remd"},
+  {OP_REMUD, "remud"},
+  {OP_LR_W, "lr_w"},
+  {OP_SC_W, "sc_w"},
+  {OP_AMOSWAP_W, "amoswap_w"},
+  {OP_SSAMOSWAP_W, "ssamoswap_w"},
+  {OP_AMOADD_W, "amoadd_w"},
+  {OP_AMOXOR_W, "amoxor_w"},
+  {OP_AMOAND_W, "amoand_w"},
+  {OP_AMOOR_W, "amoor_w"},
+  {OP_AMOMIN_W, "amomin_w"},
+  {OP_AMOMAX_W, "amomax_w"},
+  {OP_AMOMINU_W, "amominu_w"},
+  {OP_AMOMAXU_W, "amomaxu_w"},
+  {OP_LR_D, "lr_d"},
+  {OP_SC_D, "sc_d"},
+  {OP_AMOSWAP_D, "amoswap_d"},
+  {OP_SSAMOSWAP_D, "ssamoswap_d"},
+  {OP_AMOADD_D, "amoadd_d"},
+  {OP_AMOXOR_D, "amoxor_d"},
+  {OP_AMOAND_D, "amoand_d"},
+  {OP_AMOOR_D, "amoor_d"},
+  {OP_AMOMIN_D, "amomin_d"},
+  {OP_AMOMAX_D, "amomax_d"},
+  {OP_AMOMINU_D, "amominu_d"},
+  {OP_AMOMAXU_D, "amomaxu_d"},
+  {OP_FLW, "flw"},
+  {OP_FSW, "fsw"},
+  {OP_FMADD_S, "fmadd_s"},
+  {OP_FMSUB_S, "fmsub_s"},
+  {OP_FNMSUB_S, "fnmsub_s"},
+  {OP_FNMADD_S, "fnmadd_s"},
+  {OP_FADD_S, "fadd_s"},
+  {OP_FSUB_S, "fsub_s"},
+  {OP_FMUL_S, "fmul_s"},
+  {OP_FDIV_S, "fdiv_s"},
+  {OP_FSQRT_S, "fsqrt_s"},
+  {OP_FSGNJ_S, "fsgnj_s"},
+  {OP_FSGNJN_S, "fsgnjn_s"},
+  {OP_FSGNJX_S, "fsgnjx_s"},
+  {OP_FMIN_S, "fmin_s"},
+  {OP_FMAX_S, "fmax_s"},
+  {OP_FCVT_W_S, "fcvt_w_s"},
+  {OP_FCVT_WU_S, "fcvt_wu_s"},
+  {OP_FMV_X_W, "fmv_x_w"},
+  {OP_FEQ_S, "feq_s"},
+  {OP_FLT_S, "flt_s"},
+  {OP_FLE_S, "fle_s"},
+  {OP_FCLASS_S, "fclass_s"},
+  {OP_FCVT_S_W, "fcvt_s_w"},
+  {OP_FCVT_S_WU, "fcvt_s_wu"},
+  {OP_FMV_W_X, "fmv_w_x"},
+  {OP_FCVT_L_S, "fcvt_l_s"},
+  {OP_FCVT_LU_S, "fcvt_lu_s"},
+  {OP_FCVT_S_L, "fcvt_s_l"},
+  {OP_FCVT_S_LU, "fcvt_s_lu"},
+  {OP_FLD, "fld"},
+  {OP_FSD, "fsd"},
+  {OP_FMADD_D, "fmadd_d"},
+  {OP_FMSUB_D, "fmsub_d"},
+  {OP_FNMSUB_D, "fnmsub_d"},
+  {OP_FNMADD_D, "fnmadd_d"},
+  {OP_FADD_D, "fadd_d"},
+  {OP_FSUB_D, "fsub_d"},
+  {OP_FMUL_D, "fmul_d"},
+  {OP_FDIV_D, "fdiv_d"},
+  {OP_FSQRT_D, "fsqrt_d"},
+  {OP_FSGNJ_D, "fsgnj_d"},
+  {OP_FSGNJN_D, "fsgnjn_d"},
+  {OP_FSGNJX_D, "fsgnjx_d"},
+  {OP_FMIN_D, "fmin_d"},
+  {OP_FMAX_D, "fmax_d"},
+  {OP_FCVT_S_D, "fcvt_s_d"},
+  {OP_FCVT_D_S, "fcvt_d_s"},
+  {OP_FEQ_D, "feq_d"},
+  {OP_FLT_D, "flt_d"},
+  {OP_FLE_D, "fle_d"},
+  {OP_FCLASS_D, "fclass_d"},
+  {OP_FCVT_W_D, "fcvt_w_d"},
+  {OP_FCVT_WU_D, "fcvt_wu_d"},
+  {OP_FCVT_D_W, "fcvt_d_w"},
+  {OP_FCVT_D_WU, "fcvt_d_wu"},
+  {OP_FCVT_L_D, "fcvt_l_d"},
+  {OP_FCVT_LU_D, "fcvt_lu_d"},
+  {OP_FMV_X_D, "fmv_x_d"},
+  {OP_FCVT_D_L, "fcvt_d_l"},
+  {OP_FCVT_D_LU, "fcvt_d_lu"},
+  {OP_FMV_D_X, "fmv_d_x"},
+  {OP_HLV_B, "hlv_b"},
+  {OP_HLV_BU, "hlv_bu"},
+  {OP_HLV_H, "hlv_h"},
+  {OP_HLV_HU, "hlv_hu"},
+  {OP_HLVX_HU, "hlvx_hu"},
+  {OP_HLV_W, "hlv_w"},
+  {OP_HLVX_WU, "hlvx_wu"},
+  {OP_HSV_B, "hsv_b"},
+  {OP_HSV_H, "hsv_h"},
+  {OP_HSV_W, "hsv_w"},
+  {OP_HFENCE_GVMA, "hfence_gvma"},
+  {OP_HFENCE_VVMA, "hfence_vvma"},
+  {OP_HLV_WU, "hlv_wu"},
+  {OP_HLV_D, "hlv_d"},
+  {OP_HSV_D, "hsv_d"},
+  {OP_VLE8_V, "vle8_v"},
+  {OP_VLE16_V, "vle16_v"},
+  {OP_VLE32_V, "vle32_v"},
+  {OP_VLE64_V, "vle64_v"},
+  {OP_VSE8_V, "vse8_v"},
+  {OP_VSE16_V, "vse16_v"},
+  {OP_VSE32_V, "vse32_v"},
+  {OP_VSE64_V, "vse64_v"},
+  {OP_VLM_V, "vlm_v"},
+  {OP_VSM_V, "vsm_v"},
+  {OP_VLSE8_V, "vlse8_v"},
+  {OP_VLSE16_V, "vlse16_v"},
+  {OP_VLSE32_V, "vlse32_v"},
+  {OP_VLSE64_V, "vlse64_v"},
+  {OP_VSSE8_V, "vsse8_v"},
+  {OP_VSSE16_V, "vsse16_v"},
+  {OP_VSSE32_V, "vsse32_v"},
+  {OP_VSSE64_V, "vsse64_v"},
+  {OP_VLE8FF_V, "vle8ff_v"},
+  {OP_VLE16FF_V, "vle16ff_v"},
+  {OP_VLE32FF_V, "vle32ff_v"},
+  {OP_VLE64FF_V, "vle64ff_v"},
+  {OP_VL1RE8_V, "vl1re8_v"},
+  {OP_VL1RE16_V, "vl1re16_v"},
+  {OP_VL1RE32_V, "vl1re32_v"},
+  {OP_VL1RE64_V, "vl1re64_v"},
+  {OP_VL2RE8_V, "vl2re8_v"},
+  {OP_VL2RE16_V, "vl2re16_v"},
+  {OP_VL2RE32_V, "vl2re32_v"},
+  {OP_VL2RE64_V, "vl2re64_v"},
+  {OP_VL4RE8_V, "vl4re8_v"},
+  {OP_VL4RE16_V, "vl4re16_v"},
+  {OP_VL4RE32_V, "vl4re32_v"},
+  {OP_VL4RE64_V, "vl4re64_v"},
+  {OP_VL8RE8_V, "vl8re8_v"},
+  {OP_VL8RE16_V, "vl8re16_v"},
+  {OP_VL8RE32_V, "vl8re32_v"},
+  {OP_VL8RE64_V, "vl8re64_v"},
+  {OP_VS1R_V, "vs1r_v"},
+  {OP_VS2R_V, "vs2r_v"},
+  {OP_VS4R_V, "vs4r_v"},
+  {OP_VS8R_V, "vs8r_v"},
+  {OP_VADD_VV, "vadd_vv"},
+  {OP_VADD_VX, "vadd_vx"},
+  {OP_VADD_VI, "vadd_vi"},
+  {OP_VSUB_VV, "vsub_vv"},
+  {OP_VSUB_VX, "vsub_vx"},
+  {OP_VRSUB_VX, "vrsub_vx"},
+  {OP_VRSUB_VI, "vrsub_vi"},
+  {OP_VWADDU_VV, "vwaddu_vv"},
+  {OP_VWADDU_VX, "vwaddu_vx"},
+  {OP_VWADD_VV, "vwadd_vv"},
+  {OP_VWADD_VX, "vwadd_vx"},
+  {OP_VWSUBU_VV, "vwsubu_vv"},
+  {OP_VWSUBU_VX, "vwsubu_vx"},
+  {OP_VWSUB_VV, "vwsub_vv"},
+  {OP_VWSUB_VX, "vwsub_vx"},
+  {OP_VWADDU_WV, "vwaddu_wv"},
+  {OP_VWADDU_WX, "vwaddu_wx"},
+  {OP_VWADD_WV, "vwadd_wv"},
+  {OP_VWADD_WX, "vwadd_wx"},
+  {OP_VWSUBU_WV, "vwsubu_wv"},
+  {OP_VWSUBU_WX, "vwsubu_wx"},
+  {OP_VWSUB_WV, "vwsub_wv"},
+  {OP_VWSUB_WX, "vwsub_wx"},
+  {OP_VADC_VVM, "vadc_vvm"},
+  {OP_VADC_VXM, "vadc_vxm"},
+  {OP_VADC_VIM, "vadc_vim"},
+  {OP_VMADC_VVM, "vmadc_vvm"},
+  {OP_VMADC_VXM, "vmadc_vxm"},
+  {OP_VMADC_VIM, "vmadc_vim"},
+  {OP_VSBC_VVM, "vsbc_vvm"},
+  {OP_VSBC_VXM, "vsbc_vxm"},
+  {OP_VMSBC_VVM, "vmsbc_vvm"},
+  {OP_VMSBC_VXM, "vmsbc_vxm"},
+  {OP_VAND_VV, "vand_vv"},
+  {OP_VAND_VX, "vand_vx"},
+  {OP_VAND_VI, "vand_vi"},
+  {OP_VOR_VV, "vor_vv"},
+  {OP_VOR_VX, "vor_vx"},
+  {OP_VOR_VI, "vor_vi"},
+  {OP_VXOR_VV, "vxor_vv"},
+  {OP_VXOR_VX, "vxor_vx"},
+  {OP_VXOR_VI, "vxor_vi"},
+  {OP_VSLL_VV, "vsll_vv"},
+  {OP_VSLL_VX, "vsll_vx"},
+  {OP_VSLL_VI, "vsll_vi"},
+  {OP_VSRL_VV, "vsrl_vv"},
+  {OP_VSRL_VX, "vsrl_vx"},
+  {OP_VSRL_VI, "vsrl_vi"},
+  {OP_VSRA_VV, "vsra_vv"},
+  {OP_VSRA_VX, "vsra_vx"},
+  {OP_VSRA_VI, "vsra_vi"},
+  {OP_VNSRL_WV, "vnsrl_wv"},
+  {OP_VNSRL_WX, "vnsrl_wx"},
+  {OP_VNSRL_WI, "vnsrl_wi"},
+  {OP_VNSRA_WV, "vnsra_wv"},
+  {OP_VNSRA_WX, "vnsra_wx"},
+  {OP_VNSRA_WI, "vnsra_wi"},
+  {OP_VMSEQ_VV, "vmseq_vv"},
+  {OP_VMSEQ_VX, "vmseq_vx"},
+  {OP_VMSEQ_VI, "vmseq_vi"},
+  {OP_VMSNE_VV, "vmsne_vv"},
+  {OP_VMSNE_VX, "vmsne_vx"},
+  {OP_VMSNE_VI, "vmsne_vi"},
+  {OP_VMSLTU_VV, "vmsltu_vv"},
+  {OP_VMSLTU_VX, "vmsltu_vx"},
+  {OP_VMSLT_VV, "vmslt_vv"},
+  {OP_VMSLT_VX, "vmslt_vx"},
+  {OP_VMSLEU_VV, "vmsleu_vv"},
+  {OP_VMSLEU_VX, "vmsleu_vx"},
+  {OP_VMSLEU_VI, "vmsleu_vi"},
+  {OP_VMSLE_VV, "vmsle_vv"},
+  {OP_VMSLE_VX, "vmsle_vx"},
+  {OP_VMSLE_VI, "vmsle_vi"},
+  {OP_VMSGTU_VX, "vmsgtu_vx"},
+  {OP_VMSGTU_VI, "vmsgtu_vi"},
+  {OP_VMSGT_VX, "vmsgt_vx"},
+  {OP_VMSGT_VI, "vmsgt_vi"},
+  {OP_VMINU_VV, "vminu_vv"},
+  {OP_VMINU_VX, "vminu_vx"},
+  {OP_VMIN_VV, "vmin_vv"},
+  {OP_VMIN_VX, "vmin_vx"},
+  {OP_VMAXU_VV, "vmaxu_vv"},
+  {OP_VMAXU_VX, "vmaxu_vx"},
+  {OP_VMAX_VV, "vmax_vv"},
+  {OP_VMAX_VX, "vmax_vx"},
+  {OP_VMUL_VV, "vmul_vv"},
+  {OP_VMUL_VX, "vmul_vx"},
+  {OP_VMULH_VV, "vmulh_vv"},
+  {OP_VMULH_VX, "vmulh_vx"},
+  {OP_VMULHU_VV, "vmulhu_vv"},
+  {OP_VMULHU_VX, "vmulhu_vx"},
+  {OP_VMULHSU_VV, "vmulhsu_vv"},
+  {OP_VMULHSU_VX, "vmulhsu_vx"},
+  {OP_VDIVU_VV, "vdivu_vv"},
+  {OP_VDIVU_VX, "vdivu_vx"},
+  {OP_VDIV_VV, "vdiv_vv"},
+  {OP_VDIV_VX, "vdiv_vx"},
+  {OP_VREMU_VV, "vremu_vv"},
+  {OP_VREMU_VX, "vremu_vx"},
+  {OP_VREM_VV, "vrem_vv"},
+  {OP_VREM_VX, "vrem_vx"},
+  {OP_VWMULU_VV, "vwmulu_vv"},
+  {OP_VWMULU_VX, "vwmulu_vx"},
+  {OP_VWMULSU_VV, "vwmulsu_vv"},
+  {OP_VWMULSU_VX, "vwmulsu_vx"},
+  {OP_VWMUL_VV, "vwmul_vv"},
+  {OP_VWMUL_VX, "vwmul_vx"},
+  {OP_VMACC_VV, "vmacc_vv"},
+  {OP_VMACC_VX, "vmacc_vx"},
+  {OP_VNMSAC_VV, "vnmsac_vv"},
+  {OP_VNMSAC_VX, "vnmsac_vx"},
+  {OP_VMADD_VV, "vmadd_vv"},
+  {OP_VMADD_VX, "vmadd_vx"},
+  {OP_VNMSUB_VV, "vnmsub_vv"},
+  {OP_VNMSUB_VX, "vnmsub_vx"},
+  {OP_VWMACCU_VV, "vwmaccu_vv"},
+  {OP_VWMACCU_VX, "vwmaccu_vx"},
+  {OP_VWMACC_VV, "vwmacc_vv"},
+  {OP_VWMACC_VX, "vwmacc_vx"},
+  {OP_VWMACCSU_VV, "vwmaccsu_vv"},
+  {OP_VWMACCSU_VX, "vwmaccsu_vx"},
+  {OP_VWMACCUS_VX, "vwmaccus_vx"},
+  {OP_VMV_V_V, "vmv_v_v"},
+  {OP_VMV_V_X, "vmv_v_x"},
+  {OP_VMV_V_I, "vmv_v_i"},
+  {OP_VMERGE_VVM, "vmerge_vvm"},
+  {OP_VMERGE_VXM, "vmerge_vxm"},
+  {OP_VMERGE_VIM, "vmerge_vim"},
+  {OP_VSADDU_VV, "vsaddu_vv"},
+  {OP_VSADDU_VX, "vsaddu_vx"},
+  {OP_VSADDU_VI, "vsaddu_vi"},
+  {OP_VSADD_VV, "vsadd_vv"},
+  {OP_VSADD_VX, "vsadd_vx"},
+  {OP_VSADD_VI, "vsadd_vi"},
+  {OP_VSSUBU_VV, "vssubu_vv"},
+  {OP_VSSUBU_VX, "vssubu_vx"},
+  {OP_VSSUB_VV, "vssub_vv"},
+  {OP_VSSUB_VX, "vssub_vx"},
+  {OP_VAADD_VV, "vaadd_vv"},
+  {OP_VAADD_VX, "vaadd_vx"},
+  {OP_VAADDU_VV, "vaaddu_vv"},
+  {OP_VAADDU_VX, "vaaddu_vx"},
+  {OP_VASUB_VV, "vasub_vv"},
+  {OP_VASUB_VX, "vasub_vx"},
+  {OP_VASUBU_VV, "vasubu_vv"},
+  {OP_VASUBU_VX, "vasubu_vx"},
+  {OP_VSMUL_VV, "vsmul_vv"},
+  {OP_VSMUL_VX, "vsmul_vx"},
+  {OP_VSSRL_VV, "vssrl_vv"},
+  {OP_VSSRL_VX, "vssrl_vx"},
+  {OP_VSSRL_VI, "vssrl_vi"},
+  {OP_VSSRA_VV, "vssra_vv"},
+  {OP_VSSRA_VX, "vssra_vx"},
+  {OP_VSSRA_VI, "vssra_vi"},
+  {OP_VNCLIPU_WV, "vnclipu_wv"},
+  {OP_VNCLIPU_WX, "vnclipu_wx"},
+  {OP_VNCLIPU_WI, "vnclipu_wi"},
+  {OP_VNCLIP_WV, "vnclip_wv"},
+  {OP_VNCLIP_WX, "vnclip_wx"},
+  {OP_VNCLIP_WI, "vnclip_wi"},
+  {OP_VFADD_VV, "vfadd_vv"},
+  {OP_VFADD_VF, "vfadd_vf"},
+  {OP_VFSUB_VV, "vfsub_vv"},
+  {OP_VFSUB_VF, "vfsub_vf"},
+  {OP_VFRSUB_VF, "vfrsub_vf"},
+  {OP_VFWADD_VV, "vfwadd_vv"},
+  {OP_VFWADD_VF, "vfwadd_vf"},
+  {OP_VFWADD_WV, "vfwadd_wv"},
+  {OP_VFWADD_WF, "vfwadd_wf"},
+  {OP_VFWSUB_VV, "vfwsub_vv"},
+  {OP_VFWSUB_VF, "vfwsub_vf"},
+  {OP_VFWSUB_WV, "vfwsub_wv"},
+  {OP_VFWSUB_WF, "vfwsub_wf"},
+  {OP_VFMUL_VV, "vfmul_vv"},
+  {OP_VFMUL_VF, "vfmul_vf"},
+  {OP_VFDIV_VV, "vfdiv_vv"},
+  {OP_VFDIV_VF, "vfdiv_vf"},
+  {OP_VFRDIV_VF, "vfrdiv_vf"},
+  {OP_VFWMUL_VV, "vfwmul_vv"},
+  {OP_VFWMUL_VF, "vfwmul_vf"},
+  {OP_VFMACC_VV, "vfmacc_vv"},
+  {OP_VFNMACC_VV, "vfnmacc_vv"},
+  {OP_VFNMACC_VF, "vfnmacc_vf"},
+  {OP_VFMACC_VF, "vfmacc_vf"},
+  {OP_VFMSAC_VV, "vfmsac_vv"},
+  {OP_VFMSAC_VF, "vfmsac_vf"},
+  {OP_VFNMSAC_VV, "vfnmsac_vv"},
+  {OP_VFNMSAC_VF, "vfnmsac_vf"},
+  {OP_VFMADD_VV, "vfmadd_vv"},
+  {OP_VFMADD_VF, "vfmadd_vf"},
+  {OP_VFNMADD_VV, "vfnmadd_vv"},
+  {OP_VFNMADD_VF, "vfnmadd_vf"},
+  {OP_VFMSUB_VV, "vfmsub_vv"},
+  {OP_VFMSUB_VF, "vfmsub_vf"},
+  {OP_VFNMSUB_VV, "vfnmsub_vv"},
+  {OP_VFNMSUB_VF, "vfnmsub_vf"},
+  {OP_VFWMACC_VV, "vfwmacc_vv"},
+  {OP_VFWMACC_VF, "vfwmacc_vf"},
+  {OP_VFWNMACC_VV, "vfwnmacc_vv"},
+  {OP_VFWNMACC_VF, "vfwnmacc_vf"},
+  {OP_VFWMSAC_VV, "vfwmsac_vv"},
+  {OP_VFWMSAC_VF, "vfwmsac_vf"},
+  {OP_VFWNMSAC_VV, "vfwnmsac_vv"},
+  {OP_VFWNMSAC_VF, "vfwnmsac_vf"},
+  {OP_VFSQRT_V, "vfsqrt_v"},
+  {OP_VFRSQRT7_V, "vfrsqrt7_v"},
+  {OP_VFREC7_V, "vfrec7_v"},
+  {OP_VFMIN_VV, "vfmin_vv"},
+  {OP_VFMIN_VF, "vfmin_vf"},
+  {OP_VFMAX_VV, "vfmax_vv"},
+  {OP_VFMAX_VF, "vfmax_vf"},
+  {OP_VFSGNJ_VV, "vfsgnj_vv"},
+  {OP_VFSGNJ_VF, "vfsgnj_vf"},
+  {OP_VFSGNJN_VV, "vfsgnjn_vv"},
+  {OP_VFSGNJN_VF, "vfsgnjn_vf"},
+  {OP_VFSGNJX_VV, "vfsgnjx_vv"},
+  {OP_VFSGNJX_VF, "vfsgnjx_vf"},
+  {OP_VFSLIDE1UP_VF, "vfslide1up_vf"},
+  {OP_VFSLIDE1DOWN_VF, "vfslide1down_vf"},
+  {OP_VMFEQ_VV, "vmfeq_vv"},
+  {OP_VMFEQ_VF, "vmfeq_vf"},
+  {OP_VMFNE_VV, "vmfne_vv"},
+  {OP_VMFNE_VF, "vmfne_vf"},
+  {OP_VMFLT_VV, "vmflt_vv"},
+  {OP_VMFLT_VF, "vmflt_vf"},
+  {OP_VMFLE_VV, "vmfle_vv"},
+  {OP_VMFLE_VF, "vmfle_vf"},
+  {OP_VMFGT_VF, "vmfgt_vf"},
+  {OP_VMFGE_VF, "vmfge_vf"},
+  {OP_VFCLASS_V, "vfclass_v"},
+  {OP_VFMERGE_VFM, "vfmerge_vfm"},
+  {OP_VFMV_V_F, "vfmv_v_f"},
+  {OP_VFCVT_XU_F_V, "vfcvt_xu_f_v"},
+  {OP_VFCVT_X_F_V, "vfcvt_x_f_v"},
+  {OP_VFCVT_F_XU_V, "vfcvt_f_xu_v"},
+  {OP_VFCVT_F_X_V, "vfcvt_f_x_v"},
+  {OP_VFCVT_RTZ_XU_F_V, "vfcvt_rtz_xu_f_v"},
+  {OP_VFCVT_RTZ_X_F_V, "vfcvt_rtz_x_f_v"},
+  {OP_VFWCVT_XU_F_V, "vfwcvt_xu_f_v"},
+  {OP_VFWCVT_X_F_V, "vfwcvt_x_f_v"},
+  {OP_VFWCVT_F_XU_V, "vfwcvt_f_xu_v"},
+  {OP_VFWCVT_F_X_V, "vfwcvt_f_x_v"},
+  {OP_VFWCVT_F_F_V, "vfwcvt_f_f_v"},
+  {OP_VFWCVT_RTZ_XU_F_V, "vfwcvt_rtz_xu_f_v"},
+  {OP_VFWCVT_RTZ_X_F_V, "vfwcvt_rtz_x_f_v"},
+  {OP_VFNCVT_XU_F_W, "vfncvt_xu_f_w"},
+  {OP_VFNCVT_X_F_W, "vfncvt_x_f_w"},
+  {OP_VFNCVT_F_XU_W, "vfncvt_f_xu_w"},
+  {OP_VFNCVT_F_X_W, "vfncvt_f_x_w"},
+  {OP_VFNCVT_F_F_W, "vfncvt_f_f_w"},
+  {OP_VFNCVT_ROD_F_F_W, "vfncvt_rod_f_f_w"},
+  {OP_VFNCVT_RTZ_XU_F_W, "vfncvt_rtz_xu_f_w"},
+  {OP_VFNCVT_RTZ_X_F_W, "vfncvt_rtz_x_f_w"},
+  {OP_VREDSUM_VS, "vredsum_vs"},
+  {OP_VREDAND_VS, "vredand_vs"},
+  {OP_VREDOR_VS, "vredor_vs"},
+  {OP_VREDXOR_VS, "vredxor_vs"},
+  {OP_VREDMINU_VS, "vredminu_vs"},
+  {OP_VREDMIN_VS, "vredmin_vs"},
+  {OP_VREDMAXU_VS, "vredmaxu_vs"},
+  {OP_VREDMAX_VS, "vredmax_vs"},
+  {OP_VWREDSUMU_VS, "vwredsumu_vs"},
+  {OP_VWREDSUM_VS, "vwredsum_vs"},
+  {OP_VFREDUSUM_VS, "vfredusum_vs"},
+  {OP_VFREDOSUM_VS, "vfredosum_vs"},
+  {OP_VFREDMIN_VS, "vfredmin_vs"},
+  {OP_VFREDMAX_VS, "vfredmax_vs"},
+  {OP_VFWREDUSUM_VS, "vfwredusum_vs"},
+  {OP_VFWREDOSUM_VS, "vfwredosum_vs"},
+  {OP_VMAND_MM, "vmand_mm"},
+  {OP_VMNAND_MM, "vmnand_mm"},
+  {OP_VMANDN_MM, "vmandn_mm"},
+  {OP_VMXOR_MM, "vmxor_mm"},
+  {OP_VMOR_MM, "vmor_mm"},
+  {OP_VMNOR_MM, "vmnor_mm"},
+  {OP_VMORN_MM, "vmorn_mm"},
+  {OP_VMXNOR_MM, "vmxnor_mm"},
+  {OP_VCPOP_M, "vcpop_m"},
+  {OP_VFIRST_M, "vfirst_m"},
+  {OP_VMSBF_M, "vmsbf_m"},
+  {OP_VMSIF_M, "vmsif_m"},
+  {OP_VMSOF_M, "vmsof_m"},
+  {OP_VIOTA_M, "viota_m"},
+  {OP_VID_V, "vid_v"},
+  {OP_VMV_X_S, "vmv_x_s"},
+  {OP_VMV_S_X, "vmv_s_x"},
+  {OP_VFMV_F_S, "vfmv_f_s"},
+  {OP_VFMV_S_F, "vfmv_s_f"},
+  {OP_VSLIDEUP_VX, "vslideup_vx"},
+  {OP_VSLIDEUP_VI, "vslideup_vi"},
+  {OP_VSLIDE1UP_VX, "vslide1up_vx"},
+  {OP_VSLIDEDOWN_VX, "vslidedown_vx"},
+  {OP_VSLIDEDOWN_VI, "vslidedown_vi"},
+  {OP_VSLIDE1DOWN_VX, "vslide1down_vx"},
+  {OP_VRGATHER_VV, "vrgather_vv"},
+  {OP_VRGATHEREI16_VV, "vrgatherei16_vv"},
+  {OP_VRGATHER_VX, "vrgather_vx"},
+  {OP_VRGATHER_VI, "vrgather_vi"},
+  {OP_VCOMPRESS_VM, "vcompress_vm"},
+  {OP_VMV1R_V, "vmv1r_v"},
+  {OP_VMV2R_V, "vmv2r_v"},
+  {OP_VMV4R_V, "vmv4r_v"},
+  {OP_VMV8R_V, "vmv8r_v"},
+  {OP_VZEXT_VF2, "vzext_vf2"},
+  {OP_VZEXT_VF4, "vzext_vf4"},
+  {OP_VZEXT_VF8, "vzext_vf8"},
+  {OP_VSEXT_VF2, "vsext_vf2"},
+  {OP_VSEXT_VF4, "vsext_vf4"},
+  {OP_VSEXT_VF8, "vsext_vf8"},
+  {OP_VSETVLI, "vsetvli"},
+  {OP_VSETIVLI, "vsetivli"},
+  {OP_VSETVL, "vsetvl"},
+  {OP_WRS_NTO, "wrs_nto"},
+  {OP_WRS_STO, "wrs_sto"},
+  {OP_SH1ADD, "sh1add"},
+  {OP_SH2ADD, "sh2add"},
+  {OP_SH3ADD, "sh3add"},
+  {OP_ADD_UW, "add_uw"},
+  {OP_SH1ADD_UW, "sh1add_uw"},
+  {OP_SH2ADD_UW, "sh2add_uw"},
+  {OP_SH3ADD_UW, "sh3add_uw"},
+  {OP_SLLI_UW, "slli_uw"},
+  {OP_ANDN, "andn"},
+  {OP_ROL, "rol"},
+  {OP_ROR, "ror"},
+  {OP_RORI, "rori"},
+  {OP_REV8_32, "rev8_32"},
+  {OP_ZEXT_H_32, "zext_h_32"},
+  {OP_PACK, "pack"},
+  {OP_XNOR, "xnor"},
+  {OP_CLZ, "clz"},
+  {OP_CPOP, "cpop"},
+  {OP_CTZ, "ctz"},
+  {OP_MAX, "max"},
+  {OP_MAXU, "maxu"},
+  {OP_MIN, "min"},
+  {OP_MINU, "minu"},
+  {OP_ORC_B, "orc_b"},
+  {OP_ORN, "orn"},
+  {OP_SEXT_B, "sext_b"},
+  {OP_SEXT_H, "sext_h"},
+  {OP_BREV8, "brev8"},
+  {OP_PACKH, "packh"},
+  {OP_UNZIP, "unzip"},
+  {OP_ZIP, "zip"},
+  {OP_REV8_64, "rev8_64"},
+  {OP_ROLW, "rolw"},
+  {OP_RORIW, "roriw"},
+  {OP_RORW, "rorw"},
+  {OP_ZEXT_H_64, "zext_h_64"},
+  {OP_PACKW, "packw"},
+  {OP_CLZW, "clzw"},
+  {OP_CTZW, "ctzw"},
+  {OP_CPOPW, "cpopw"},
+  {OP_CLMUL, "clmul"},
+  {OP_CLMULH, "clmulh"},
+  {OP_CLMULR, "clmulr"},
+  {OP_XPERM4, "xperm4"},
+  {OP_XPERM8, "xperm8"},
+  {OP_BCLR, "bclr"},
+  {OP_BCLRI, "bclri"},
+  {OP_BEXT, "bext"},
+  {OP_BEXTI, "bexti"},
+  {OP_BINV, "binv"},
+  {OP_BINVI, "binvi"},
+  {OP_BSET, "bset"},
+  {OP_BSETI, "bseti"},
+  {OP_FLI_S, "fli_s"},
+  {OP_FLI_D, "fli_d"},
+  {OP_FLI_H, "fli_h"},
+  {OP_FMINM_S, "fminm_s"},
+  {OP_FMAXM_S, "fmaxm_s"},
+  {OP_FMINM_D, "fminm_d"},
+  {OP_FMAXM_D, "fmaxm_d"},
+  {OP_FMINM_H, "fminm_h"},
+  {OP_FMAXM_H, "fmaxm_h"},
+  {OP_FROUND_S, "fround_s"},
+  {OP_FROUNDNX_S, "froundnx_s"},
+  {OP_FROUND_D, "fround_d"},
+  {OP_FROUNDNX_D, "froundnx_d"},
+  {OP_FROUND_H, "fround_h"},
+  {OP_FROUNDNX_H, "froundnx_h"},
+  {OP_FCVTMOD_W_D, "fcvtmod_w_d"},
+  {OP_FMVH_X_D, "fmvh_x_d"},
+  {OP_FMVP_D_X, "fmvp_d_x"},
+  {OP_FLEQ_S, "fleq_s"},
+  {OP_FLTQ_S, "fltq_s"},
+  {OP_FLEQ_D, "fleq_d"},
+  {OP_FLTQ_D, "fltq_d"},
+  {OP_FLEQ_H, "fleq_h"},
+  {OP_FLTQ_H, "fltq_h"},
+  {OP_FLH, "flh"},
+  {OP_FSH, "fsh"},
+  {OP_FMADD_H, "fmadd_h"},
+  {OP_FMSUB_H, "fmsub_h"},
+  {OP_FNMSUB_H, "fnmsub_h"},
+  {OP_FNMADD_H, "fnmadd_h"},
+  {OP_FADD_H, "fadd_h"},
+  {OP_FSUB_H, "fsub_h"},
+  {OP_FMUL_H, "fmul_h"},
+  {OP_FDIV_H, "fdiv_h"},
+  {OP_FSQRT_H, "fsqrt_h"},
+  {OP_FSGNJ_H, "fsgnj_h"},
+  {OP_FSGNJN_H, "fsgnjn_h"},
+  {OP_FSGNJX_H, "fsgnjx_h"},
+  {OP_FMIN_H, "fmin_h"},
+  {OP_FMAX_H, "fmax_h"},
+  {OP_FCVT_H_S, "fcvt_h_s"},
+  {OP_FCVT_S_H, "fcvt_s_h"},
+  {OP_FCVT_H_D, "fcvt_h_d"},
+  {OP_FCVT_D_H, "fcvt_d_h"},
+  {OP_FCVT_W_H, "fcvt_w_h"},
+  {OP_FCVT_WU_H, "fcvt_wu_h"},
+  {OP_FMV_X_H, "fmv_x_h"},
+  {OP_FEQ_H, "feq_h"},
+  {OP_FLT_H, "flt_h"},
+  {OP_FLE_H, "fle_h"},
+  {OP_FCLASS_H, "fclass_h"},
+  {OP_FCVT_H_W, "fcvt_h_w"},
+  {OP_FCVT_H_WU, "fcvt_h_wu"},
+  {OP_FMV_H_X, "fmv_h_x"},
+  {OP_FCVT_L_H, "fcvt_l_h"},
+  {OP_FCVT_LU_H, "fcvt_lu_h"},
+  {OP_FCVT_H_L, "fcvt_h_l"},
+  {OP_FCVT_H_LU, "fcvt_h_lu"},
+  {OP_SINVAL_VMA, "sinval_vma"},
+  {OP_SFENCE_W_INVAL, "sfence_w_inval"},
+  {OP_SFENCE_INVAL_IR, "sfence_inval_ir"},
+  {OP_HINVAL_VVMA, "hinval_vvma"},
+  {OP_HINVAL_GVMA, "hinval_gvma"},
+  {OP_AES32DSMI, "aes32dsmi"},
+  {OP_AES32DSI, "aes32dsi"},
+  {OP_AES64DSM, "aes64dsm"},
+  {OP_AES64DS, "aes64ds"},
+  {OP_AES64IM, "aes64im"},
+  {OP_AES32ESMI, "aes32esmi"},
+  {OP_AES32ESI, "aes32esi"},
+  {OP_AES64ES, "aes64es"},
+  {OP_AES64ESM, "aes64esm"},
+  {OP_AES64KS2, "aes64ks2"},
+  {OP_AES64KS1I, "aes64ks1i"},
+  {OP_SHA256SIG1, "sha256sig1"},
+  {OP_SHA256SUM1, "sha256sum1"},
+  {OP_SHA512SUM1R, "sha512sum1r"},
+  {OP_SHA512SIG1L, "sha512sig1l"},
+  {OP_SHA512SIG1H, "sha512sig1h"},
+  {OP_SHA512SIG1, "sha512sig1"},
+  {OP_SHA512SUM1, "sha512sum1"},
+  {OP_SM3P1, "sm3p1"},
+  {OP_SM4ED, "sm4ed"},
+  {OP_SM4KS, "sm4ks"},
+  {OP_CZERO_EQZ, "czero_eqz"},
+  {OP_CZERO_NEZ, "czero_nez"},
+  {OP_FCVT_BF16_S, "fcvt_bf16_s"},
+  {OP_FCVT_S_BF16, "fcvt_s_bf16"},
+  {OP_VFNCVTBF16_F_F_W, "vfncvtbf16_f_f_w"},
+  {OP_VFWCVTBF16_F_F_V, "vfwcvtbf16_f_f_v"},
+  {OP_VFWMACCBF16_VV, "vfwmaccbf16_vv"},
+  {OP_VFWMACCBF16_VF, "vfwmaccbf16_vf"},
+  {OP_VCLMUL_VV, "vclmul_vv"},
+  {OP_VCLMUL_VX, "vclmul_vx"},
+  {OP_VCLMULH_VV, "vclmulh_vv"},
+  {OP_VCLMULH_VX, "vclmulh_vx"},
+  {OP_VROL_VV, "vrol_vv"},
+  {OP_VROL_VX, "vrol_vx"},
+  {OP_VROR_VV, "vror_vv"},
+  {OP_VROR_VX, "vror_vx"},
+  {OP_VROR_VI, "vror_vi"},
+  {OP_VBREV8_V, "vbrev8_v"},
+  {OP_VREV8_V, "vrev8_v"},
+  {OP_VANDN_VV, "vandn_vv"},
+  {OP_VANDN_VX, "vandn_vx"},
+  {OP_VBREV_V, "vbrev_v"},
+  {OP_VCLZ_V, "vclz_v"},
+  {OP_VCTZ_V, "vctz_v"},
+  {OP_VCPOP_V, "vcpop_v"},
+  {OP_VWSLL_VV, "vwsll_vv"},
+  {OP_VWSLL_VX, "vwsll_vx"},
+  {OP_VWSLL_VI, "vwsll_vi"},
+  {OP_VAESEF_VV, "vaesef_vv"},
+  {OP_VAESEF_VS, "vaesef_vs"},
+  {OP_VAESDF_VV, "vaesdf_vv"},
+  {OP_VAESDF_VS, "vaesdf_vs"},
+  {OP_VAESEM_VV, "vaesem_vv"},
+  {OP_VAESEM_VS, "vaesem_vs"},
+  {OP_VAESDM_VV, "vaesdm_vv"},
+  {OP_VAESDM_VS, "vaesdm_vs"},
+  {OP_VAESZ_VS, "vaesz_vs"},
+  {OP_VAESKF1_VI, "vaeskf1_vi"},
+  {OP_VAESKF2_VI, "vaeskf2_vi"},
+  {OP_VSHA2MS_VV, "vsha2ms_vv"},
+  {OP_VSHA2CH_VV, "vsha2ch_vv"},
+  {OP_VSHA2CL_VV, "vsha2cl_vv"},
+  {OP_VSM3ME_VV, "vsm3me_vv"},
+  {OP_VSM3C_VI, "vsm3c_vi"},
+  {OP_VGHSH_VV, "vghsh_vv"},
+  {OP_VGMUL_VV, "vgmul_vv"},
+  {OP_VSM4K_VI, "vsm4k_vi"},
+  {OP_VSM4R_VV, "vsm4r_vv"},
+  {OP_VSM4R_VS, "vsm4r_vs"},
+  {OP_AMOCAS_W, "amocas_w"},
+  {OP_AMOCAS_D, "amocas_d"},
+  {OP_AMOCAS_Q, "amocas_q"},
+  {OP_AMOSWAP_B, "amoswap_b"},
+  {OP_AMOADD_B, "amoadd_b"},
+  {OP_AMOXOR_B, "amoxor_b"},
+  {OP_AMOAND_B, "amoand_b"},
+  {OP_AMOOR_B, "amoor_b"},
+  {OP_AMOMIN_B, "amomin_b"},
+  {OP_AMOMAX_B, "amomax_b"},
+  {OP_AMOMINU_B, "amominu_b"},
+  {OP_AMOMAXU_B, "amomaxu_b"},
+  {OP_AMOSWAP_H, "amoswap_h"},
+  {OP_AMOADD_H, "amoadd_h"},
+  {OP_AMOXOR_H, "amoxor_h"},
+  {OP_AMOAND_H, "amoand_h"},
+  {OP_AMOOR_H, "amoor_h"},
+  {OP_AMOMIN_H, "amomin_h"},
+  {OP_AMOMAX_H, "amomax_h"},
+  {OP_AMOMINU_H, "amominu_h"},
+  {OP_AMOMAXU_H, "amomaxu_h"},
+  {OP_AMOCAS_B, "amocas_b"},
+  {OP_AMOCAS_H, "amocas_h"},
+};

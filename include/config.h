@@ -10,7 +10,7 @@ struct CacheConfig {
     u32 fetch_width = 4;
     // latencies in cycles
     u32 hit_latency = 1;
-    u32 miss_penalty = 10;   // time to start lower request
+    u32 miss_penalty = 3;   // time to start lower request 10
     u32 install_latency = 1; // time to install after data arrives
     u32 writeback_latency = 5;
     InclusionPolicy inclusion_policy = InclusionPolicy::Inclusive;
@@ -19,8 +19,47 @@ struct CacheConfig {
         size(sz), line_size(ls), ways(ways), fetch_width(fw) {}
 };
 
+struct TageConfig
+{
+    u32 ntables = 5;
+
+    u32 table_size[5]  = {1024,1024,1024,1024,1024};
+    u32 hist_len[5] = {4,8,16,32,64};
+    u32 tag_bits[5]    = {8,8,9,9,10};
+
+    u32 base_size = 16384;   // BIM size
+};
+
+struct BIMConfig {
+    u32 entries = 0x4000;
+    u32 hist_len = 16;
+    u32 fetch_width = 4;
+};
+
+struct BTBConfig {
+    u32 nsets = 256;
+    u32 ways = 4;
+    u32 tag_bits = 16;
+    u32 pc_lowdrop = 2;
+};
+
+struct BPConfig {
+    TageConfig tage_config;
+    BIMConfig bim_config;
+    BTBConfig btb_config;
+    u32 ras_capacity = 64;
+};
+
+
+typedef struct {
+    u32 capacity { 64 };
+    u32 tag_bits { 10 };
+} RASConfig;
+
 typedef struct {
     u32 fetch_width { 4 };
+    u32 group_size { 4 };
+    u32 bank_size { 4 };
 } FetchConfig;
 
 typedef struct {
@@ -103,16 +142,18 @@ typedef struct {
 
 typedef struct {
     // pipeline
-    int fetch_width  = 4;
-    int decode_width = 4;
-    int rename_width = 4;
-    int commit_width = 4;
+    u32 fetch_width  = 4;
+    u32 fetch_group_size = 32; // 32 bytes
+    u32 fetch_bank_size = 16;  // 16 bytes
+    u32 decode_width = 4;
+    u32 rename_width = 4;
+    u32 commit_width = 4;
 
     // queues / structures
-    int rob_entries = 128;
-    int iq_entries  = 64;
-    int lq_entries  = 32;
-    int sq_entries  = 32;
+    u32 rob_entries = 128;
+    u32 iq_entries  = 64;
+    u32 lq_entries  = 32;
+    u32 sq_entries  = 32;
 
     // LSU / memory subsystem (scalar knobs used by LSUConfig)
     u32 load_q_size = 128;
@@ -166,15 +207,27 @@ typedef struct {
     u32 l2_ways = 8;
     u32 l2_line_size = 64;
     u32 l2_fetch_width = 4;
-    u32 l2_hit_latency = 10;
-    u32 l2_miss_penalty = 30;
+    u32 l2_hit_latency = 5;
+    u32 l2_miss_penalty = 8;
     u32 l2_install_latency = 5;
-    u32 l2_writeback_latency = 12;
+    u32 l2_writeback_latency = 8;
     u32 l2_inclusive = 1;       // 0: NonInclusive, 1: Inclusive, 2: Exclusive
 
     // legacy aliases (optional consumers)
     int l1iSize = 32 * 1024;
     int l1dSize = 32 * 1024;
+
+    // branch predictor related
+    u32 bim_entries = 0x4000;
+    u32 bim_hist_len = 16;
+    u32 bim_fetch_width = 4;
+    u32 btb_nsets = 256;
+    u32 btb_ways = 4;
+    u32 btb_tag_bits = 16;
+    u32 btb_pc_lowdrop = 2;
+
+    u32 ras_capacity = 64;
+    u32 ras_tag_bits = 10;
 } CoreConfig;
 
 
@@ -201,6 +254,11 @@ public:
     FetchConfig                             fetch_config() const;
     CommitConfig                            commit_config() const;
     ExecConfig                              execute_config() const;
+    RASConfig                               ras_config() const;
+    TageConfig                              tage_config() const;
+    BIMConfig                               bim_config() const;
+    BTBConfig                               btb_config() const;
+    BPConfig                                bp_config() const;
 
 private:
     void                                    init_config();

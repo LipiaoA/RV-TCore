@@ -87,6 +87,10 @@ void RenameUnit::r1() {
             m_r1_buf.push_front(std::move(inst));
             break;
         }
+        std::string id_pre = inst.rob_id.idx == 0 ? "++" : "--";
+        LOG_LEVEL1("RenameUnit R1", "r1 inst: %s, v%d-a%d-p%d%s%d",
+                   inst.inst_name.c_str(), inst.rd.valid, inst.rd.atag,
+                   inst.rd.ptag, id_pre.c_str(), inst.rob_id.idx);
         inst.rob_id = m_rob.alloc(inst);
         m_r2_buf.push_back(std::move(inst));
         ++n;
@@ -131,8 +135,13 @@ void RenameUnit::commit() {
 }
 
 bool RenameUnit::dispatch(MicroOp& inst) {
-    if (!inst.valid)
+    if (!inst.valid) {
         return false;
+    }
+    std::string id_pre = inst.rob_id.idx == 0 ? "++" : "--";
+    LOG_LEVEL1("RenameUnit R2", "dispatch inst: %s, v%d-a%d-p%d%s%d",
+               inst.inst_name.c_str(), inst.rd.valid, inst.rd.atag,
+               inst.rd.ptag, id_pre.c_str(), inst.rob_id.idx);
     m_rename_issue_q.write(std::move(inst));
     return true;
 }

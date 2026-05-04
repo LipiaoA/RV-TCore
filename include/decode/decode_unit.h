@@ -24,14 +24,14 @@ public:
     bool                                has_decoded() const;
     bool                                try_pop_decoded(MicroOp& out);
 
-    static void                         predecode(u32 raw, PredecodeInfo* out);
-    static void                         predecode_one(u32 raw, PredecodeInfo* out) { predecode(raw, out); }
+    static void                         predecode(insn_t raw, PredecodeInfo* out);
+    static void                         predecode_one(insn_t raw, PredecodeInfo* out) { predecode(raw, out); }
 
 private:
     void                                d0();
     void                                d1();
 
-    bool                                decode(u64 raw, MicroOp *out);
+    bool                                decode(insn_t raw, MicroOp *out);
     i64                                 extract_imm(u64 raw, InstFmt fmt, InstOp op);
 
 private:

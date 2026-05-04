@@ -20,10 +20,9 @@ FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     , m_bpu(*deps.bpu)
     , m_fetch_decode_q(*deps.fetch_decode_q)
     , m_fetch_width(conf.fetch_width)
+    , m_group_size(conf.group_size)
+    , m_bank_size(conf.bank_size)
 {
-    m_pred.clear();
-    m_f1_req.clear();
-    m_f2_line.clear();
     m_f3_pkt.clear();
     m_f4_pkt.clear();
 
@@ -35,13 +34,15 @@ void FetchUnit::build() {}
 
 void FetchUnit::tick()
 {
+    flush();
     m_sched.tick();
-
+    fetch5();
     fetch4();
     fetch3();
     fetch2();
     fetch1();
     fetch0();
+    dump_state();
 }
 
 void FetchUnit::commit()
@@ -51,117 +52,117 @@ void FetchUnit::commit()
 
 void FetchUnit::redirct(pc_t new_pc, u64 fetch_id)
 {
-    // 更新 squash 界限与 PC，丢弃 pending icache request 与队列中符合的 entries
-    m_squash_id = fetch_id;
+    m_redirect_pc[RESET_PC].valid = true;
+    m_redirect_pc[RESET_PC].pc = new_pc;
     m_pc = new_pc;
-
-
-    // flush pipeline registers
-    // 重定向的时候需要将取指的流水线刷空
-
-    // drop dispatch queue entries >= squash id
-    while (!m_dispatch_q.empty() && m_dispatch_q.front().fetch_id >= m_squash_id)
-        m_dispatch_q.pop_front();
+    m_state[F0].valid = true;
 }
 
-std::optional<FetchPacket> FetchUnit::try_dispatch()
-{
-    if (m_dispatch_q.empty())
-        return std::nullopt;
-    auto pkt = m_dispatch_q.front();
-    m_dispatch_q.pop_front();
-    return pkt;
-}
-
-/*
- * F0: PC 选择与分支预测
- * - 读取当前 m_pc，调用 predictor
- * - 生成 branch_pred_t 写入 m_f0_out_nxt
- * - 不直接改变 m_pc（真正 advance 在 F3 after assembling）
- */
 void FetchUnit::fetch0()
 {
-    // 如果有 squash 阈值阻止旧包进入，仍允许预测新的PC
-    branch_pred_t pred = m_bpu.predict(m_pc);
+    if (!m_state[F0].valid) {
+        return;
+    }
+    m_state[F0].vpc = next_pc();
+    i32 start_idx = m_state[F0].vpc / 4 % m_bank_size;
+    pc_t t_pc = align_bank(m_state[F0].vpc);
+    pc_t line_addr = m_icache.align_line(m_state[F0].vpc);
 
-    m_pred.valid = true;
-    m_pred.data = pred;
-    m_pc = pred.taken ? pred.target : m_pc + m_fetch_width * 4;
-    LOG_LEVEL1("F0 Predict", "pc:0x%lx  valid:%d taken:%d target:%lx", m_pc, pred.valid, pred.taken, pred.target);
-
+    if ((m_line_buffer.valid && m_line_buffer.line_addr == line_addr) ||
+        (m_ifetch_req.valid && m_pending_line_addr == line_addr)) {
+        return;
+    } else {
+        m_line_buffer.clear();
+        m_ifetch_req.valid = true;
+        m_ifetch_req.pc = m_state[F0].vpc;
+        m_ifetch_req.line_addr = line_addr;
+        m_ifetch_req.epoch = m_epoch;
+        bool accepted = m_icache.request(m_ifetch_req);
+        LOG_LEVEL1("F0 Send Request", "req vpc:0x%lx, line_addr:0x%lx, epoch:%d, accepted:%d",
+                    m_state[F0].vpc, line_addr, m_epoch, accepted);
+        if (accepted) {
+            m_icache_req_pending = true;
+            m_pending_line_addr = line_addr;
+        }
+    }
+    m_state[F1].valid = true;
 }
 
-/*
- * F1: I$ 请求阶段
- * - 从 F0 的预测结果决定要请求哪条 cache line（按 line 对齐）
- * - 发起 icache.request_line(line_addr)（非阻塞）
- * - 标记 m_icache_req_pending / m_pending_line_addr 跟踪响应
- */
 void FetchUnit::fetch1()
 {
-    if (!m_pred.valid) {
-        m_f1_req.clear();
+    if (!m_state[F1].valid) {
+        m_redirect_pc[RES_F1].valid = false;
         return;
     }
 
-    // choose PC to request: if predicted taken -> pred.target else current PC
-    pc_t req_pc = m_pred.data.taken ? m_pred.data.target : m_pc;
-    pc_t line_addr = m_icache.align_line(req_pc);
-
-    // if there's already a pending request to same line, reuse it
-    if (m_icache_req_pending && m_pending_line_addr == line_addr) {
-        return;
+    m_state[F1].vpc = m_state[F0].vpc;
+    m_f1_pred = m_bpu.f1_pred(m_state[F1].vpc);
+    pc_t fall_addr = (m_state[F1].vpc / m_bank_size) * m_bank_size + m_bank_size;
+    bool pred_taken = false;
+    for (int i = 0; i < m_fetch_width; ++i) {
+        if (m_f1_pred.pred[i].valid) {
+            pred_taken = true;
+            m_redirect_pc[RES_F1].valid = true;
+            m_redirect_pc[RES_F1].pc = m_f1_pred.pred[i].target;
+            break;
+        }
     }
+    m_redirect_pc[RES_F1].pc = pred_taken ? m_redirect_pc[RES_F1].pc : fall_addr;
 
-    // attempt request
-    bool accepted = m_icache.request(line_addr);
-    if (accepted) {
-        m_icache_req_pending = true;
-        m_pending_line_addr = line_addr;
-        m_f1_req.valid = true;
-        // 在 F1 寄存器中保存本次取指对应的“起始 PC”，供 F2/F3 使用
-        m_f1_req.data = req_pc;
-        LOG_LEVEL1("F1 Instr Req", "pc:0x%lx line:0x%lx", req_pc, line_addr);
-    } else {
-        m_f1_req.clear();
-    }
+    // TODO: request itlb
+
+    m_state[F2].valid = true;
+    return;
 }
 
-/*
- * F2: I$ 返回与对齐
- * - 检查 icache 是否有 ready line (m_pending_line_addr)
- * - 若 ready -> read_line, 放入 m_f2_line_nxt（line bytes）
- * - clear pending flag
- */
 void FetchUnit::fetch2()
 {
-    // 没有挂起的 ICache 请求，直接清空本阶段输出
-    if (!m_icache_req_pending || !m_f1_req.valid) {
-        m_f2_line.clear();
+    if (!m_state[F2].valid) {
         return;
     }
+    m_state[F2].vpc = m_state[F1].vpc;
+    m_f2_pred = m_bpu.f2_pred(m_state[F2].vpc);
+    if (m_icache.line_ready(m_state[F2].vpc)) {
+        IFetchResp resp = m_icache.read_line(m_state[F2].vpc);
+        memcpy(m_line_buffer.data, resp.data, sizeof(m_line_buffer.data));
+        auto &line = m_line_buffer.data;
+        pc_t cur_pc = m_state[F2].vpc;
+        int idx = bank_idx(cur_pc);
+        u32 oft = cur_pc - align_bank(cur_pc) + idx * m_bank_size;
 
-    if (m_icache.line_ready(m_pending_line_addr)) {
-        bytes_t line = m_icache.read_line(m_pending_line_addr);
-        m_icache_req_pending = false;
-        m_pending_line_addr = 0;
-
-        m_f2_line.valid = true;
-        m_f2_line.data = std::move(line);
-        LOG_LEVEL1("F2 Data Res", "line_addr:0x%lx", m_pending_line_addr);
-
+        for (int c = 0; c < m_bank_count / m_group_count; ++c) {
+            m_line_buffer.bmask |= (1u << idx);
+            for (int i = oft % m_bank_size; i < m_bank_size; i += 4, oft += 4, cur_pc += 4) {
+                F2Inst inst;
+                for (int j = 0; j < 4; ++j) {
+                    inst.insn |= line[oft + j] << (8 * j);
+                }
+                inst.pc = cur_pc;
+                m_inst_buffer.push(inst);
+            }
+        }
+        LOG_LEVEL1("F2 Data Res", "line_addr:0x%lx", m_state[F2].vpc);
     } else {
-        m_f2_line.clear();
+        m_redirect_pc[RES_F2].valid = true;
+        m_redirect_pc[RES_F2].pc = m_state[F2].vpc;
     }
+    for (int i = 0; i < m_fetch_width; ++i) {
+        m_f2_pred.pred[i].target = m_f1_pred.pred[i].target;
+        if (m_f2_pred.pred[i].valid) {
+            if (m_f2_pred.pred[i].taken) {
+                m_redirect_pc[RES_F2].valid = true;
+                m_redirect_pc[RES_F2].pc = m_f2_pred.pred[i].target;
+            }
+            if (m_f2_pred.pred[i].taken != m_f1_pred.pred[i].taken) {
+                m_state[F2].valid = false;
+                m_epoch++;
+            }
+            break;
+        }
+    }
+    m_state[F3].valid = true;
 }
 
-/*
- * F3: 指令解码准备（拼接、预解码）
- * - 从 F2 的 line bytes 组装最多 k_fetch_width 条 inst
- * - 注入预测信息（来自 F0）
- * - 产生 fetch_packet 写入 m_f3_pkt_nxt
- * - 取指 PC 必须 4 字节对齐；仅支持 4 字节指令（不支持 2 字节压缩指令）。
- */
 void FetchUnit::fetch3()
 {
     // - 每条指令固定 4 字节，不支持 2 字节压缩指令。
@@ -172,91 +173,58 @@ void FetchUnit::fetch3()
     static bool    s_f3_buf_valid = false;
 
     // 如果本周期有新的 I$ 行返回，则把它 append 到缓冲中
-    if (m_f2_line.valid) {
-        const bytes_t &line = m_f2_line.data;
-
-        if (!s_f3_buf_valid) {
-            // 新一轮取指窗口：确定本次缓冲起始 PC
-            pc_t base_pc = m_f1_req.valid
-                ? m_f1_req.data
-                : (m_pred.valid && m_pred.data.taken ? m_pred.data.target : m_pc);
-
-            // 取指 PC 必须 4 字节对齐
-            if ((base_pc & 3u) != 0) {
-                m_f3_pkt.clear();
-                return;
-            }
-
-            s_f3_base_pc = base_pc;
-            s_f3_buffer.clear();
-
-            // 跳过 line 中 base_pc 之前的字节，使 s_f3_buffer[0] 与 base_pc 对齐。
-            size_t offset = base_pc - m_icache.align_line(base_pc);
-            if (offset > line.size())
-                offset = line.size();
-            s_f3_buffer.insert(s_f3_buffer.end(), line.begin() + offset, line.end());
-            s_f3_buf_valid = true;
-        } else {
-            // 已有部分字节（可能来自上一条 cache line 的尾部），直接把新 line 整段追加上去
-            s_f3_buffer.insert(s_f3_buffer.end(), line.begin(), line.end());
-        }
-    }
-
-    // 如果缓冲里依然没有字节可用，则本周期无法输出 fetch 包
-    if (!s_f3_buf_valid || s_f3_buffer.empty()) {
-        m_f3_pkt.clear();
+    if (m_inst_buffer.empty()) {
         return;
     }
-
-    // 取指 PC 4 字节对齐检查（解析前再次确认）
-    if ((s_f3_base_pc & 3u) != 0) {
-        m_f3_pkt.clear();
-        return;
-    }
-
-    LOG_LEVEL1("F3 Combine", "buffer_bytes:%zu base_pc:0x%lx",
-               s_f3_buffer.size(), s_f3_base_pc);
-
+    memcpy(&m_f3_bpred, &m_f2_pred, sizeof(m_f3_bpred));
+    m_state[F3].vpc = m_state[F2].vpc;
     FetchPacket pkt;
     pkt.valid = true;
     pkt.fetch_id = m_next_fetch_id++;
-    pkt.base_pc = s_f3_base_pc;
+    pkt.base_pc = m_state[F3].vpc;
     pkt.insts.clear();
 
     // 从缓冲头部开始，逐条解析 4 字节定长指令（不支持 2 字节压缩指令）
     constexpr u8 k_inst_bytes = 4;
     size_t buf_idx = 0;
-    pc_t cur_pc  = s_f3_base_pc;
+    pc_t cur_pc  = m_state[F3].vpc;
 
-    for (u8 i = 0; i < m_fetch_width; ++i) {
-        // 至少需要 4 字节才能组成一条指令
-        if (s_f3_buffer.size() - buf_idx < k_inst_bytes) {
-            break;
-        }
-
-        insn_t insn = 0;
-        for (u8 b = 0; b < k_inst_bytes; ++b) {
-            insn |= static_cast<insn_t>(s_f3_buffer[buf_idx + b]) << (8 * b);
-        }
+    for (u8 i = 0; i < m_fetch_width && !m_inst_buffer.empty(); ++i) {
+        auto& inst = m_inst_buffer.front();
+        m_inst_buffer.pop();
 
         FetchInst finst;
         finst.valid    = true;
-        finst.pc       = cur_pc;
-        finst.insn     = insn;
+        finst.pc       = inst.pc;
+        finst.insn     = inst.insn;
         finst.fetch_id = pkt.fetch_id;
         finst.size     = k_inst_bytes;
 
         pkt.insts.push_back(finst);
 
         PredecodeInfo& pd = pkt.predecode[i];
-        DecodeUnit::predecode_one(static_cast<u32>(insn), &pd);
-        pd.slot = static_cast<u8>(i);
+        DecodeUnit::predecode_one(finst.insn, &pd);
+        pd.slot = i;
         pkt.valid_mask |= (1u << i);
-        if (pd.is_branch)
+        // fetch3 根据实际取指重新预测结果
+        if (pd.is_branch) {
             pkt.br_mask |= (1u << i);
-
-        buf_idx += k_inst_bytes;
-        cur_pc  += k_inst_bytes;
+            m_f3_pred[i] = m_bpu.f3_pred(finst.pc);
+            if (m_f3_pred[i].valid) {
+                if (m_f3_pred[i].final_pred != m_f3_bpred.pred[i].taken) {
+                    m_redirect_pc[RES_F3].valid = true;
+                    /* 预测结果与 f2 不符，应该先清除 f2 并重新取指*/
+                    m_state[F2].valid = false;
+                    m_epoch++;
+                }
+                if (m_f3_pred[i].final_pred) {
+                    m_redirect_pc[RES_F3].pc = m_f3_bpred.pred[i].target;
+                }
+            }
+            break;
+            LOG_LEVEL1("F3 Predict", "branch mask:0b%b", pkt.br_mask);
+        }
+        cur_pc  += finst.size;
     }
 
     // 若本轮一个指令都没解析出来，则无法前进，等待更多字节
@@ -265,42 +233,21 @@ void FetchUnit::fetch3()
         return;
     }
 
-    // 消费掉已经被解析的前缀字节，保留下一条指令的起始处，便于跨 line 拼接
-    s_f3_buffer.erase(s_f3_buffer.begin(), s_f3_buffer.begin() + buf_idx);
-    s_f3_base_pc = cur_pc;
-    if (s_f3_buffer.empty()) {
-        s_f3_buf_valid = false;
-    }
-
-    // 合并来自 F0 的预测元数据
-    if (m_pred.valid) {
-        pkt.pred_taken  = m_pred.data.taken;
-        pkt.pred_target = m_pred.data.target;
-    } else {
-        pkt.pred_taken  = false;
-        pkt.pred_target = 0;
-    }
-
     m_f3_pkt.valid = true;
     m_f3_pkt.data  = std::move(pkt);
 
-    // 根据最后一条指令的真实长度推进 m_pc
     const auto &last = m_f3_pkt.data.insts.back();
-    m_pc = last.pc + last.size;
+    m_redirect_pc[RES_F3].valid = true;
+    m_redirect_pc[RES_F3].pc = last.pc + last.size;
 }
 
-/*
- * F4: 输出到 dispatch 队列（FetchBuffer）
- * - 将 F3 生成的 packet 放入 dispatch 队列（若队列满则 stall 不取）
- * - 写入 m_f4_out（保留一份供 debug /观察）
- */
 void FetchUnit::fetch4()
 {
     if (!m_f3_pkt.valid) {
         m_f4_pkt.clear();
         return;
     }
-    LOG_LEVEL1("F4 Dispatch", "test");
+    m_state[F4].vpc = m_state[F3].vpc;
 
     // if squash threshold says this should be dropped
     if (m_f3_pkt.data.fetch_id >= m_squash_id && m_squash_id > 0) {
@@ -308,21 +255,74 @@ void FetchUnit::fetch4()
         m_f4_pkt.clear();
         return;
     }
-
-    // attempt to enqueue into dispatch queue
-    if (m_dispatch_q.size() >= m_dispatch_q_capacity) {
-        // queue full -> stall front-end (do not consume F3 this cycle)
-        // To model stall accurately, we would prevent F3 from committing;
-        // in this simplified model, if queue full, we simply don't push and mark F4 as invalid.
-        m_f4_pkt.clear();
-        return;
+    bool pred_taken = false;
+    for (int i = 0; i < m_fetch_width; ++i) {
+        if (m_f3_pkt.data.br_mask & (1u << i) && m_f3_pred[i].valid) {
+            auto &pred = m_f3_pred[i];
+            if (pred.valid) {
+                m_redirect_pc[RES_F4].valid = true;
+                if (pred.final_pred) {
+                    m_redirect_pc[RES_F4].pc = m_f3_bpred.pred[i].target;
+                }
+            }
+            // TODO: update RAS && bpred etc.
+            break;
+        }
     }
+    pc_t fall_addr = (m_state[F4].vpc / m_bank_size) * m_bank_size + m_bank_size;
 
-    // push packet
-    m_dispatch_q.push_back(m_f3_pkt.data);
+    m_redirect_pc[RES_F4].pc = pred_taken ? m_redirect_pc[RES_F4].pc : fall_addr;
     m_f4_pkt.valid = true;
     m_f4_pkt.data = m_f3_pkt.data;
-    m_fetch_decode_q.write(m_f4_pkt.data);
+}
+void FetchUnit::fetch5()
+{
+    if (!m_f4_pkt.valid || m_fetch_decode_q.full()) {
+        return;
+    }
+    m_f5_pkt.valid = true;
+    m_f5_pkt.data = m_f4_pkt.data;
+    m_fetch_decode_q.write(m_f5_pkt.data);
+}
+
+FetchUnit::~FetchUnit() { }
+
+
+pc_t FetchUnit::next_pc()
+{
+    m_pc = align_bank(m_pc) + m_bank_size;
+    for (int i = 0; i <= RESET_PC; ++i) {
+        if (m_redirect_pc[i].valid) {
+            m_pc = m_redirect_pc[i].pc;
+            m_redirect_pc[i].valid = false;
+        }
+        m_redirect_pc[i].pc = 0;
+    }
+    return m_pc;
+}
+
+u32 FetchUnit::align_bank(pc_t pc) const
+{
+    return (pc / m_bank_size) * m_bank_size;
+}
+
+u32 FetchUnit::bank_idx(pc_t pc) const
+{
+    return (pc - m_icache.align_line(pc)) / m_bank_size;
+}
+
+u32 FetchUnit::group_idx(pc_t pc) const
+{
+    return (pc - align_group(pc)) / m_group_size;
+}
+
+u32 FetchUnit::align_group(pc_t pc) const
+{
+    return (pc / m_group_size) * m_group_size;
+}
+
+void FetchUnit::flush()
+{
 }
 
 /* -------------------- Debug / state dump -------------------- */
@@ -330,17 +330,41 @@ void FetchUnit::fetch4()
 void FetchUnit::dump_state() const
 {
     std::cout << "FetchUnit state:\n";
-    std::cout << "  m_pc = 0x" << std::hex << m_pc << std::dec << "\n";
-    std::cout << "  next_fetch_id = " << m_next_fetch_id << "\n";
-    std::cout << "  icache_pending = " << (m_icache_req_pending ? "yes" : "no") << "\n";
-    std::cout << "  dispatch_q.size = " << m_dispatch_q.size() << "\n";
-    if (!m_dispatch_q.empty()) {
-        std::cout << "  front fetch_id = " << m_dispatch_q.front().fetch_id
-                  << " base_pc = 0x" << std::hex << m_dispatch_q.front().base_pc << std::dec << "\n";
+    if (m_state[F0].valid) {
+        LOG_LEVEL1("F0 Predict", "req vpc:0x%lx", m_state[F0].vpc);
     }
-    if (m_f4_pkt.valid) {
-        std::cout << "  last output fetch_id = " << m_f4_pkt.data.fetch_id << "\n";
-    }
-}
+    if (m_state[F1].valid) {
+        auto &pred = m_f1_pred.pred;
+        LOG_LEVEL1("F1 Predict", "req vpc:0x%lx,ghr:0x%lx,"
+                    "pred:[%d,%d,0x%lx -- %d,%d,0x%lx -- %d,%d,0x%lx -- %d,%d,0x%lx]",
+                    m_state[F1].vpc, m_f1_pred.ghr_snapshot,
+                    pred[0].valid, pred[0].taken, pred[0].target,
+                    pred[1].valid, pred[1].taken, pred[1].target,
+                    pred[2].valid, pred[2].taken, pred[2].target,
+                    pred[3].valid, pred[3].taken, pred[3].target);
 
-FetchUnit::~FetchUnit() { }
+        LOG_LEVEL1("F1 Predict", "redirect pc:0x%lx", m_redirect_pc[RES_F1].pc);
+    }
+
+    if (m_state[F2].valid) {
+        auto &pred = m_f2_pred.pred;
+        LOG_LEVEL1("F2 Predict", "req vpc:0x%lx,ghr:0x%lx,"
+                    " pred:[%d,%d,0x%lx -- %d,%d,0x%lx -- %d,%d,0x%lx -- %d,%d,0x%lx]",
+                    m_state[F2].vpc, m_f2_pred.ghr_snapshot,
+                    pred[0].valid, pred[0].taken, pred[0].target,
+                    pred[1].valid, pred[1].taken, pred[1].target,
+                    pred[2].valid, pred[2].taken, pred[2].target,
+                    pred[3].valid, pred[3].taken, pred[3].target);
+        LOG_LEVEL1("F2 Predict", "redirect pc:0x%lx", m_redirect_pc[RES_F2].pc);
+    }
+    if (m_state[F3].valid) {
+        auto &pred = m_f3_bpred.pred;
+        LOG_LEVEL1("F3 Predict", "req vpc:0x%lx, redirect pc:0x%lx",
+                    m_state[F3].vpc, m_redirect_pc[RES_F3].pc);
+    }
+    if (m_state[F4].valid) {
+        LOG_LEVEL1("F4 Predict", "req vpc:0x%lx, redirect pc:0x%lx",
+                    m_state[F4].vpc, m_redirect_pc[RES_F4].pc);
+    }
+    return;
+}

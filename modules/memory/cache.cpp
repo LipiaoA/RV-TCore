@@ -44,19 +44,19 @@ void GCache::register_upper(GCache *up)
     m_uppers.push_back(up);
 }
 
-SimpleFuture<std::vector<u8>> GCache::fetch_line_async(u64 line_addr)
+SimpleFuture<MemResp> GCache::fetch_line_async(MemReq req)
 {
     m_stats.accesses++;
-    SimpleFuture<std::vector<u8>> fut;
+    SimpleFuture<MemResp> fut;
     auto start_cycle = m_sched->cycle();
-    auto [set_idx, tag] = decode(line_addr);
+    auto [set_idx, tag] = decode(req.line_addr);
 
     {
         std::lock_guard<std::mutex> lk(m_mtx);
         // search for hit
         for (size_t w = 0; w < m_cfg.ways; ++w) {
             if (m_meta[set_idx][w].valid && m_meta[set_idx][w].tag == tag) {
-                LOG_LEVEL1(m_name, " Hit addr:0x%x, set_idx:%d, way:%d, tag:0x%x\n", line_addr, set_idx, w, tag);
+                LOG_LEVEL1(m_name, " Hit addr:0x%x, set_idx:%d, way:%d, tag:0x%x\n", req.line_addr, set_idx, w, tag);
                 m_stats.hits++;
                 m_meta[set_idx][w].last_access = ++m_tick;
                 // update replacement structures
@@ -64,46 +64,64 @@ SimpleFuture<std::vector<u8>> GCache::fetch_line_async(u64 line_addr)
                 update_lru_list_on_access(set_idx, w);
                 // schedule ready after hit latency
                 auto data = m_data[set_idx][w];
-                m_sched->schedule_after(m_cfg.hit_latency, [this, fut, data, start_cycle]() mutable {
+                MemResp resp;
+                resp.valid = true;
+                resp.line_addr = req.line_addr;
+                memcpy(resp.data, data.data(), sizeof(resp.data));
+                resp.page_fault = false;
+                resp.access_fault = false;
+                resp.epoch = req.epoch;
+                m_sched->schedule_after(m_cfg.hit_latency, [this, fut, resp, start_cycle]() mutable {
                     m_stats.total_latency += (m_sched->cycle() - start_cycle);
-                    fut.set_value(data); });
+                    fut.set_value(resp);
+                });
                 return fut;
             }
         }
-        LOG_LEVEL1(m_name, " Miss addr:0x%x, set_idx:%d, tag:0x%x\n", line_addr, set_idx, tag);
+        LOG_LEVEL1(m_name, " Miss addr:0x%x, set_idx:%d, tag:0x%x, epoch:%d\n", req.line_addr, set_idx, tag, req.epoch);
 
         // miss
         m_stats.misses++;
-        auto it = m_mshr.find(line_addr);
+        auto it = m_mshr.find(req.line_addr);
         if (it != m_mshr.end()) {
             it->second.promises.push_back(fut);
             return fut;
         }
         MSHREntry me;
-        me.line_addr = line_addr;
+        me.line_addr = req.line_addr;
         me.promises.push_back(fut);
-        m_mshr.emplace(line_addr, std::move(me));
+        m_mshr.emplace(req.line_addr, std::move(me));
     }
     // schedule lower request after miss_penalty
-    m_sched->schedule_after(m_cfg.miss_penalty, [this, line_addr, start_cycle]() {
+    m_sched->schedule_after(m_cfg.miss_penalty, [this, req, start_cycle]() {
         if (m_lower) {
-            auto lf = m_lower->fetch_line_async(line_addr);
+            auto lf = m_lower->fetch_line_async(req);
 
-            LOG_LEVEL1(m_name, "send req addr:%x\n", line_addr);
+            LOG_LEVEL1(m_name, "send req addr:%x\n", req.line_addr);
 
-            lf.then([this, line_addr, start_cycle](const std::vector<u8>& data) {
+            lf.then([this, req, start_cycle](const MemResp& resp) {
                 // install after install_latency
-                m_sched->schedule_after(m_cfg.install_latency, [this, line_addr, data, start_cycle]() {
-                    this->install_line(line_addr, data, false);
-                    this->fulfill_mshr(line_addr, data, start_cycle);
+                LOG_LEVEL1(m_name, "response line:0x%lx, epoch:%d", resp.line_addr, resp.epoch);
+                m_sched->schedule_after(m_cfg.install_latency, [this, req, resp, start_cycle]() {
+                    this->install_line(resp, false);
+                    this->fulfill_mshr(resp, start_cycle);
                 });
             });
         } else {
             // main memory
-            auto data = this->on_lower_fetch(line_addr);
-            m_sched->schedule_after(m_cfg.install_latency, [this, line_addr, data, start_cycle]() {
-                this->install_line(line_addr, data, false);
-                this->fulfill_mshr(line_addr, data, start_cycle);
+            LOG_LEVEL1(m_name, "send req addr:%x to main memory, epoch:%d", req.line_addr, req.epoch);
+            auto data = this->on_lower_fetch(req.line_addr);
+            MemResp resp;
+            resp.valid = true;
+            resp.line_addr = req.line_addr;
+            memcpy(resp.data, data.data(), sizeof(resp.data));
+            resp.page_fault = false;
+            resp.access_fault = false;
+            resp.epoch = req.epoch;
+            m_sched->schedule_after(m_cfg.install_latency, [this, req, resp, start_cycle]() {
+                LOG_LEVEL1(m_name, "response addr:0x%lx, epoch:%d", resp.line_addr, resp.epoch);
+                this->install_line(resp, false);
+                this->fulfill_mshr(resp, start_cycle);
             });
         }
     });
@@ -118,9 +136,9 @@ void GCache::update_lru_list_on_access(size_t set_idx, size_t way)
     if (it != lst.end()) { lst.erase(it); lst.insert(lst.begin(), way); }
 }
 
-void GCache::install_line(u64 line_addr, const std::vector<u8>& data, bool mark_dirty)
+void GCache::install_line(MemResp resp, bool mark_dirty)
 {
-    auto [set_idx, tag] = decode(line_addr);
+    auto [set_idx, tag] = decode(resp.line_addr);
     size_t victim = SIZE_MAX;
     bool used_plru = false;
     {
@@ -146,8 +164,14 @@ void GCache::install_line(u64 line_addr, const std::vector<u8>& data, bool mark_
             if (m_meta[set_idx][victim].dirty && m_lower) {
                 u64 ev_addr = reconstruct_line_addr(set_idx, m_meta[set_idx][victim].tag);
                 auto evdata = m_data[set_idx][victim];
-                m_sched->schedule_after(m_cfg.writeback_latency, [this, ev_addr, evdata]() {
-                    if (this->m_lower) this->m_lower->write_line_async(ev_addr, evdata);
+                MemResp evresp;
+                evresp.line_addr = ev_addr;
+                memcpy(evresp.data, evdata.data(), sizeof(evresp.data));
+                evresp.valid = true;
+                m_sched->schedule_after(m_cfg.writeback_latency, [this, evresp]() {
+                    if (this->m_lower) {
+                        this->m_lower->write_line_async(evresp);
+                    }
                 });
             }
             if (m_policy==InclusionPolicy::Inclusive) {
@@ -161,7 +185,7 @@ void GCache::install_line(u64 line_addr, const std::vector<u8>& data, bool mark_
         m_meta[set_idx][victim].tag = tag;
         m_meta[set_idx][victim].dirty = mark_dirty;
         m_meta[set_idx][victim].last_access = ++m_tick;
-        m_data[set_idx][victim] = data;
+        memcpy(m_data[set_idx][victim].data(), resp.data, sizeof(m_data[set_idx][victim]));
         // update replacement structures
         if (!used_plru) {
             // if PLRU not available, maintain LRU list
@@ -172,12 +196,12 @@ void GCache::install_line(u64 line_addr, const std::vector<u8>& data, bool mark_
     }
 }
 
-void GCache::fulfill_mshr(u64 line_addr, const std::vector<u8>& data, u64 start_cycle)
+void GCache::fulfill_mshr(MemResp resp, u64 start_cycle)
 {
-    std::vector<SimpleFuture<std::vector<u8>>> prom;
+    std::vector<SimpleFuture<MemResp>> prom;
     {
         std::lock_guard<std::mutex> lk(m_mtx);
-        auto it = m_mshr.find(line_addr);
+        auto it = m_mshr.find(resp.line_addr);
         if (it!=m_mshr.end()) {
             prom = move(it->second.promises);
             m_mshr.erase(it);
@@ -185,7 +209,7 @@ void GCache::fulfill_mshr(u64 line_addr, const std::vector<u8>& data, u64 start_
     }
     for (auto &f : prom) {
         m_stats.total_latency += (m_sched->cycle() - start_cycle);
-        f.set_value(data);
+        f.set_value(resp);
     }
 }
 
@@ -205,15 +229,19 @@ std::vector<u8> GCache::on_lower_fetch(u64 line_addr)
 }
 
 
-SimpleFuture<bool> GCache::write_line_async(u64 line_addr, const std::vector<u8>& data)
+SimpleFuture<bool> GCache::write_line_async(MemResp resp)
 {
     SimpleFuture<bool> out;
+    MemReq req;
+    req.line_addr = resp.line_addr;
+    req.epoch = resp.epoch;
+    req.valid = true;
     // write-allocate: fetch or install then mark dirty
-    auto f = fetch_line_async(line_addr);
-    f.then([this, line_addr, data, out](const std::vector<u8>& existing){
+    auto f = fetch_line_async(req);
+    f.then([this, resp, out](const MemResp& res){
         // overwrite and mark dirty
-        m_sched->schedule_after(0, [this, line_addr, data, out]() mutable {
-            this->install_line(line_addr, data, true); // mark dirty inside
+        m_sched->schedule_after(0, [this, resp, out]() mutable {
+            this->install_line(resp, true); // mark dirty inside
             out.set_value(true);
         });
     });
@@ -228,9 +256,16 @@ void GCache::invalidate_line(u64 line_addr)
     for (size_t w=0; w<m_cfg.ways; ++w) {
         if (m_meta[set_idx][w].valid && m_meta[set_idx][w].tag==tag) {
             if (m_meta[set_idx][w].dirty && m_lower) {
-                auto data = m_data[set_idx][w]; u64 evict_addr = reconstruct_line_addr(set_idx, m_meta[set_idx][w].tag);
-                m_sched->schedule_after(m_cfg.writeback_latency, [this, evict_addr, data]() {
-                    if (this->m_lower) this->m_lower->write_line_async(evict_addr, data);
+                auto data = m_data[set_idx][w];
+                u64 evict_addr = reconstruct_line_addr(set_idx, m_meta[set_idx][w].tag);
+                MemResp evresp;
+                evresp.line_addr = evict_addr;
+                memcpy(evresp.data, data.data(), sizeof(evresp.data));
+                evresp.valid = true;
+                m_sched->schedule_after(m_cfg.writeback_latency, [this, evresp]() {
+                    if (this->m_lower) {
+                        this->m_lower->write_line_async(evresp);
+                    }
                 });
             }
             m_meta[set_idx][w].valid=false; m_meta[set_idx][w].dirty=false;

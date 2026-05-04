@@ -56,6 +56,11 @@ public:
         return m_read_buffer.empty();
     }
 
+    inline bool full() const
+    {
+        return m_read_buffer.size() >= m_capacity;
+    }
+
     // 在周期边界调用，将write缓冲区切换到read缓冲区
     void tick() override
     {
@@ -91,7 +96,15 @@ public:
         m_read_buffer.clear();
         m_write_buffer.clear();
     }
-    virtual void commit() override { return; }
+    virtual void commit() override {
+        if (stalled) {
+            return;
+        }
+        for (size_t i = 0; i < m_write_buffer.size(); i++) {
+            m_read_buffer.push_back(m_write_buffer[i]);
+        }
+        m_write_buffer.clear();
+     }
 
 private:
     bool                    stalled;

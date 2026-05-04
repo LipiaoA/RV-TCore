@@ -97,6 +97,38 @@ DecodeConfig TCoreConfig::decode_config() const {
     return conf;
 }
 
+TageConfig TCoreConfig::tage_config() const {
+    TageConfig conf;
+    /* TODO: implement */
+    return conf;
+}
+
+BIMConfig TCoreConfig::bim_config() const {
+    BIMConfig conf;
+    conf.entries = m_core_config.bim_entries;
+    conf.hist_len = m_core_config.bim_hist_len;
+    return conf;
+}
+
+BTBConfig TCoreConfig::btb_config() const {
+    BTBConfig conf;
+    conf.nsets = m_core_config.btb_nsets;
+    conf.ways = m_core_config.btb_ways;
+    conf.tag_bits = m_core_config.btb_tag_bits;
+    conf.pc_lowdrop = m_core_config.btb_pc_lowdrop;
+    return conf;
+}
+
+
+BPConfig TCoreConfig::bp_config() const {
+    BPConfig conf;
+    conf.tage_config = tage_config();
+    conf.bim_config = bim_config();
+    conf.btb_config = btb_config();
+    conf.ras_capacity = m_core_config.ras_capacity;
+    return conf;
+}
+
 LSUConfig TCoreConfig::lsu_config() const {
     LSUConfig conf;
     conf.load_q_size            = m_core_config.load_q_size;
@@ -129,7 +161,9 @@ RenameConfig TCoreConfig::rename_config() const {
 
 FetchConfig TCoreConfig::fetch_config() const {
     FetchConfig conf;
-    conf.fetch_width = static_cast<u32>(m_core_config.fetch_width);
+    conf.fetch_width = m_core_config.fetch_width;
+    conf.group_size = m_core_config.fetch_group_size;
+    conf.bank_size = m_core_config.fetch_bank_size;
     return conf;
 }
 
@@ -186,5 +220,12 @@ CacheConfig TCoreConfig::dcache_config() const {
     conf.install_latency    = m_core_config.dcache_install_latency;
     conf.writeback_latency  = m_core_config.dcache_wb_latency;
     conf.inclusion_policy   = static_cast<InclusionPolicy>(m_core_config.dcache_inclusive);
+    return conf;
+}
+
+RASConfig TCoreConfig::ras_config() const {
+    RASConfig conf;
+    conf.capacity = m_core_config.ras_capacity;
+    conf.tag_bits = m_core_config.ras_tag_bits;
     return conf;
 }

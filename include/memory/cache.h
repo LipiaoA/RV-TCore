@@ -12,8 +12,25 @@
 // --------------------------- Generic Cache ------------------------------
 struct LineMeta { bool valid=false; u64 tag=0; bool dirty=false; u64 last_access=0; };
 
+typedef struct MemReq {
+    bool valid { false };
+    bool write { false };
+    pc_t line_addr { 0 };
+    u8 data[64];
+    u64 epoch;
+} MemReq;
+
+typedef struct MemResp {
+    bool valid { false };
+    pc_t line_addr { 0 };
+    u8 data[64];
+    bool page_fault { false };
+    bool access_fault { false };
+    u64 epoch;
+} MemResp;
+
 class GCache {
-    struct MSHREntry { u64 line_addr; std::vector<SimpleFuture<std::vector<u8>>> promises; };
+    struct MSHREntry { u64 line_addr; std::vector<SimpleFuture<MemResp>> promises; };
     typedef struct Stats { u64 accesses=0, hits=0, misses=0, total_latency=0; } Stats;
 
 public:
@@ -28,10 +45,10 @@ public:
     Stats                               get_stats() const { return m_stats; }
 
     // async fetch returns future completing with data; records latency into stats when fulfilled
-    SimpleFuture<std::vector<u8>>       fetch_line_async(u64 line_addr);
+    SimpleFuture<MemResp>               fetch_line_async(MemReq req);
 
     // write_line_async used by upper caches to write back
-    SimpleFuture<bool>                  write_line_async(u64 line_addr, const std::vector<u8>& data);
+    SimpleFuture<bool>                  write_line_async(MemResp resp);
 
     // expose invalidate used by inclusive policy
     void                                invalidate_line(u64 line_addr);
@@ -47,9 +64,9 @@ protected:
     // update LRU list on access (move way to MRU front)
     void                                update_lru_list_on_access(size_t set_idx, size_t way);
 
-    void                                install_line(u64 line_addr, const std::vector<u8>& data, bool mark_dirty);
+    void                                install_line(MemResp resp, bool mark_dirty);
 
-    void                                fulfill_mshr(u64 line_addr, const std::vector<u8>& data, u64 start_cycle);
+    void                                fulfill_mshr(MemResp resp, u64 start_cycle);
 
 protected:
     CycleScheduler*                                                 m_sched;

@@ -61,10 +61,12 @@ void Top::build() {
     ExecConfig      exec_conf       = m_config.execute_config();
     CommitConfig    commit_conf     = m_config.commit_config();
     LSUConfig       lsu_conf        = m_config.lsu_config();
+    RASConfig       ras_conf        = m_config.ras_config();
+    BPConfig        bp_conf         = m_config.bp_config();
 
     m_sched             =   new CycleScheduler();
     m_mem               =   new Memory();
-    m_bpu               =   new BranchPredictor("bpu");
+    m_bpu               =   new BranchPredictor(bp_conf);
 
     m_l2                =   new DCache(m_sched, l2_conf);
     m_l2->set_name("l2 Cache");
