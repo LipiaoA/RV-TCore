@@ -12,22 +12,34 @@ typedef enum {
   OP_MNRET,
   OP_LUI,
   OP_AUIPC,
+
+  // Jump Instructions
   OP_JAL,
   OP_JALR,
+
+  // Conditional Branch Instructions
   OP_BEQ,
   OP_BNE,
   OP_BLT,
   OP_BGE,
   OP_BLTU,
   OP_BGEU,
+
+  // Load & Store Instructions
   OP_LB,
-  OP_LH,
-  OP_LW,
   OP_LBU,
+  OP_LH,
   OP_LHU,
+  OP_LW,
+  OP_LWU,
+  OP_LD,
+
   OP_SB,
   OP_SH,
   OP_SW,
+  OP_SD,
+
+  // Integer Instructions
   OP_ADDI,
   OP_SLTI,
   OP_SLTIU,
@@ -47,6 +59,8 @@ typedef enum {
   OP_SRA,
   OP_OR,
   OP_AND,
+
+  // CSR Instructions
   OP_PAUSE,
   OP_CSRRW,
   OP_CSRRS,
@@ -54,9 +68,7 @@ typedef enum {
   OP_CSRRWI,
   OP_CSRRSI,
   OP_CSRRCI,
-  OP_LWU,
-  OP_LD,
-  OP_SD,
+
   OP_ADDIW,
   OP_SLLIW,
   OP_SRLIW,
@@ -181,6 +193,7 @@ typedef enum {
   OP_FCVT_D_L,
   OP_FCVT_D_LU,
   OP_FMV_D_X,
+
   OP_HLV_B,
   OP_HLV_BU,
   OP_HLV_H,

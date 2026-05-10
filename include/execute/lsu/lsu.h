@@ -67,7 +67,7 @@ public:
     ~LSU();
     void                                build();
 
-    void                                dispatch(MicroOp& uop);
+    bool                                dispatch(MInstPtr inst);
     void                                tick();
     void                                commit(uint64_t rob_idx);
     void                                flush();

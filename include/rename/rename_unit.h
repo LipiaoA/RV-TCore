@@ -22,7 +22,7 @@ public:
     void                                tick() override;
     void                                commit() override;
     void                                build() override;
-    bool                                dispatch(MicroOp& inst);
+    bool                                dispatch(MInstPtr inst);
     void                                recycle_phys(int phys);
 
 private:
@@ -30,8 +30,8 @@ private:
     void                                r1();
     void                                r2();
 
-    INPUT ASyncQueue<MicroOp>&          m_decode_rename_q;
-    OUTPUT ASyncQueue<MicroOp>&         m_rename_issue_q;
+    INPUT ASyncQueue<MInstPtr>&         m_decode_rename_q;
+    OUTPUT ASyncQueue<MInstPtr>&        m_rename_issue_q;
     ROB&                                m_rob;
 
 
@@ -41,8 +41,8 @@ private:
     std::vector<RatCheckpoint>          m_checkpoints;
     PRF                                 m_prf;
 
-    std::deque<MicroOp>                 m_r1_buf;
-    std::deque<MicroOp>                 m_r2_buf;
+    std::deque<MInstPtr>                m_r1_buf;
+    std::deque<MInstPtr>                m_r2_buf;
 
     size_t                              m_rename_width { 4 };
 };

@@ -7,6 +7,7 @@ add_library(fetch STATIC
     bpred/btb.cpp
     bpred/ras.cpp
     bpred/tage.cpp
+    prf.cpp
 )
 
 target_include_directories(fetch PUBLIC

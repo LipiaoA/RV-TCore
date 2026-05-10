@@ -14,11 +14,11 @@ public:
     ~AGU() override = default;
 
     void                                    build() override {}
-    void                                    dispatch(MicroOpPtr inst);
+    void                                    dispatch(MInstPtr inst);
     bool                                    accept() const;
 
     void                                    set_prf(PRF* prf) { m_prf = prf; }
-    void                                    set_exec(void (*fn)(MicroOpPtr)) { exec = fn; }
+    void                                    set_exec(void (*fn)(MInstPtr)) { exec = fn; }
     void                                    set_latency(u32 lat) { m_latency = lat; }
 
     void                                    tick() override;
@@ -34,8 +34,8 @@ private:
 
     void                                    shift();
     void                                    flush();
-    void                                    (*exec)(MicroOpPtr inst) = nullptr;
-    void                                    broadcast(MicroOpPtr inst);
+    void                                    (*exec)(MInstPtr inst) = nullptr;
+    void                                    broadcast(MInstPtr inst);
     StoreReq                                genStoreReq(const MicroOp& uop);
     LoadReq                                 genLoadReq(const MicroOp& uop);
 

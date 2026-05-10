@@ -43,9 +43,9 @@ void Top::build() {
     LOG_LEVEL1("TOP", "top building ...");
 
     m_comm_queues.fetch_to_decode    = new ASyncQueue<FetchPacket>(DEFAULT_QUEUE_CAPACITY);
-    m_comm_queues.decode_to_rename   = new ASyncQueue<MicroOp>(DEFAULT_QUEUE_CAPACITY);
-    m_comm_queues.rename_to_issue    = new ASyncQueue<MicroOp>(DEFAULT_QUEUE_CAPACITY);
-    m_comm_queues.issue_to_execute   = new ASyncQueue<MicroOp>(DEFAULT_QUEUE_CAPACITY);
+    m_comm_queues.decode_to_rename   = new ASyncQueue<MInstPtr>(DEFAULT_QUEUE_CAPACITY);
+    m_comm_queues.rename_to_issue    = new ASyncQueue<MInstPtr>(DEFAULT_QUEUE_CAPACITY);
+    m_comm_queues.issue_to_execute   = new ASyncQueue<MInstPtr>(DEFAULT_QUEUE_CAPACITY);
     m_comm_queues.execute_to_commit  = new ASyncQueue<ExecResult>(DEFAULT_QUEUE_CAPACITY);
     const std::string dev_name = "top";
     const CacheConfig l2_conf           = m_config.l2_config();
@@ -112,11 +112,7 @@ void Top::build() {
     commit_deps.execute_commit_q = m_comm_queues.execute_to_commit;
     m_commit = new CommitUnit(commit_conf, commit_deps);
 
-    IssueDeps issue_deps;
-    issue_deps.exec = m_execute;
-    issue_deps.rename_issue_q = m_comm_queues.rename_to_issue;
-    issue_deps.issue_execute_q = m_comm_queues.issue_to_execute;
-    m_issue = new IssueUnit(issue_conf, issue_deps);
+
 
     LSUDeps lsu_deps;
     lsu_deps.rob = m_rob;
@@ -134,6 +130,13 @@ void Top::build() {
     exec_deps.lsu = m_lsu;
 
     m_execute = new ExecuteUnit(exec_conf, exec_deps);
+
+    IssueDeps issue_deps;
+    issue_deps.exec = m_execute;
+    issue_deps.rename_issue_q = m_comm_queues.rename_to_issue;
+    issue_deps.issue_execute_q = m_comm_queues.issue_to_execute;
+    issue_deps.rob = m_rob;
+    m_issue = new IssueUnit(issue_conf, issue_deps);
 }
 
 

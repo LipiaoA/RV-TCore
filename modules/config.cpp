@@ -33,7 +33,7 @@ void TCoreConfig::init_config() {
     // LSU
     m_core_config.load_q_size       = 128;
     m_core_config.store_q_size      = 128;
-    m_core_config.agus_num          = 4;
+    m_core_config.agu_num          = 4;
     m_core_config.mshr_buffer_size  = 128;
     m_core_config.lsu_issue_width   = 2;
 
@@ -133,7 +133,7 @@ LSUConfig TCoreConfig::lsu_config() const {
     LSUConfig conf;
     conf.load_q_size            = m_core_config.load_q_size;
     conf.store_q_size           = m_core_config.store_q_size;
-    conf.agus_num               = m_core_config.agus_num;
+    conf.agu_num               = m_core_config.agu_num;
     conf.mshr_buffer_size       = m_core_config.mshr_buffer_size;
     conf.issue_width            = m_core_config.lsu_issue_width;
     return conf;
@@ -156,6 +156,7 @@ ROBConfig TCoreConfig::rob_config() const {
 RenameConfig TCoreConfig::rename_config() const {
     RenameConfig conf;
     conf.width = m_core_config.rename_width;
+    conf.phys_n = m_core_config.phys_n;
     return conf;
 }
 
@@ -178,6 +179,7 @@ ExecConfig TCoreConfig::execute_config() const {
     conf.alu_num = m_core_config.alu_num;
     conf.fpu_num = m_core_config.fpu_num;
     conf.bru_num = m_core_config.bru_num;
+    conf.agu_num = m_core_config.agu_num;
     return conf;
 }
 

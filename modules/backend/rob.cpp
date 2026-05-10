@@ -8,7 +8,7 @@ ROB::ROB(const ROBConfig& conf, const ROBDeps& deps)
 void ROB::build() {
 }
 
-ROBID ROB::alloc(const MicroOp& inst) {
+ROBID ROB::alloc(const MInstPtr inst) {
     if (full()) {
         return ROBID{ -1, 0 };
     }

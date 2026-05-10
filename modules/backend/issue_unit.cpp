@@ -1,10 +1,14 @@
 #include "issue_unit.h"
 #include "isa/opcode.h"
+#include <algorithm>
+#include "execute/execute_unit.h"
 
 IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
     : IIssue("issue_unit"),
       m_rename_issue_q(*deps.rename_issue_q),
       m_issue_execute_q(*deps.issue_execute_q),
+      m_rob(*deps.rob),
+      m_exec(*deps.exec),
       m_int_issue_width(conf.int_issue_width),
       m_ls_issue_width(conf.ls_issue_width),
       m_fp_issue_width(conf.fp_issue_width)
@@ -13,47 +17,97 @@ IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
 void IssueUnit::build() {
 }
 
-bool IssueUnit::is_load_store(InstOp op) {
-    return (op >= OP_LB && op <= OP_LWU) || (op >= OP_SB && op <= OP_SD);
-}
-
-bool IssueUnit::is_fp(InstOp op) {
-    (void)op;
-    return false;
-}
-
 void IssueUnit::tick() {
-    MicroOp inst;
-    while (m_rename_issue_q.read(inst)) {
-        InstOp op = inst.opcode;
-        if (is_load_store(op))
-            m_ls_q.push_back(std::move(inst));
-        else if (is_fp(op))
-            m_fp_q.push_back(std::move(inst));
-        else
-            m_int_q.push_back(std::move(inst));
-    }
+    async();
 
-    size_t int_issued = 0, ls_issued = 0, fp_issued = 0;
-    auto try_issue = [this](std::deque<MicroOp>& q, size_t& issued, size_t width) {
-        for (auto it = q.begin(); it != q.end() && issued < width; ) {
-            if (it->rs1.ready && it->rs2.ready && !it->issued) {
-                it->issued = true;
-                // TODO: dispatch to issue_execute_q
-                assert(false);
-                it = q.erase(it);
-                ++issued;
-            } else
-                ++it;
-        }
-    };
-    try_issue(m_int_q, int_issued, m_int_issue_width);
-    try_issue(m_ls_q,  ls_issued,  m_ls_issue_width);
-    try_issue(m_fp_q,  fp_issued,  m_fp_issue_width);
+    issue();
+    select();
 }
 
 void IssueUnit::commit() {}
 
-void IssueUnit::wakeup() {}
+void IssueUnit::wakeup() {
 
-void IssueUnit::selsect() {}
+}
+
+void IssueUnit::select()
+{
+    const size_t select_width = m_int_issue_width + m_ls_issue_width;
+    if (select_width == 0 || (m_int_q.empty() && m_ls_q.empty())) {
+        return;
+    }
+
+    std::vector<MInstPtr> candidates;
+    candidates.reserve(m_int_q.size() + m_ls_q.size());
+
+    for (const auto& inst : m_int_q) {
+        if (inst->ready()) {
+            candidates.emplace_back(inst);
+        }
+    }
+    for (const auto& inst : m_ls_q) {
+        if (inst->ready()) {
+            candidates.emplace_back(inst);
+        }
+    }
+    if (candidates.empty()) {
+        return;
+    }
+
+    std::stable_sort(candidates.begin(), candidates.end(),
+                     [this](const MInstPtr lhs, const MInstPtr rhs) {
+                         return m_rob.is_older_than(lhs->rob_id, rhs->rob_id);
+                     });
+
+    for (size_t i = 0; i < m_int_issue_width && i < candidates.size(); ++i) {
+        auto &inst = candidates[i];
+        if (inst->type == InstType::INT || inst->type == InstType::STD || inst->type == InstType::BRANCH) {
+            m_select_buffer.emplace_back(inst);
+        }
+    }
+    for (size_t i = 0; i < m_ls_issue_width && i < candidates.size(); ++i) {
+        auto &inst = candidates[i];
+        if (inst->type == InstType::LOAD || inst->type == InstType::STA) {
+            m_select_buffer.emplace_back(inst);
+        }
+    }
+}
+
+void IssueUnit::issue()
+{
+    for (auto &inst : m_select_buffer) {
+        bool ret = m_exec.dispatch(inst);
+        LOG_LEVEL1("IssueUnit", "issued:%s %s, v%d-a%d-p%d%s%d", ret ? "true" : "false",
+                   inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
+                   inst->rd.ptag, inst->rob_id.idx == 0 ? "++" : "--", inst->rob_id.idx);
+    }
+    m_select_buffer.clear();
+    for (auto it = m_int_q.begin(); it != m_int_q.end();) {
+        if ((*it)->state == InstState::ISSUED) {
+            it = m_int_q.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    for (auto it = m_ls_q.begin(); it != m_ls_q.end();) {
+        if ((*it)->state == InstState::ISSUED) {
+            it = m_ls_q.erase(it);
+        } else {
+            ++it;
+        }
+    }
+    return;
+}
+
+void IssueUnit::async() {
+    MInstPtr inst;
+    while (m_rename_issue_q.read(inst)) {
+        InstOp op = inst->opcode;
+        if (is_load_store(op))
+            m_ls_q.emplace_back(inst);
+        else {
+            m_int_q.emplace_back(inst);
+        }
+    }
+    return;
+}

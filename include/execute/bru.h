@@ -6,6 +6,7 @@
 #include "config.h"
 
 class BRU : public DevIntf {
+    constexpr static u32 MAX_STAGES = 8;
 public:
     BRU(const BRUConfig& conf);
     ~BRU() override = default;
@@ -14,7 +15,7 @@ public:
     void                                    commit() override;
     void                                    build() override {}
 
-    void                                    dispatch(MicroOpPtr inst);
+    bool                                    dispatch(MInstPtr inst);
     bool                                    accept() const;
 
 protected:
@@ -26,14 +27,14 @@ protected:
     void                                    shift();
 
     void                                    send_redirect(pc_t target);
-    void                                    send_flush(MicroOpPtr inst);
+    void                                    send_flush(MInstPtr inst);
 
 private:
     i32                                     m_stages { 4 };
-    std::vector<FUStage>                    m_pipe;
+    FUStage                                 m_pipe[MAX_STAGES];
     bool                                    m_pred_taken { false };
     pc_t                                    m_pred_target { 0 };
-    void                                    (*exec)(MicroOpPtr inst) = nullptr;
+    void                                    (*exec)(MInstPtr inst) = nullptr;
 
     OUTPUT std::vector<RegReq>              m_reg_read_q;
     OUTPUT std::vector<FlushEvent>          m_flush_q;

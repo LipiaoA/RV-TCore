@@ -51,18 +51,31 @@ typedef struct {
 
 enum class InstType {
     STA = 0,
-    STD = 1,
-    LOAD = 2,
-    BRANCH = 3,
-    INT = 4,
-    FP = 5,
-    INVALID = 6,
+    STD,
+    LOAD,
+    STORE,
+    BRANCH,
+    INT,
+    FP,
+    NONE,
+};
+
+enum class InstState {
+    NONE = 0,
+    RENAMED = 1,
+    ISSUED = 2,
+    EXECUTED = 3,
+    COMMITTED = 4,
+    FLUSHED = 5,
+    REPLAY = 6,
+    RETIRED = 7,
 };
 
 typedef struct MicroOp {
     u64 raw_inst;
     u64 pc;
     std::string inst_name;
+    InstState state { InstState::NONE };
 
     InstOp opcode;
     InstType type;
@@ -91,9 +104,19 @@ typedef struct MicroOp {
 
     bool rs1_ready = false;
     bool rs2_ready = false;
-    bool issued = false;
 
-} MicroOp, *MicroOpPtr;
+    bool ready() const {
+        bool ready = true;
+        if (rs1.valid) {
+            ready &= rs1_ready;
+        }
+        if (rs2.valid) {
+            ready &= rs2_ready;
+        }
+        return ready;
+    }
+
+} MicroOp, *MInstPtr;
 
 using DynInst = MicroOp;
 

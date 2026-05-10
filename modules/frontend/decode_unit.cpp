@@ -3,7 +3,8 @@
 #include "log.h"
 #include "isa/isa_inst.def"
 
-void DecodeUnit::predecode(insn_t raw, PredecodeInfo* out) {
+void DecodeUnit::predecode(insn_t raw, PredecodeInfo* out)
+{
     out->valid = false;
     out->is_branch = out->is_load = out->is_store = out->is_fp = false;
     out->length = 4;
@@ -25,7 +26,8 @@ void DecodeUnit::predecode(insn_t raw, PredecodeInfo* out) {
     }
 }
 
-i64 DecodeUnit::extract_imm(u64 raw, InstFmt fmt, InstOp op) {
+i64 DecodeUnit::extract_imm(u64 raw, InstFmt fmt, InstOp op)
+{
 
     switch (fmt) {
 
@@ -86,12 +88,42 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
             out->raw_inst = raw;
             out->opcode   = op;
             out->format   = fmt;
-
+            out->type     = get_inst_type(op);
             out->rd.atag  = static_cast<i32>((raw >> 7) & 0x1f);
             out->rs1.atag = static_cast<i32>((raw >> 15) & 0x1f);
             out->rs2.atag = static_cast<i32>((raw >> 20) & 0x1f);
-            out->rd.valid = out->rs1.valid = out->rs2.valid = true;
-
+            switch (fmt) {
+            case RV_FMT_R:
+                out->rd.valid = true;
+                out->rs1.valid = true;
+                out->rs2.valid = true;
+                break;
+            case RV_FMT_I:
+                out->rd.valid = true;
+                out->rs1.valid = true;
+                out->rs2.valid = false;
+                break;
+            case RV_FMT_S:
+                out->rd.valid = false;
+                out->rs1.valid = true;
+                out->rs2.valid = true;
+                break;
+            case RV_FMT_B:
+                out->rd.valid = false;
+                out->rs1.valid = true;
+                out->rs2.valid = true;
+                break;
+            case RV_FMT_U:
+                out->rd.valid = true;
+                out->rs1.valid = false;
+                out->rs2.valid = false;
+                break;
+            case RV_FMT_J:
+                out->rd.valid = true;
+                out->rs1.valid = false;
+                out->rs2.valid = false;
+                break;
+            }
             return true;
         }
     }
@@ -142,30 +174,30 @@ void DecodeUnit::d0() {
         if (!finst.valid || !(pkt.valid_mask & (1u << i)))
             continue;
 
-        MicroOp dinst;
-        dinst.pc = finst.pc;
-        if (!decode(finst.insn, &dinst) || dinst.opcode == OP_INVALID)
+        MInstPtr dinst = new MicroOp();
+        dinst->pc = finst.pc;
+        if (!decode(finst.insn, dinst) || dinst->opcode == OP_INVALID)
             continue;
-        LOG_LEVEL1("DecodeUnit", "d0 decode inst: %s", dinst.inst_name.c_str());
-        dinst.valid = true;
-        dinst.inst_id = m_next_decode_id++;
-        m_d0_pkt.emplace_back(std::move(dinst));
+        LOG_LEVEL1("DecodeUnit", "d0 decode inst: %s", dinst->inst_name.c_str());
+        dinst->valid = true;
+        dinst->inst_id = m_next_decode_id++;
+        m_d0_pkt.emplace_back(dinst);
         ++inst_count;
     }
 }
 
 void DecodeUnit::d1() {
     for (auto& dinst : m_d0_pkt) {
-        if (!dinst.valid)
+        if (!dinst->valid)
             continue;
         // 对于 CSR / FENCE 等 RV_FMT_NONE 类型，这里 imm 保持为 0，
         // 具体语义由执行阶段使用 raw_inst 自行解析。
-        if (dinst.format != RV_FMT_NONE)
-            dinst.imm = extract_imm(dinst.raw_inst, dinst.format, dinst.opcode);
+        if (dinst->format != RV_FMT_NONE)
+            dinst->imm = extract_imm(dinst->raw_inst, dinst->format, dinst->opcode);
         else
-            dinst.imm = 0;
-        LOG_LEVEL1("DecodeUnit", "d1 inst: %s", dinst.inst_name.c_str());
-        m_decode_rename_q.write(std::move(dinst));
+            dinst->imm = 0;
+        LOG_LEVEL1("DecodeUnit", "d1 inst: %s", dinst->inst_name.c_str());
+        m_decode_rename_q.write(dinst);
     }
     m_d0_pkt.clear();
 }
@@ -173,4 +205,21 @@ void DecodeUnit::d1() {
 void DecodeUnit::commit()
 {
     m_decode_rename_q.commit();
+}
+
+
+InstType DecodeUnit::get_inst_type(InstOp op) {
+    InstType type = InstType::NONE;
+    if (is_branch(op)) {
+        type = InstType::BRANCH;
+    } else if (is_load(op)) {
+        type = InstType::LOAD;
+    } else if (is_store(op)) {
+        type = InstType::STORE;
+    } else if (is_fp(op)) {
+        type = InstType::FP;
+    } else if (is_int(op)) {
+        type = InstType::INT;
+    }
+    return type;
 }

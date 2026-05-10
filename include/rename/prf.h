@@ -7,49 +7,26 @@
 #include "module_comm.h"
 
 class PRF {
+    constexpr static u32 MAX_PHY_REG_SIZE = 512;
 public:
-    PRF() {
-        reset();
-    }
-public:
-    std::array<u64, RV_PHY_REG_SIZE> m_regs {};
-    std::array<bool, RV_PHY_REG_SIZE> m_valid {};
+    PRF(u32 phys_size = 192);
+    ~PRF() = default;
 
-    void reset() {
-        m_regs.fill(0);
-        m_valid.fill(false);
-        for (i32 i = 0; i < RV_GPR_SIZE; ++i) {
-            m_valid[i] = true;
-        }
-    }
+    void                                reset();
+    u64                                 read(i32 pidx) const;
+    bool                                write(i32 pidx, u64 val);
+    bool                                is_ready(i32 pidx) const;
+    void                                set_busy(i32 pidx);
 
-    u64 read(i32 pidx) const {
-        if (!is_valid(pidx))
-            return 0;
-        return m_regs[pidx];
-    }
+private:
+    void                                mark_valid(i32 pidx);
+    bool                                is_valid(i32 pidx) const;
 
-    bool write(i32 pidx, u64 val) {
-        if (pidx < 0 || pidx >= RV_PHY_REG_SIZE) {
-            assert(false);
-            return false;
-        }
-        m_regs[pidx] = val;
-        m_valid[pidx] = true;
-        return true;
-    }
-
-    void mark_valid(i32 pidx) {
-        if (pidx < 0 || pidx >= RV_PHY_REG_SIZE) {
-            assert(false);
-            return;
-        }
-        m_valid[pidx] = true;
-    }
-
-    bool is_valid(i32 pidx) const {
-        return pidx >= 0 && pidx < RV_PHY_REG_SIZE && m_valid[pidx];
-    }
+private:
+    std::array<u64, MAX_PHY_REG_SIZE>       m_regs {};
+    std::array<bool, MAX_PHY_REG_SIZE>      m_valid {};
+    u32                                     m_phys_n { 192 };
+    bool                                    m_busy[MAX_PHY_REG_SIZE];
 };
 
 #endif // RV_TCORE_PRF_H

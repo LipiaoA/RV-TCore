@@ -8,6 +8,7 @@ ExecuteUnit::ExecuteUnit(const ExecConfig& conf, const ExecDeps& deps)
     , m_alu_num(conf.alu_num)
     , m_fpu_num(conf.fpu_num)
     , m_bru_num(conf.bru_num)
+    , m_lsu_width(conf.agu_num)
 {
     ALUConfig alu_conf;
     FPUConfig fpu_conf;
@@ -28,4 +29,37 @@ void ExecuteUnit::tick() {
 
 void ExecuteUnit::commit() {
     return;
+}
+
+bool ExecuteUnit::dispatch(MInstPtr inst) {
+    if (!inst)
+        return false;
+    switch (inst->type) {
+    case InstType::INT:
+    case InstType::STD:
+    for (int i = 0; i < m_alu_num; i++) {
+        if (m_alus[i].dispatch(inst)) {
+            inst->state = InstState::ISSUED;
+            return true;
+        }
+    } break;
+    case InstType::BRANCH:
+        for (int i = 0; i < m_bru_num; i++) {
+            if (m_brus[i].dispatch(inst)) {
+                inst->state = InstState::ISSUED;
+                return true;
+            }
+        } break;
+    case InstType::STA:
+    case InstType::LOAD:
+        for (int i = 0; i < m_lsu_width; i++) {
+            if (m_lsu.dispatch(inst)) {
+                inst->state = InstState::ISSUED;
+                return true;
+            }
+        } break;
+    default:
+        assert(0);
+    }
+    return false;
 }

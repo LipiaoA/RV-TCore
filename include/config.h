@@ -64,6 +64,7 @@ typedef struct {
 
 typedef struct {
     u32 width { 4 };
+    u32 phys_n { 192 };
 } RenameConfig;
 
 struct ALUConfig {
@@ -90,7 +91,7 @@ typedef struct {
 typedef struct {
     u32 load_q_size { 128 };
     u32 store_q_size { 128 };
-    u32 agus_num { 4 };
+    u32 agu_num { 4 };
     u32 mshr_buffer_size { 128 };
     u32 issue_width { 2 };
 } LSUConfig;
@@ -105,6 +106,7 @@ typedef struct {
     u32 alu_num { 0 };
     u32 fpu_num { 0 };
     u32 bru_num { 0 };
+    u32 agu_num { 0 };
 } ExecConfig;
 
 typedef struct {
@@ -147,6 +149,7 @@ typedef struct {
     u32 fetch_bank_size = 16;  // 16 bytes
     u32 decode_width = 4;
     u32 rename_width = 4;
+    u32 phys_n = 192;           // physical register file size
     u32 commit_width = 4;
 
     // queues / structures
@@ -158,7 +161,7 @@ typedef struct {
     // LSU / memory subsystem (scalar knobs used by LSUConfig)
     u32 load_q_size = 128;
     u32 store_q_size = 128;
-    u32 agus_num = 4;
+    u32 agu_num = 4;
     u32 mshr_buffer_size = 128;
     u32 lsu_issue_width = 2;
 

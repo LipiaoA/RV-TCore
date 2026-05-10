@@ -26,7 +26,7 @@ bool AGU::accept() const
     return !m_pipe[0].valid;
 }
 
-void AGU::dispatch(MicroOpPtr inst)
+void AGU::dispatch(MInstPtr inst)
 {
     if (!accept() || !inst)
         return;
@@ -39,7 +39,7 @@ void AGU::R0()
     if (!m_pipe[1].valid || !m_pipe[1].inst)
         return;
     RegReq req;
-    MicroOpPtr inst = m_pipe[1].inst;
+    MInstPtr inst = m_pipe[1].inst;
     if (inst->rs1.valid) {
         req.valid = true;
         req.ptag = inst->rs1.ptag;
@@ -53,7 +53,7 @@ void AGU::R1()
 {
     if (!m_pipe[1].valid || !m_pipe[1].inst || m_reg_resp.empty())
         return;
-    MicroOpPtr inst = m_pipe[1].inst;
+    MInstPtr inst = m_pipe[1].inst;
     if (inst->rs1.valid && m_reg_resp[0].valid) {
         inst->rs1.val = m_reg_resp[0].val;
     }
@@ -63,7 +63,7 @@ void AGU::E0()
 {
     if (!m_pipe[3].valid || !m_pipe[3].inst)
         return;
-    MicroOpPtr inst = m_pipe[3].inst;
+    MInstPtr inst = m_pipe[3].inst;
     if (exec)
         exec(inst);
     broadcast(inst);
@@ -107,7 +107,7 @@ void AGU::flush()
     }
 }
 
-void AGU::broadcast(MicroOpPtr inst)
+void AGU::broadcast(MInstPtr inst)
 {
     (void)inst;
 }

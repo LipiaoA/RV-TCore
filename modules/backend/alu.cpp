@@ -6,6 +6,10 @@ ALU::ALU(const ALUConfig& conf)
     , m_stages(conf.stages)
     , m_latency(conf.latency)
 {
+    for (i32 i = 0; i < m_stages; i++) {
+        m_pipe[i].valid = false;
+        m_pipe[i].inst = nullptr;
+    }
 }
 
 void ALU::tick()
@@ -27,12 +31,13 @@ bool ALU::accept() const
     return !m_pipe[0].valid;
 }
 
-void ALU::dispatch(MicroOpPtr inst)
+bool ALU::dispatch(const MInstPtr inst)
 {
     if (!accept() || !inst)
-        return;
+        return false;
     m_pipe[0].inst  = inst;
     m_pipe[0].valid = true;
+    return true;
 }
 
 void ALU::R0()
@@ -40,7 +45,7 @@ void ALU::R0()
     if (!m_pipe[1].valid || !m_pipe[1].inst)
         return;
     RegReq req;
-    MicroOpPtr inst = m_pipe[1].inst;
+    MInstPtr inst = m_pipe[1].inst;
     if (inst->rs1.valid) {
         req.valid = true;
         req.ptag = inst->rs1.ptag;
@@ -59,7 +64,7 @@ void ALU::R1()
 {
     if (!m_pipe[2].valid || !m_pipe[2].inst || m_reg_resp.empty())
         return;
-    MicroOpPtr inst = m_pipe[2].inst;
+    MInstPtr inst = m_pipe[2].inst;
     if (inst->rs1.valid && m_reg_resp[0].valid) {
         inst->rs1.val = m_reg_resp[0].val;
     }
@@ -73,7 +78,7 @@ void ALU::E0()
 {
     if (!m_pipe[3].valid || !m_pipe[3].inst)
         return;
-    MicroOpPtr inst = m_pipe[3].inst;
+    MInstPtr inst = m_pipe[3].inst;
     if (exec)
         exec(inst);
     broadcast(inst);
@@ -83,7 +88,7 @@ void ALU::E1()
 {
     if (!m_pipe[4].valid || !m_pipe[4].inst)
         return;
-    MicroOpPtr inst = m_pipe[4].inst;
+    MInstPtr inst = m_pipe[4].inst;
     if (inst->rd.valid) {
         RegReq req;
         req.valid = true;
@@ -104,7 +109,7 @@ void ALU::shift()
     }
 }
 
-void ALU::wakeup(MicroOpPtr inst)
+void ALU::wakeup(MInstPtr inst)
 {
     if (!inst || !inst->rd.valid)
         return;
@@ -114,7 +119,7 @@ void ALU::wakeup(MicroOpPtr inst)
     m_wakeup_q.push_back(event);
 }
 
-void ALU::broadcast(MicroOpPtr inst)
+void ALU::broadcast(MInstPtr inst)
 {
     if (!inst || !inst->rd.valid) {
         return;

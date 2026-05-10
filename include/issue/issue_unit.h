@@ -6,6 +6,7 @@
 #include "decode/inst.h"
 #include <deque>
 #include "config.h"
+#include "rob/rob.h"
 
 class IssueUnit : public IIssue {
 public:
@@ -16,19 +17,21 @@ public:
     void                                commit() override;
     void                                build() override;
     void                                wakeup();
-    void                                selsect();
-
-    static bool                         is_load_store(InstOp op);
-    static bool                         is_fp(InstOp op);
+    void                                select();
+    void                                issue();
 
 private:
+    void                                async();
+private:
 
-    std::deque<MicroOp>                 m_int_q;
-    std::deque<MicroOp>                 m_ls_q;
-    std::deque<MicroOp>                 m_fp_q;
+    std::vector<MInstPtr>               m_int_q;
+    std::vector<MInstPtr>               m_ls_q;
+    ROB&                                m_rob;
+    ExecuteUnit&                        m_exec;
+    ASyncQueue<MInstPtr>&               m_rename_issue_q;
+    ASyncQueue<MInstPtr>&               m_issue_execute_q;
 
-    ASyncQueue<MicroOp>&                m_rename_issue_q;
-    ASyncQueue<MicroOp>&                m_issue_execute_q;
+    std::vector<MInstPtr>               m_select_buffer;
 
     size_t                              m_int_issue_width  { 4 };
     size_t                              m_ls_issue_width   { 2 };

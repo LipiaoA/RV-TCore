@@ -35,14 +35,15 @@ void LSU::tick()
     schedule();
 }
 
-void LSU::dispatch(MicroOp& uop)
+bool LSU::dispatch(MInstPtr inst)
 {
     for (int i = 0; i < m_agus_num; i++) {
         if (m_agus[i].accept()) {
-            m_agus[i].dispatch(&uop);
-            break;
+            m_agus[i].dispatch(inst);
+            return true;
         }
     }
+    return false;
 }
 
 void LSU::schedule()

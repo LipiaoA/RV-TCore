@@ -106,7 +106,7 @@ typedef struct {
 
 typedef struct {
     bool valid = false;
-    MicroOpPtr uop { nullptr };
+    MInstPtr uop { nullptr };
     LdStState state {WAIT_ADDR};
     ROBID rob_idx;
 
@@ -134,15 +134,15 @@ typedef struct {
 
 typedef struct {
     bool valid { false };
-    MicroOpPtr inst { nullptr };
+    MInstPtr inst { nullptr };
 } FUStage;
 
 // 各段通信队列的指针集合，由 Top 在 build() 中填充并传入各模块
 struct ModuleCommQueues {
     ASyncQueue<FetchPacket>*        fetch_to_decode   { nullptr };  // Fetch 写 -> Decode 读
-    ASyncQueue<MicroOp>*            decode_to_rename  { nullptr };  // Decode 写 -> Rename 读
-    ASyncQueue<MicroOp>*            rename_to_issue{ nullptr };     // Rename 写 -> Dispatch 读
-    ASyncQueue<MicroOp>*            issue_to_execute  { nullptr };  // Issue 写 -> Execute 读
+    ASyncQueue<MInstPtr>*           decode_to_rename  { nullptr };  // Decode 写 -> Rename 读
+    ASyncQueue<MInstPtr>*           rename_to_issue{ nullptr };     // Rename 写 -> Dispatch 读
+    ASyncQueue<MInstPtr>*           issue_to_execute  { nullptr };  // Issue 写 -> Execute 读
     ASyncQueue<ExecResult>*         execute_to_commit { nullptr };  // Execute 写 -> Commit/ROB 读
 };
 
@@ -187,13 +187,13 @@ typedef struct {
 
 typedef struct {
     ASyncQueue<FetchPacket>*    fetch_decode_q;
-    ASyncQueue<MicroOp>*        decode_rename_q;
+    ASyncQueue<MInstPtr>*       decode_rename_q;
 } DecodeDeps;
 
 typedef struct {
     ROB*                        rob;
-    ASyncQueue<MicroOp>*        decode_rename_q;
-    ASyncQueue<MicroOp>*        rename_issue_q;
+    ASyncQueue<MInstPtr>*       decode_rename_q;
+    ASyncQueue<MInstPtr>*       rename_issue_q;
 } RenameDeps;
 
 typedef struct {
@@ -204,13 +204,14 @@ typedef struct {
 
 typedef struct {
     ExecuteUnit*                exec;
-    ASyncQueue<MicroOp>*        rename_issue_q;
-    ASyncQueue<MicroOp>*        issue_execute_q;
+    ROB*                        rob;
+    ASyncQueue<MInstPtr>*       rename_issue_q;
+    ASyncQueue<MInstPtr>*       issue_execute_q;
 } IssueDeps;
 
 typedef struct {
     LSU*                        lsu;
-    ASyncQueue<MicroOp>*        issue_execute_q;
+    ASyncQueue<MInstPtr>*       issue_execute_q;
     ASyncQueue<ExecResult>*     execute_commit_q;
 } ExecDeps;
 
@@ -222,7 +223,7 @@ typedef struct {
     ROB*                        rob;
     GCache*                     dcache;
     MultiLevelTLB*              dtlb;
-    ASyncQueue<MicroOp>*        rename_issue_q;
+    ASyncQueue<MInstPtr>*       rename_issue_q;
     ASyncQueue<ExecResult>*     execute_commit_q;
 } LSUDeps;
 

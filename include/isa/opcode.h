@@ -20,13 +20,35 @@ typedef enum {
 #include "opcode.inc"
 
 inline bool is_load(InstOp op) {
-    return op >= OP_LB && op <= OP_LWU;
+    return op >= OP_LB && op <= OP_LD;
 }
+
+inline bool is_fp(InstOp op) {
+    return op >= OP_FLW && op <= OP_FMV_D_X;
+}
+
+inline bool is_int(InstOp op) {
+    return op >= OP_ADDI && op <= OP_AND;
+}
+
 inline bool is_store(InstOp op) {
     return op >= OP_SB && op <= OP_SD;
 }
-inline bool is_branch(InstOp op) {
+
+inline bool is_load_store(InstOp op) {
+    return is_load(op) || is_store(op);
+}
+
+inline bool ucond_jmp(InstOp op) {
+    return op >= OP_JAL && op <= OP_JALR;
+}
+
+inline bool cond_jump(InstOp op) {
     return op >= OP_BEQ && op <= OP_BGEU;
+}
+
+inline bool is_branch(InstOp op) {
+    return ucond_jmp(op) || cond_jump(op);
 }
 
 #endif

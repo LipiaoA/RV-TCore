@@ -2,8 +2,6 @@
 
 #include "isa/opcode.h"
 
-namespace {
-
 bool branch_taken(InstOp op, u64 rs1, u64 rs2)
 {
     switch (op) {
@@ -17,12 +15,14 @@ bool branch_taken(InstOp op, u64 rs1, u64 rs2)
     }
 }
 
-} // namespace
-
 BRU::BRU(const BRUConfig& conf)
     : DevIntf("bru")
     , m_stages(conf.stages)
 {
+    for (i32 i = 0; i < m_stages; i++) {
+        m_pipe[i].valid = false;
+        m_pipe[i].inst = nullptr;
+    }
 }
 
 void BRU::tick()
@@ -38,12 +38,13 @@ void BRU::commit()
 {
 }
 
-void BRU::dispatch(MicroOpPtr inst)
+bool BRU::dispatch(MInstPtr inst)
 {
     if (!accept() || !inst)
-        return;
+        return false;
     m_pipe[0].inst  = inst;
     m_pipe[0].valid = true;
+    return true;
 }
 
 bool BRU::accept() const
@@ -56,7 +57,7 @@ void BRU::R0()
     if (!m_pipe[1].valid || !m_pipe[1].inst)
         return;
     RegReq req;
-    MicroOpPtr inst = m_pipe[1].inst;
+    MInstPtr inst = m_pipe[1].inst;
     if (inst->rs1.valid) {
         req.valid = true;
         req.ptag = inst->rs1.ptag;
@@ -75,7 +76,7 @@ void BRU::R1()
 {
     if (!m_pipe[2].valid || !m_pipe[2].inst || m_reg_resp.empty())
         return;
-    MicroOpPtr inst = m_pipe[2].inst;
+    MInstPtr inst = m_pipe[2].inst;
     if (inst->rs1.valid && m_reg_resp[0].valid) {
         inst->rs1.val = m_reg_resp[0].val;
     }
@@ -97,7 +98,7 @@ void BRU::E0()
 {
     if (!m_pipe[2].valid || !m_pipe[2].inst)
         return;
-    MicroOpPtr inst = m_pipe[2].inst;
+    MInstPtr inst = m_pipe[2].inst;
     if (exec)
         exec(inst);
 
@@ -118,7 +119,7 @@ void BRU::send_redirect(pc_t target)
     (void)target;
 }
 
-void BRU::send_flush(MicroOpPtr inst)
+void BRU::send_flush(MInstPtr inst)
 {
     if (!inst)
         return;

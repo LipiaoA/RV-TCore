@@ -11,7 +11,7 @@
 
 struct RobEntry {
     bool          valid     { false };
-    MicroOp       inst;
+    MInstPtr      inst;
     bool          mispred   { false };
     bool          ready     { false };
     u64           result    { 0 };
@@ -28,7 +28,7 @@ public:
     void                                commit() override;
     void                                build() override;
 
-    ROBID                               alloc(const MicroOp& inst);
+    ROBID                               alloc(const MInstPtr inst);
     RobEntry*                           get(ROBID id);
     void                                mark_ready(ROBID id, u64 result_val);
     std::optional<RobEntry>             try_commit_head();

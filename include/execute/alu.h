@@ -14,13 +14,12 @@ public:
     explicit ALU(const ALUConfig& conf);
     ~ALU() override = default;
 
-protected:
     void                                    build() override {}
-    void                                    dispatch(MicroOpPtr inst);
+    bool                                    dispatch(const MInstPtr inst);
     bool                                    accept() const;
 
     void                                    set_prf(PRF* prf) { m_prf = prf; }
-    void                                    set_exec(void (*fn)(MicroOpPtr)) { exec = fn; }
+    void                                    set_exec(void (*fn)(MInstPtr)) { exec = fn; }
 
     void                                    tick() override;
     void                                    commit() override;
@@ -38,8 +37,8 @@ protected:
 
     void                                    shift();
 
-    virtual void                            wakeup(MicroOpPtr inst);
-    void                                    broadcast(MicroOpPtr inst);
+    virtual void                            wakeup(MInstPtr inst);
+    void                                    broadcast(MInstPtr inst);
 
 protected:
     i32                                     m_stages { 0 };
@@ -47,7 +46,7 @@ protected:
     u32                                     m_latency { 1 };
     PRF*                                    m_prf { nullptr };
 
-    void                                    (*exec)(MicroOpPtr inst) = nullptr;
+    void                                    (*exec)(MInstPtr inst) = nullptr;
 
     OUTPUT std::vector<WakeupEvent>         m_wakeup_q;
     OUTPUT std::vector<RegReq>              m_reg_read_q;

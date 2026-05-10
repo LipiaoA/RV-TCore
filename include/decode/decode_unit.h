@@ -33,6 +33,7 @@ private:
 
     bool                                decode(insn_t raw, MicroOp *out);
     i64                                 extract_imm(u64 raw, InstFmt fmt, InstOp op);
+    InstType                            get_inst_type(InstOp op);
 
 private:
     FetchUnit*                          m_fetch { nullptr };
@@ -40,10 +41,10 @@ private:
     std::deque<MicroOp>                 m_decoded_q;
     size_t                              m_decode_width { 4 };
 
-    std::vector<MicroOp>                m_d0_pkt;
+    std::vector<MInstPtr>               m_d0_pkt;
 
     ASyncQueue<FetchPacket>&            m_fetch_decode_q;
-    ASyncQueue<MicroOp>&                m_decode_rename_q;
+    ASyncQueue<MInstPtr>&               m_decode_rename_q;
 
     u64                                 m_next_decode_id { 0 };
     bool                                m_stall { false };
