@@ -3,20 +3,26 @@
 #include <string>
 
 LSU::LSU(const LSUConfig& conf, const LSUDeps& deps)
-    : m_conf(conf)
-    , m_dcache(*deps.dcache)
-    , m_dtlb(*deps.dtlb)
-    , m_rob(*deps.rob)
+    : m_conf(conf),
+      m_dcache(*deps.dcache),
+      m_dtlb(*deps.dtlb),
+      m_rob(*deps.rob),
+      m_agus_num(conf.agu_num),
+      m_mshr_buffer_size(conf.mshr_buffer_size),
+      m_load_q_size(conf.load_q_size),
+      m_store_q_size(conf.store_q_size),
+      m_issue_width(conf.issue_width)
 {
+    AGUDeps agu_deps;
+    agu_deps.reg_req_q = deps.reg_req_q;
+    agu_deps.reg_resp_q = deps.reg_resp_q;
+    agu_deps.reg_bypass_q = deps.reg_bypass_q;
+    AGUConfig agu_conf;
+    agu_conf.stages = conf.agu_stages;
+    m_agus.init(m_agus_num, agu_conf, agu_deps);
 }
 
 void LSU::build() {
-    m_issue_width = 2;
-    m_load_q_size = 128;
-    m_store_q_size = 128;
-    m_agus_num = 4;
-    m_mshr_buffer_size = 128;
-    m_agus.init(m_agus_num, AGUConfig{stages: 8});
     m_mshr_buffer.resize(m_mshr_buffer_size);
     m_load_q.resize(m_load_q_size);
     m_store_q.resize(m_store_q_size);
@@ -137,8 +143,10 @@ bool LSU::checkViolation(uint64_t addr, ROBID rob_idx) {
     return false;
 }
 
-void LSU::commit(uint64_t rob_idx) {
-    (void)rob_idx;
+void LSU::commit() {
+    for (int i = 0; i < m_agus_num; i++) {
+        m_agus[i].commit();
+    }
 }
 
 int LSU::alloc_load_entry() {

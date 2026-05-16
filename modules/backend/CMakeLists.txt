@@ -2,9 +2,12 @@ add_library(backend STATIC
     commit_unit.cpp
     execute_unit.cpp
     issue_unit.cpp
+    regfile_unit.cpp
     rob.cpp
     bru.cpp
     alu.cpp
+    inst_exec.cpp
+    prf.cpp
     lsu/lsu.cpp
     lsu/agu.cpp
 )

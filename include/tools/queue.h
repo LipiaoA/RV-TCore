@@ -409,4 +409,109 @@ private:
     std::vector<T> m_data;
 };
 
+
+template<typename T, size_t N>
+class FixedArray : public std::array<T, N>
+{
+    using Base = FixedArray<T, N>;
+
+public:
+    using value_type = T;
+    using size_type  = size_t;
+
+    FixedArray() = default;
+    ~FixedArray() = default;
+
+    // 禁止拷贝（CPU模型里通常不希望拷贝大结构）
+    FixedArray(const FixedArray&) = delete;
+    FixedArray& operator=(const FixedArray&) = delete;
+
+    // 允许移动
+    FixedArray(FixedArray&&) = default;
+    FixedArray& operator=(FixedArray&&) = default;
+
+public:
+    // ===== 容量 =====
+    constexpr size_type capacity() const noexcept { return N; }
+    size_type size() const noexcept { return size_; }
+    bool empty() const noexcept { return size_ == 0; }
+    bool full()  const noexcept { return size_ == N; }
+
+    // ===== 清空 =====
+    void clear() noexcept
+    {
+        // 对非trivial类型调用析构
+        if constexpr (!std::is_trivially_destructible_v<T>) {
+            for (size_t i = 0; i < size_; i++)
+                (*this)[i].~T();
+        }
+        size_ = 0;
+    }
+
+    // ===== push_back =====
+    void push_back(const T& value)
+    {
+        assert(size_ < N);
+        (*this)[size_] = value;
+        size_++;
+    }
+
+    void push_back(T&& value)
+    {
+        assert(size_ < N);
+        (*this)[size_] = std::move(value);
+        size_++;
+    }
+
+    // ===== emplace_back =====
+    template<typename... Args>
+    T& emplace_back(Args&&... args)
+    {
+        assert(size_ < N);
+        T* ptr = &(*this)[size_];
+        new (ptr) T(std::forward<Args>(args)...);
+        return (*this)[size_++];
+    }
+
+    // ===== pop_back =====
+    void pop_back()
+    {
+        assert(size_ > 0);
+        size_--;
+        if constexpr (!std::is_trivially_destructible_v<T>)
+            (*this)[size_].~T();
+    }
+
+    // ===== resize =====
+    void resize(size_t newSize)
+    {
+        assert(newSize <= N);
+
+        if (newSize < size_) {
+            // 缩小 → 析构
+            if constexpr (!std::is_trivially_destructible_v<T>) {
+                for (size_t i = newSize; i < size_; i++)
+                    (*this)[i].~T();
+            }
+        }
+        else {
+            // 扩大 → 默认构造
+            for (size_t i = size_; i < newSize; i++)
+                new (&(*this)[i]) T();
+        }
+
+        size_ = newSize;
+    }
+
+    // ===== 只遍历有效元素 =====
+    T* begin_valid() { return this->data(); }
+    T* end_valid()   { return this->data() + size_; }
+
+    const T* begin_valid() const { return this->data(); }
+    const T* end_valid()   const { return this->data() + size_; }
+
+private:
+    size_t size_ = 0;
+};
+
 #endif // RV_TCORE_QUEUES_H

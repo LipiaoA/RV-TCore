@@ -32,6 +32,7 @@ private:
     DecodeUnit&                             m_decode;
     RenameUnit&                             m_rename;
     IssueUnit&                              m_issue;
+    RegFileUnit&                            m_regfile;
     ExecuteUnit&                            m_execute;
     CommitUnit&                             m_commit;
     CycleScheduler&                         m_sched;

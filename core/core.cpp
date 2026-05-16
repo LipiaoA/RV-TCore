@@ -7,15 +7,16 @@
 #include "fetch_unit.h"
 #include "issue_unit.h"
 #include "rename_unit.h"
+#include "regfile_unit.h"
 #include "branch_predictor.h"
 #include "log.h"
-
 
 Core::Core(const CoreDeps &deps)
  : m_fetch(*deps.fetch),
    m_decode(*deps.decode),
    m_rename(*deps.rename),
    m_issue(*deps.issue),
+   m_regfile(*deps.regfile),
    m_execute(*deps.execute),
    m_commit(*deps.commit),
    m_sched(*deps.sched)
@@ -28,6 +29,7 @@ void Core::tick() {
     m_decode.tick();
     m_rename.tick();
     m_issue.tick();
+    m_regfile.tick();
     m_execute.tick();
     m_commit.tick();
 
@@ -40,6 +42,7 @@ void Core::build()
     m_decode.build();
     m_rename.build();
     m_issue.build();
+    m_regfile.build();
     m_execute.build();
     m_commit.build();
 }
@@ -55,6 +58,7 @@ void Core::reset()
     m_decode.reset();
     m_rename.reset();
     m_issue.reset();
+    m_regfile.reset();
     m_execute.reset();
     m_commit.reset();
 
@@ -72,6 +76,7 @@ void Core::commit()
     m_decode.commit();
     m_rename.commit();
     m_issue.commit();
+    m_regfile.commit();
     m_execute.commit();
     m_commit.commit();
 }

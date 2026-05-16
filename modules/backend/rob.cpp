@@ -70,9 +70,9 @@ bool ROB::is_older_than(const ROBID& a, const ROBID& b) const
 void ROB::tick() {
     ExecResult res;
     while (m_execute_commit_q.read(res)) {
-        if (!res.valid || res.rob_id < 0)
+        if (!res.valid || res.rid < 0)
             continue;
-        mark_ready(ROBID{static_cast<u32>(res.rob_id), 0}, res.result);
+        mark_ready(ROBID{static_cast<u32>(res.rid), 0}, res.result);
     }
 }
 

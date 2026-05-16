@@ -1,8 +1,11 @@
 #ifndef RV_TCORE_INST_H
 #define RV_TCORE_INST_H
 
-#include "isa/opcode.h"
 #include <cstdint>
+#include <string>
+
+#include "isa/opcode.h"
+#include "rv_def.h"
 
 struct PredecodeInfo {
     bool     valid    { false };
@@ -45,7 +48,7 @@ typedef struct {
     RegType rd;
     i64 imm;
     u64 inst_id { 0 };
-    ROBID rob_id {};
+    ROBID rid {};
     bool issued { false };
 } DecodeInst;
 
@@ -87,7 +90,7 @@ typedef struct MicroOp {
     RegType rd;
     i64 imm;
     u64 inst_id { 0 };
-    ROBID rob_id {};
+    ROBID rid {};
     i32 latency;
     uint64_t base;
     int64_t  offset;

@@ -145,14 +145,17 @@ static inline int64_t sign_extend(uint64_t value, int bits) {
 template<typename T, size_t MaxN>
 class FixedStorage {
 public:
-    template<typename Config>
-    void init(size_t n, const Config& cfg) {
+    template<typename... Args>
+    void init(size_t n, Args... args) {
         assert(n <= MaxN);
         size_ = n;
         for (size_t i = 0; i < size_; i++)
-            new (&data_[i]) T(cfg);
+            new (&data_[i]) T(std::forward<Args>(args)...);
     }
-
+    ~FixedStorage() {
+        for (size_t i = 0; i < size_; i++)
+            data_[i].~T();
+    }
     T& operator[](size_t i) { return data_[i]; }
     size_t size() const { return size_; }
 

@@ -20,6 +20,7 @@ class ExecuteUnit;
 class LSU;
 class ROB;
 class Memory;
+class FlushUnit;
 
 class Top {
 public:
@@ -52,9 +53,10 @@ private:
     IssueUnit*                              m_issue { nullptr };
     ExecuteUnit*                            m_execute { nullptr };
     CommitUnit*                             m_commit { nullptr };
+    FlushUnit*                              m_flush { nullptr };
     ROB*                                    m_rob { nullptr };
     LSU*                                    m_lsu { nullptr };
-
+    RegFileUnit*                            m_regfile { nullptr };
     TCoreConfig                             m_config;
 };
 

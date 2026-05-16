@@ -156,7 +156,20 @@ ROBConfig TCoreConfig::rob_config() const {
 RenameConfig TCoreConfig::rename_config() const {
     RenameConfig conf;
     conf.width = m_core_config.rename_width;
-    conf.phys_n = m_core_config.phys_n;
+    conf.prf_capacity = m_core_config.prf_capacity;
+    return conf;
+}
+
+RegFileConfig TCoreConfig::regfile_config() const {
+    RegFileConfig conf;
+    conf.width = m_core_config.prf_width;
+    conf.capacity = m_core_config.prf_capacity;
+    return conf;
+}
+
+FlushUnitConfig TCoreConfig::flush_config() const {
+    FlushUnitConfig conf;
+    conf.width = m_core_config.flush_width;
     return conf;
 }
 
@@ -180,6 +193,18 @@ ExecConfig TCoreConfig::execute_config() const {
     conf.fpu_num = m_core_config.fpu_num;
     conf.bru_num = m_core_config.bru_num;
     conf.agu_num = m_core_config.agu_num;
+    ALUConfig alu_conf;
+    FPUConfig fpu_conf;
+    BRUConfig bru_conf;
+    LSUConfig lsu_conf;
+    alu_conf.stages = m_core_config.alu_stages;
+    fpu_conf.stages = m_core_config.fpu_stages;
+    bru_conf.stages = m_core_config.bru_stages;
+    lsu_conf.issue_width = m_core_config.lsu_issue_width;
+    conf.alu_conf = alu_conf;
+    conf.fpu_conf = fpu_conf;
+    conf.bru_conf = bru_conf;
+    conf.lsu_conf = lsu_conf;
     return conf;
 }
 

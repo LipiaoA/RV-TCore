@@ -11,7 +11,7 @@ class PRF;
 class ALU : public DevIntf {
     constexpr static u32 MAX_STAGES = 8;
 public:
-    explicit ALU(const ALUConfig& conf);
+    explicit ALU(const ALUConfig& conf, const ALUDeps& deps);
     ~ALU() override = default;
 
     void                                    build() override {}
@@ -19,41 +19,35 @@ public:
     bool                                    accept() const;
 
     void                                    set_prf(PRF* prf) { m_prf = prf; }
-    void                                    set_exec(void (*fn)(MInstPtr)) { exec = fn; }
 
     void                                    tick() override;
     void                                    commit() override;
 
 public:
-    void                                    set_stages(i32 stages) { m_stages = stages; }
-    void                                    set_latency(u32 lat) { m_latency = lat; }
 
 protected:
     virtual void                            R0();
     virtual void                            R1();
     virtual void                            E0();
     virtual void                            E1();
-    virtual void                            flush();
+    virtual void                            flush(const FlushEvent& event);
 
     void                                    shift();
 
     virtual void                            wakeup(MInstPtr inst);
     void                                    broadcast(MInstPtr inst);
 
-protected:
-    i32                                     m_stages { 0 };
+private:
+    FUStage                                 m_input_latch;
+    i32                                     m_stages { 4 };
     FUStage                                 m_pipe[MAX_STAGES];
-    u32                                     m_latency { 1 };
     PRF*                                    m_prf { nullptr };
 
-    void                                    (*exec)(MInstPtr inst) = nullptr;
-
     OUTPUT std::vector<WakeupEvent>         m_wakeup_q;
-    OUTPUT std::vector<RegReq>              m_reg_read_q;
-    OUTPUT std::vector<RegReq>              m_reg_write_q;
+    OUTPUT ASyncQueue<RegReq>&              m_reg_req_q;
 
-    INPUT  std::vector<RegReq>              m_reg_resp;
-    INPUT  std::vector<FlushEvent>          m_flush_q;
+    INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>& m_reg_resp_q;
+    INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>& m_reg_bypass_q;
 };
 
 #endif

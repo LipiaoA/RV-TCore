@@ -2,6 +2,7 @@ add_library(core STATIC
     top.cpp
     core.cpp
     ${CMAKE_SOURCE_DIR}/modules/config.cpp
+    ${CMAKE_SOURCE_DIR}/modules/flush_unit.cpp
 )
 
 target_include_directories(core PUBLIC

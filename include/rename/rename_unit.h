@@ -33,13 +33,13 @@ private:
     INPUT ASyncQueue<MInstPtr>&         m_decode_rename_q;
     OUTPUT ASyncQueue<MInstPtr>&        m_rename_issue_q;
     ROB&                                m_rob;
+    RegFileUnit&                        m_regfile;
 
 
-    std::array<int, RV_GPR_SIZE>        m_rat {};
-    std::array<int, RV_GPR_SIZE>        m_crat {};
+    FixedArray<int, RV_GPR_SIZE>        m_rat {};
+    FixedArray<int, RV_GPR_SIZE>        m_crat {};
     std::deque<int>                     m_free_list;
     std::vector<RatCheckpoint>          m_checkpoints;
-    PRF                                 m_prf;
 
     std::deque<MInstPtr>                m_r1_buf;
     std::deque<MInstPtr>                m_r2_buf;

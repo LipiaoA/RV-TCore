@@ -11,6 +11,15 @@
 constexpr int RV_GPR_SIZE  = 32;
 constexpr int RV_PHY_REG_SIZE = 64;
 
+enum class FuType {
+    NONE,
+    ALU,
+    BRU,
+    LSU,
+    AGU,
+    FPU,
+};
+
 struct FetchInst {
     pc_t pc { 0 };
     insn_t insn { 0 };
@@ -49,7 +58,7 @@ struct ExecResult {
     DecodeInst inst;
     bool valid { false };
     u64 exec_id { 0 };
-    int rob_id { -1 };
+    int rid { -1 };
     u64 result { 0 };
 };
 
@@ -60,9 +69,22 @@ struct CommitAck {
 typedef struct{
     bool valid { false };
     bool write { false };
+    i32 idx { -1 };
     i32 ptag { -1 };
     u64 val { 0 };
+    ROBID rid { 0 };
+    FuType fu { FuType::NONE };
 } RegReq;
+
+typedef struct{
+    bool valid { false };
+    i32 ptag { -1 };
+    u64 val { 0 };
+    ROBID rid { 0 };
+    i32 idx { -1 };
+    FuType fu { FuType::NONE };
+    int fu_id { -1 };
+} RegResp;
 
 typedef struct {
     bool valid { false };
@@ -76,7 +98,7 @@ enum class FlushType {
 
 typedef struct {
     bool valid { false };
-    ROBID rob_id { 0 };
+    ROBID rid { 0 };
     FlushType type { FlushType::NORMAL };
 } FlushEvent;
 
@@ -138,12 +160,29 @@ typedef struct {
 } FUStage;
 
 // 各段通信队列的指针集合，由 Top 在 build() 中填充并传入各模块
+constexpr static u32 MAX_REGISTER_REQ_CAPACITY = 16;
 struct ModuleCommQueues {
+    /* 各模块间指令流水异步队列 */
     ASyncQueue<FetchPacket>*        fetch_to_decode   { nullptr };  // Fetch 写 -> Decode 读
     ASyncQueue<MInstPtr>*           decode_to_rename  { nullptr };  // Decode 写 -> Rename 读
     ASyncQueue<MInstPtr>*           rename_to_issue{ nullptr };     // Rename 写 -> Dispatch 读
     ASyncQueue<MInstPtr>*           issue_to_execute  { nullptr };  // Issue 写 -> Execute 读
     ASyncQueue<ExecResult>*         execute_to_commit { nullptr };  // Execute 写 -> Commit/ROB 读
+    ASyncQueue<RegReq>*             rename_to_prf     { nullptr };  // Rename 写 -> PRF 读
+
+    /* 各模块的 register request 和 response 队列 */
+    ASyncQueue<RegReq>*             reg_req_q { nullptr };  // RegFile 写 -> RegFile 读
+
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*            alu_resp_q { nullptr };  // ALU 读 -> RegFile 写
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*            bru_resp_q { nullptr };  // BRU 读 -> RegFile 写
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*            lsu_resp_q { nullptr };  // LSU 读 -> RegFile 写
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*            fpu_resp_q { nullptr };  // FPU 读 -> RegFile 写
+
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*            reg_bypass_q { nullptr };
+
+    /* 各模块的 flush 事件 */
+    ASyncQueue<FlushEvent>*         flush_req_q { nullptr };  // 统一的 flush 请求队列
+    FlushEvent*                     flush_event { nullptr };  // 统一的 flush 广播事件，由 FlushUnit 管理
 };
 
 class ICache;
@@ -160,6 +199,7 @@ class RenameUnit;
 class CommitUnit;
 class IssueUnit;
 class ExecuteUnit;
+class RegFileUnit;
 
 typedef struct IFetchReq {
     bool valid { false };
@@ -183,23 +223,38 @@ typedef struct {
     ICache*                     icache;
     BranchPredictor*            bpu;
     ASyncQueue<FetchPacket>*    fetch_decode_q;
+    FlushEvent*                 flush_event { nullptr };
 } IFetchDeps;
 
 typedef struct {
     ASyncQueue<FetchPacket>*    fetch_decode_q;
     ASyncQueue<MInstPtr>*       decode_rename_q;
+    FlushEvent*                 flush_event { nullptr };
 } DecodeDeps;
 
 typedef struct {
     ROB*                        rob;
     ASyncQueue<MInstPtr>*       decode_rename_q;
     ASyncQueue<MInstPtr>*       rename_issue_q;
+    RegFileUnit*                regfile;
+    FlushEvent*                 flush_event { nullptr };
 } RenameDeps;
+
+typedef struct {
+    ASyncQueue<RegReq>*         reg_req_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        alu_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        bru_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        lsu_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        fpu_resp_q;
+    FlushEvent*                 flush_event { nullptr };
+} RegFileDeps;
 
 typedef struct {
     ASyncQueue<ExecResult>*     execute_commit_q;
     ROB*                        rob;
     RenameUnit*                 rename;
+    FlushEvent*                 flush_event { nullptr };
+    ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
 } CommitDeps;
 
 typedef struct {
@@ -207,16 +262,32 @@ typedef struct {
     ROB*                        rob;
     ASyncQueue<MInstPtr>*       rename_issue_q;
     ASyncQueue<MInstPtr>*       issue_execute_q;
+    FlushEvent*                 flush_event { nullptr };
 } IssueDeps;
 
 typedef struct {
-    LSU*                        lsu;
-    ASyncQueue<MInstPtr>*       issue_execute_q;
-    ASyncQueue<ExecResult>*     execute_commit_q;
-} ExecDeps;
+    ASyncQueue<RegReq>*         reg_req_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
+} ALUDeps;
+
+typedef struct {
+    ASyncQueue<RegReq>*         reg_req_q;
+    ASyncQueue<FlushEvent>*     flush_req_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
+} BRUDeps;
+
+typedef struct {
+    ASyncQueue<RegReq>*         reg_req_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
+    FlushEvent*                 flush_event { nullptr };
+} FPUDeps;
 
 typedef struct {
     ASyncQueue<ExecResult>*     execute_commit_q;
+    FlushEvent*                 flush_event { nullptr };
 } ROBDeps;
 
 typedef struct {
@@ -225,13 +296,36 @@ typedef struct {
     MultiLevelTLB*              dtlb;
     ASyncQueue<MInstPtr>*       rename_issue_q;
     ASyncQueue<ExecResult>*     execute_commit_q;
+    ASyncQueue<RegReq>*         reg_req_q;
+    FlushEvent*                 flush_event { nullptr };
+    ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
 } LSUDeps;
+
+typedef struct {
+    LSU*                        lsu;
+    ASyncQueue<MInstPtr>*       issue_execute_q;
+    ASyncQueue<ExecResult>*     execute_commit_q;
+    ASyncQueue<FlushEvent>*     flush_req_q;
+    FlushEvent*                 flush_event;
+    ALUDeps*                    alu_deps;
+    BRUDeps*                    bru_deps;
+    LSUDeps*                    lsu_deps;
+    FPUDeps*                    fpu_deps;
+} ExecDeps;
+
+typedef struct {
+    ASyncQueue<FlushEvent>*     flush_req_q;
+    FlushEvent*                 flush_event;
+} FlushUnitDeps;
 
 typedef struct {
     FetchUnit*                  fetch;
     DecodeUnit*                 decode;
     RenameUnit*                 rename;
     IssueUnit*                  issue;
+    RegFileUnit*                regfile;
     ExecuteUnit*                execute;
     CommitUnit*                 commit;
     CycleScheduler*             sched;

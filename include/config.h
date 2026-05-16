@@ -64,22 +64,17 @@ typedef struct {
 
 typedef struct {
     u32 width { 4 };
-    u32 phys_n { 192 };
+    u32 prf_capacity { 192 };
 } RenameConfig;
-
-struct ALUConfig {
-    u32 width { 4 };
-    u32 latency { 1 };
-    u32 issue_width { 2 };
-    u32 stages { 8 };
-};
 
 typedef struct {
     u32 width { 4 };
-    u32 latency { 1 };
-    u32 issue_width { 2 };
-    u32 stages { 8 };
-} AGUConfig;
+    u32 capacity { 192 };
+} RegFileConfig;
+
+struct ALUConfig {
+    u32 stages {4};
+};
 
 typedef struct {
     u32 width { 4 };
@@ -94,6 +89,7 @@ typedef struct {
     u32 agu_num { 4 };
     u32 mshr_buffer_size { 128 };
     u32 issue_width { 2 };
+    u32 agu_stages { 4 };
 } LSUConfig;
 
 typedef struct {
@@ -101,13 +97,26 @@ typedef struct {
     u32 stages { 8 };
 } DecodeConfig;
 
+typedef struct {
+    u32 width { 4 };
+    u32 stages { 4 };
+} BRUConfig;
 
 typedef struct {
     u32 alu_num { 0 };
     u32 fpu_num { 0 };
     u32 bru_num { 0 };
     u32 agu_num { 0 };
+    ALUConfig alu_conf;
+    FPUConfig fpu_conf;
+    BRUConfig bru_conf;
+    LSUConfig lsu_conf;
 } ExecConfig;
+
+typedef struct {
+    /* reserved interface for future use */
+    u32 width { 4 };
+} FlushUnitConfig;
 
 typedef struct {
     u32 int_issue_width { 4 };
@@ -118,13 +127,6 @@ typedef struct {
 typedef struct {
     u32 width { 4 };
 } CommitConfig;
-
-typedef struct {
-    u32 width { 4 };
-    u32 latency { 1 };
-    u32 issue_width { 2 };
-    u32 stages { 8 };
-} BRUConfig;
 
 typedef struct {
     u32 capacity { 64 };
@@ -149,8 +151,10 @@ typedef struct {
     u32 fetch_bank_size = 16;  // 16 bytes
     u32 decode_width = 4;
     u32 rename_width = 4;
-    u32 phys_n = 192;           // physical register file size
     u32 commit_width = 4;
+
+    u32 prf_width = 4;
+    u32 prf_capacity = 192;           // physical register file size
 
     // queues / structures
     u32 rob_entries = 128;
@@ -164,6 +168,9 @@ typedef struct {
     u32 agu_num = 4;
     u32 mshr_buffer_size = 128;
     u32 lsu_issue_width = 2;
+    u32 alu_stages = 4;
+    u32 fpu_stages = 4;
+    u32 bru_stages = 4;
 
     // issue / execute widths
     u32 int_issue_width = 4;
@@ -231,6 +238,10 @@ typedef struct {
 
     u32 ras_capacity = 64;
     u32 ras_tag_bits = 10;
+
+    // flush unit related
+    u32 flush_width = 4;
+
 } CoreConfig;
 
 
@@ -262,7 +273,8 @@ public:
     BIMConfig                               bim_config() const;
     BTBConfig                               btb_config() const;
     BPConfig                                bp_config() const;
-
+    RegFileConfig                           regfile_config() const;
+    FlushUnitConfig                         flush_config() const;
 private:
     void                                    init_config();
     void                                    print_config() const;

@@ -56,7 +56,7 @@ void IssueUnit::select()
 
     std::stable_sort(candidates.begin(), candidates.end(),
                      [this](const MInstPtr lhs, const MInstPtr rhs) {
-                         return m_rob.is_older_than(lhs->rob_id, rhs->rob_id);
+                         return m_rob.is_older_than(lhs->rid, rhs->rid);
                      });
 
     for (size_t i = 0; i < m_int_issue_width && i < candidates.size(); ++i) {
@@ -79,7 +79,7 @@ void IssueUnit::issue()
         bool ret = m_exec.dispatch(inst);
         LOG_LEVEL1("IssueUnit", "issued:%s %s, v%d-a%d-p%d%s%d", ret ? "true" : "false",
                    inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
-                   inst->rd.ptag, inst->rob_id.idx == 0 ? "++" : "--", inst->rob_id.idx);
+                   inst->rd.ptag, inst->rid.idx == 0 ? "++" : "--", inst->rid.idx);
     }
     m_select_buffer.clear();
     for (auto it = m_int_q.begin(); it != m_int_q.end();) {

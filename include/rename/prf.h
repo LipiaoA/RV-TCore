@@ -23,8 +23,8 @@ private:
     bool                                is_valid(i32 pidx) const;
 
 private:
-    std::array<u64, MAX_PHY_REG_SIZE>       m_regs {};
-    std::array<bool, MAX_PHY_REG_SIZE>      m_valid {};
+    FixedArray<u64, MAX_PHY_REG_SIZE>       m_regs {};
+    FixedArray<bool, MAX_PHY_REG_SIZE>      m_valid {};
     u32                                     m_phys_n { 192 };
     bool                                    m_busy[MAX_PHY_REG_SIZE];
 };
