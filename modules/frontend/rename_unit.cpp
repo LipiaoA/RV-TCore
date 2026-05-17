@@ -11,6 +11,7 @@ RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
     , m_rob(*deps.rob)
     , m_regfile(*deps.regfile)
     , m_rename_width(conf.width)
+    , m_flush_event(*deps.flush_event)
 {
     for (int p = 1; p < conf.prf_capacity; ++p) {
         m_free_list.push_back(p);

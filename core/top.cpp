@@ -142,12 +142,21 @@ void Top::build() {
     decode_deps.flush_event = m_comm_queues.flush_event;
     m_decode = new DecodeUnit(decode_conf, decode_deps);
 
+    RegFileDeps regfile_deps;
+    regfile_deps.reg_req_q = m_comm_queues.reg_req_q;
+    regfile_deps.alu_resp_q = m_comm_queues.alu_resp_q;
+    regfile_deps.bru_resp_q = m_comm_queues.bru_resp_q;
+    regfile_deps.lsu_resp_q = m_comm_queues.lsu_resp_q;
+    regfile_deps.fpu_resp_q = m_comm_queues.fpu_resp_q;
+    regfile_deps.flush_event = m_comm_queues.flush_event;
+    m_regfile = new RegFileUnit(regfile_conf, regfile_deps);
 
     RenameDeps rename_deps;
     rename_deps.rob = m_rob;
     rename_deps.decode_rename_q = m_comm_queues.decode_to_rename;
     rename_deps.rename_issue_q = m_comm_queues.rename_to_issue;
     rename_deps.flush_event = m_comm_queues.flush_event;
+    rename_deps.regfile = m_regfile;
     m_rename = new RenameUnit(rename_conf, rename_deps);
 
     CommitDeps commit_deps;
@@ -171,14 +180,7 @@ void Top::build() {
     lsu_deps.reg_bypass_q = m_comm_queues.reg_bypass_q;
     lsu_deps.flush_req_q = m_comm_queues.flush_req_q;
 
-    RegFileDeps regfile_deps;
-    regfile_deps.reg_req_q = m_comm_queues.reg_req_q;
-    regfile_deps.alu_resp_q = m_comm_queues.alu_resp_q;
-    regfile_deps.bru_resp_q = m_comm_queues.bru_resp_q;
-    regfile_deps.lsu_resp_q = m_comm_queues.lsu_resp_q;
-    regfile_deps.fpu_resp_q = m_comm_queues.fpu_resp_q;
-    regfile_deps.flush_event = m_comm_queues.flush_event;
-    m_regfile = new RegFileUnit(regfile_conf, regfile_deps);
+
 
     m_lsu = new LSU(lsu_conf, lsu_deps);
 
@@ -229,5 +231,6 @@ CoreDeps Top::get_core_deps() const {
     deps.execute = m_execute;
     deps.commit  = m_commit;
     deps.sched   = m_sched;
+    deps.flush   = m_flush;
     return deps;
 }

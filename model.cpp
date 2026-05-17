@@ -56,7 +56,6 @@ bool Model::init(const std::string& path) {
 
 
 Model::~Model() {
-    delete_ptr(m_mem);
     delete_ptr(m_core);
     delete_ptr(m_top);
 }

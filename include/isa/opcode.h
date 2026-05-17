@@ -20,7 +20,7 @@ typedef enum {
 #include "opcode.inc"
 
 inline bool is_load(InstOp op) {
-    return op >= OP_LB && op <= OP_LD;
+    return (op >= OP_LB && op <= OP_LD) || op == OP_LDU;
 }
 
 inline bool is_fp(InstOp op) {
@@ -28,11 +28,14 @@ inline bool is_fp(InstOp op) {
 }
 
 inline bool is_int(InstOp op) {
-    return op >= OP_ADDI && op <= OP_AND;
+    return op == OP_LUI ||
+           op == OP_AUIPC ||
+           (op >= OP_ADDI && op <= OP_AND) ||
+           (op >= OP_ADDIW && op <= OP_SRAD);
 }
 
 inline bool is_store(InstOp op) {
-    return op >= OP_SB && op <= OP_SD;
+    return (op >= OP_SB && op <= OP_SD) || op == OP_SQ;
 }
 
 inline bool is_load_store(InstOp op) {

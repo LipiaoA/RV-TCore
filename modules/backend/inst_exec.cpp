@@ -6,130 +6,109 @@
 
 namespace InstExec {
 
-bool exec(MInstPtr inst) {
+AluExecResult exec_alu(MInstPtr inst) {
+    AluExecResult result;
+    result.valid = true;
+    result.write_rd = inst->rd.valid;
     switch (inst->opcode) {
     case OP_ADD: {
-        inst->rd.val = inst->rs1.val + inst->rs2.val;
+        result.value = inst->rs1.val + inst->rs2.val;
     } break;
     case OP_SUB: {
-        inst->rd.val = inst->rs1.val - inst->rs2.val;
+        result.value = inst->rs1.val - inst->rs2.val;
     } break;
     case OP_AND: {
-        inst->rd.val = inst->rs1.val & inst->rs2.val;
+        result.value = inst->rs1.val & inst->rs2.val;
     } break;
     case OP_OR: {
-        inst->rd.val = inst->rs1.val | inst->rs2.val;
+        result.value = inst->rs1.val | inst->rs2.val;
     } break;
     case OP_XOR: {
-        inst->rd.val = inst->rs1.val ^ inst->rs2.val;
+        result.value = inst->rs1.val ^ inst->rs2.val;
     } break;
     case OP_SLL: {
-        inst->rd.val = inst->rs1.val << inst->rs2.val;
+        result.value = inst->rs1.val << inst->rs2.val;
     } break;
     case OP_SRL: {
-        inst->rd.val = inst->rs1.val >> inst->rs2.val;
+        result.value = inst->rs1.val >> inst->rs2.val;
     } break;
     case OP_SRA: {
-        inst->rd.val = inst->rs1.val >> inst->rs2.val;
+        result.value = inst->rs1.val >> inst->rs2.val;
     } break;
     case OP_SLT: {
-        inst->rd.val = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->rs2.val);
+        result.value = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->rs2.val);
     } break;
     case OP_SLTU: {
-        inst->rd.val = inst->rs1.val < inst->rs2.val;
-    } break;
-    case OP_BEQ: {
-        inst->rd.val = inst->rs1.val == inst->rs2.val;
-    } break;
-    case OP_BNE: {
-        inst->rd.val = inst->rs1.val != inst->rs2.val;
-    } break;
-    case OP_BLT: {
-        inst->rd.val = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->rs2.val);
-    } break;
-    case OP_BGE: {
-        inst->rd.val = static_cast<i64>(inst->rs1.val) >= static_cast<i64>(inst->rs2.val);
-    } break;
-    case OP_BLTU: {
-        inst->rd.val = inst->rs1.val < inst->rs2.val;
-    } break;
-    case OP_BGEU: {
-        inst->rd.val = inst->rs1.val >= inst->rs2.val;
-    } break;
-    case OP_JAL: {
-        inst->rd.val = inst->rs1.val + inst->rs2.val;
-    } break;
-    case OP_JALR: {
-        inst->rd.val = inst->rs1.val + inst->rs2.val;
+        result.value = inst->rs1.val < inst->rs2.val;
     } break;
     case OP_ADDI: {
-        inst->rd.val = inst->rs1.val + inst->imm;
+        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
     } break;
     case OP_SLTI: {
-        inst->rd.val = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->imm);
+        result.value = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->imm);
     } break;
     case OP_SLTIU: {
-        inst->rd.val = inst->rs1.val < static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val < static_cast<u64>(inst->imm);
     } break;
     case OP_XORI: {
-        inst->rd.val = inst->rs1.val ^ static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val ^ static_cast<u64>(inst->imm);
     } break;
     case OP_ORI: {
-        inst->rd.val = inst->rs1.val | static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val | static_cast<u64>(inst->imm);
     } break;
     case OP_ANDI: {
-        inst->rd.val = inst->rs1.val & static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val & static_cast<u64>(inst->imm);
     } break;
     case OP_SLLI: {
-        inst->rd.val = inst->rs1.val << static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val << static_cast<u64>(inst->imm);
     } break;
     case OP_SRLI: {
-        inst->rd.val = inst->rs1.val >> static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
     } break;
     case OP_SRAI: {
-        inst->rd.val = inst->rs1.val >> static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
     } break;
     case OP_ADDIW: {
-        inst->rd.val = inst->rs1.val + static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
     } break;
     case OP_SLLIW: {
-        inst->rd.val = inst->rs1.val << static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val << static_cast<u64>(inst->imm);
     } break;
     case OP_SRLIW: {
-        inst->rd.val = inst->rs1.val >> static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
     } break;
     case OP_SRAIW: {
-        inst->rd.val = inst->rs1.val >> static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
     } break;
     case OP_ADDW: {
-        inst->rd.val = inst->rs1.val + static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
     } break;
     case OP_SUBW: {
-        inst->rd.val = inst->rs1.val - static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val - static_cast<u64>(inst->imm);
     } break;
     case OP_SLLW: {
-        inst->rd.val = inst->rs1.val << static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val << static_cast<u64>(inst->imm);
     } break;
     case OP_SRLW: {
-        inst->rd.val = inst->rs1.val >> static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
     } break;
     case OP_SRAW: {
-        inst->rd.val = inst->rs1.val >> static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
     } break;
     case OP_ADDID: {
-        inst->rd.val = inst->rs1.val + static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
     } break;
     case OP_SLLID: {
-        inst->rd.val = inst->rs1.val << static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val << static_cast<u64>(inst->imm);
     } break;
     case OP_SRLID: {
-        inst->rd.val = inst->rs1.val >> static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
     } break;
     case OP_SRAID: {
-        inst->rd.val = inst->rs1.val >> static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
     } break;
     case OP_ADDD: {
-        inst->rd.val = inst->rs1.val + static_cast<u64>(inst->imm);
+        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
     } break;
     case OP_SUBD:
     case OP_SLLD:
@@ -239,28 +218,72 @@ bool exec(MInstPtr inst) {
     case OP_FCVT_D_L:
     case OP_FCVT_D_LU:
     case OP_FMV_D_X:
-        assert(0);
     default:
-        assert(0);
-        return false;
+        result.valid = false;
+        break;
     }
-    return true;
+    return result;
 }
 
-bool exec_alu(MInstPtr inst) {
-    return exec(inst);
+BruExecResult exec_bru(MInstPtr inst) {
+    BruExecResult result;
+    result.valid = true;
+    switch (inst->opcode) {
+        case OP_BEQ: {
+            result.taken= inst->rs1.val == inst->rs2.val;
+            result.target = inst->pc + static_cast<u64>(inst->imm);
+        } break;
+        case OP_BNE: {
+            result.taken = inst->rs1.val != inst->rs2.val;
+            result.target = inst->pc + static_cast<u64>(inst->imm);
+        } break;
+        case OP_BLT: {
+            result.taken = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->rs2.val);
+            result.target = inst->pc + static_cast<u64>(inst->imm);
+        } break;
+        case OP_BGE: {
+            result.taken = static_cast<i64>(inst->rs1.val) >= static_cast<i64>(inst->rs2.val);
+            result.target = inst->pc + static_cast<u64>(inst->imm);
+        } break;
+        case OP_BLTU: {
+            result.taken = inst->rs1.val < inst->rs2.val;
+            result.target = inst->pc + static_cast<u64>(inst->imm);
+        } break;
+        case OP_BGEU: {
+            result.taken = inst->rs1.val >= inst->rs2.val;
+            result.target = inst->pc + static_cast<u64>(inst->imm);
+        } break;
+        case OP_JAL: {
+            result.taken = true;
+            result.target = inst->pc + static_cast<u64>(inst->imm);
+            result.write_rd = inst->rd.valid;
+            result.link = inst->pc + 4;
+        } break;
+        case OP_JALR: {
+            result.taken = true;
+            result.target = (inst->rs1.val + static_cast<u64>(inst->imm)) & ~1ull;
+            result.write_rd = inst->rd.valid;
+            result.link = inst->pc + 4;
+        } break;
+        default:
+            result.valid = false;
+            break;
+    }
+    return result;
 }
 
-bool exec_bru(MInstPtr inst) {
-    return exec(inst);
+AguExecResult exec_agu(MInstPtr inst) {
+    AguExecResult result;
+    result.valid = false;
+    result.addr = inst->rs1.val + static_cast<u64>(inst->imm);
+    return result;
 }
 
-bool exec_agu(MInstPtr inst) {
-    return exec(inst);
-}
-
-bool exec_fpu(MInstPtr inst) {
-    return exec(inst);
+FpuExecResult exec_fpu(MInstPtr inst) {
+    FpuExecResult result;
+    result.valid = false;
+    result.unsupported = true;
+    return result;
 }
 
 }

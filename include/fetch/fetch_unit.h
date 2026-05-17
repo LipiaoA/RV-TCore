@@ -81,6 +81,7 @@ class FetchUnit : public IFetch {
     typedef struct {
         pc_t pc { 0 };
         u32 insn { 0 };
+        u64 fetch_id { 0 };
     } F2Inst;
 public:
     FetchUnit(const FetchConfig& conf, const IFetchDeps& deps);
@@ -90,7 +91,6 @@ public:
     void                                tick() override;
     void                                commit() override;
     void                                redirct(pc_t new_pc, u64 fetch_id = 0);
-    std::optional<FetchPacket>          try_dispatch();
     void                                dump_state() const;
 
 private:
@@ -111,9 +111,9 @@ private:
     ICache&                             m_icache;
     BranchPredictor&                    m_bpu;
     OUTPUT ASyncQueue<FetchPacket>&     m_fetch_decode_q;
+    FlushEvent&                         m_flush_event;
 
     u64                                 m_squash_id;
-    u64                                 m_next_fetch_id { 1 };
 
     LineBuffer                          m_line_buffer;
     std::queue<F2Inst>                  m_inst_buffer;
@@ -147,7 +147,7 @@ private:
     u32                                 m_bank_count { 4 };
     u32                                 m_group_count { 2 };
     u32                                 m_epoch;
-
+    u64                                 m_fetch_id { 1 };
 
 };
 

@@ -37,10 +37,10 @@ void AGU::dispatch(MInstPtr inst)
 
 void AGU::R0()
 {
-    if (!m_pipe[0].valid)
+    if (!m_pipe[0].valid || !m_pipe[0].inst)
         return;
     RegReq req;
-    MInstPtr inst = m_pipe[1].inst;
+    MInstPtr inst = m_pipe[0].inst;
     if (inst->rs1.valid) {
         req.valid = true;
         req.ptag = inst->rs1.ptag;
@@ -76,22 +76,24 @@ void AGU::R1()
 
 void AGU::E0()
 {
-    if (!m_pipe[3].valid)
+    if (!m_pipe[3].valid || !m_pipe[3].inst)
         return;
     MInstPtr inst = m_pipe[3].inst;
-    bool ret = InstExec::exec(inst);
+    InstExec::AguExecResult ret = InstExec::exec_agu(inst);
+    if (!ret.valid)
+        return;
     broadcast(inst);
 
-    if (inst->type == InstType::STA) {
+    if (inst->type == InstType::STA || inst->type == InstType::STORE) {
         if (lsu_st_q) {
             auto& st_entry = lsu_st_q->at(static_cast<size_t>(inst->store_idx));
-            st_entry.addr = inst->rs1.val;
+            st_entry.addr = ret.addr;
             st_entry.addr_ready = true;
         }
     } else if (inst->type == InstType::LOAD) {
         if (lsu_ld_q) {
             auto& ld_entry = lsu_ld_q->at(static_cast<size_t>(inst->load_idx));
-            ld_entry.addr = inst->rs1.val;
+            ld_entry.addr = ret.addr;
             ld_entry.addr_ready = true;
         }
     } else {

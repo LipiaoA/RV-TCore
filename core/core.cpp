@@ -10,6 +10,7 @@
 #include "regfile_unit.h"
 #include "branch_predictor.h"
 #include "log.h"
+#include "flush_unit.h"
 
 Core::Core(const CoreDeps &deps)
  : m_fetch(*deps.fetch),
@@ -19,12 +20,16 @@ Core::Core(const CoreDeps &deps)
    m_regfile(*deps.regfile),
    m_execute(*deps.execute),
    m_commit(*deps.commit),
-   m_sched(*deps.sched)
+   m_sched(*deps.sched),
+   m_flush(*deps.flush)
 { }
 
 Core::~Core() { }
 
 void Core::tick() {
+    /* 上一拍产生的flush 在当前拍仲裁后 同时被其它组件看到 */
+    m_flush.tick();
+
     m_fetch.tick();
     m_decode.tick();
     m_rename.tick();
@@ -32,7 +37,6 @@ void Core::tick() {
     m_regfile.tick();
     m_execute.tick();
     m_commit.tick();
-
     m_sched.tick();
 }
 
@@ -45,6 +49,7 @@ void Core::build()
     m_regfile.build();
     m_execute.build();
     m_commit.build();
+    m_flush.build();
 }
 
 void Core::init(pc_t start_pc)
@@ -61,7 +66,7 @@ void Core::reset()
     m_regfile.reset();
     m_execute.reset();
     m_commit.reset();
-
+    m_flush.reset();
     m_exit = false;
 }
 
@@ -79,4 +84,5 @@ void Core::commit()
     m_regfile.commit();
     m_execute.commit();
     m_commit.commit();
+    m_flush.commit();
 }

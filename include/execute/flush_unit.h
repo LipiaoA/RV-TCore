@@ -13,7 +13,7 @@ public:
     void                                    tick();
     void                                    commit();
     void                                    build();
-
+    void                                    reset();
     void                                    dump_state() const;
 
 private:

@@ -27,12 +27,25 @@
 
 
 
+#### 20260517
+
+进度
+
+第一条jal 指令正常执行并触发Flush
+
+1. 初步调通BRU发往FlushUnit Flush请求，FlushUnit转发到FetchUnit，成功redirect。
+1. 初步实现前端FetchUnit flush功能
+2. 拆分各指令exec实现
+
+有点点儿进展，细节调起来还真是，，，
+
+
+
 #### 20260516
 
 1. 添加了flush unit 框架
 2. 添加部分指令执行功能
 3. 添加了regfile unit，管理寄存器读写
-4. 
 
 
 

@@ -118,7 +118,8 @@ void ALU::E0()
     if (!m_pipe[3].valid || !m_pipe[3].inst)
         return;
     MInstPtr inst = m_pipe[3].inst;
-    bool ret = InstExec::exec(inst);
+    InstExec::AluExecResult ret = InstExec::exec_alu(inst);
+    (void)ret;
     broadcast(inst);
 }
 

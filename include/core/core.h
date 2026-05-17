@@ -36,6 +36,7 @@ private:
     ExecuteUnit&                            m_execute;
     CommitUnit&                             m_commit;
     CycleScheduler&                         m_sched;
+    FlushUnit&                              m_flush;
     bool                                    m_exit { false };
 };
 

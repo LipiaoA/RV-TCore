@@ -32,8 +32,6 @@ struct FetchPacket {
     std::vector<FetchInst> insts;
     bool valid { false };
     pc_t base_pc { 0 };
-    u64 fetch_id { 0 };
-
     bool pred_taken { false };
     pc_t pred_target { 0 };
     uint8_t  valid_mask { 0 };
@@ -71,6 +69,7 @@ typedef struct{
     bool write { false };
     i32 idx { -1 };
     i32 ptag { -1 };
+    i32 atag { -1 };
     u64 val { 0 };
     ROBID rid { 0 };
     FuType fu { FuType::NONE };
@@ -91,15 +90,65 @@ typedef struct {
     i32 tag { -1 };
 } WakeupEvent;
 
+enum class FlushSource {
+    NONE,
+    IFETCH,
+    DECODE,
+    RENAME,
+    ISSUE,
+    EXECUTE,
+    COMMIT,
+    LSU,
+    BRU,
+};
+
 enum class FlushType {
-    NORMAL,
-    BRANCH,
+    NONE,
+    MACHINE_CHECK,
+    BRANCH_MISPRED,
+    DEBUG,
+    EXCEPTION,
+    INTERRUPT,
+    MEMORY_ORDER,
+    LOAD_REPLAY,
+    FENCE,
+    FLUSH_TYPE_COUNT
+};
+
+enum class FlushScope {
+    NONE,
+    // 清除 rid 之后的年轻指令，保留 rid 本身。
+    YOUNGER_THAN,
+    // 清除 rid 及之后的指令。
+    FROM_RID,
+    // 全流水线清空，通常用于 exception/interrupt/reset。
+    ALL,
 };
 
 typedef struct {
-    bool valid { false };
-    ROBID rid { 0 };
-    FlushType type { FlushType::NORMAL };
+    bool                valid { false };
+    FlushType           type { FlushType::NONE };
+    FlushSource         source { FlushSource::NONE };
+    FlushScope          scope { FlushScope::NONE };
+    ROBID               rid { 0 };
+    bool                redirect { false };
+    pc_t                redirect_pc { 0 };
+    u64                 inst_id { 0 };
+    pc_t                inst_pc { 0 };
+    // 分支恢复信息
+    bool branch_taken { false };
+    pc_t branch_target { 0 };
+    bool recover_c_id { false };
+    u32 c_id { 0 };
+
+    bool has_exception { false };
+    u64 exception_cause { 0 };
+    u64 exception_tval { 0 };
+
+    u64 replay_load_idx { 0 };
+    u64 replay_store_idx { 0 };
+
+    u64 epoch { 0 };
 } FlushEvent;
 
 enum LdStState {
@@ -200,6 +249,7 @@ class CommitUnit;
 class IssueUnit;
 class ExecuteUnit;
 class RegFileUnit;
+class FlushUnit;
 
 typedef struct IFetchReq {
     bool valid { false };
@@ -233,10 +283,10 @@ typedef struct {
 } DecodeDeps;
 
 typedef struct {
-    ROB*                        rob;
-    ASyncQueue<MInstPtr>*       decode_rename_q;
-    ASyncQueue<MInstPtr>*       rename_issue_q;
-    RegFileUnit*                regfile;
+    ROB*                        rob { nullptr };
+    ASyncQueue<MInstPtr>*       decode_rename_q { nullptr };
+    ASyncQueue<MInstPtr>*       rename_issue_q { nullptr };
+    RegFileUnit*                regfile { nullptr };
     FlushEvent*                 flush_event { nullptr };
 } RenameDeps;
 
@@ -329,6 +379,7 @@ typedef struct {
     ExecuteUnit*                execute;
     CommitUnit*                 commit;
     CycleScheduler*             sched;
+    FlushUnit*                  flush;
 } CoreDeps;
 
 #endif // RV_TCORE_MODULE_COMM_H

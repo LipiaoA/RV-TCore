@@ -19,6 +19,7 @@ FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     , m_icache(*deps.icache)
     , m_bpu(*deps.bpu)
     , m_fetch_decode_q(*deps.fetch_decode_q)
+    , m_flush_event(*deps.flush_event)
     , m_fetch_width(conf.fetch_width)
     , m_group_size(conf.group_size)
     , m_bank_size(conf.bank_size)
@@ -30,7 +31,10 @@ FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     m_squash_id   = 0;
 }
 
-void FetchUnit::build() {}
+void FetchUnit::build() {
+    m_fetch_id = 1;
+    m_epoch = 0;
+}
 
 void FetchUnit::tick()
 {
@@ -138,6 +142,7 @@ void FetchUnit::fetch2()
                     inst.insn |= line[oft + j] << (8 * j);
                 }
                 inst.pc = cur_pc;
+                inst.fetch_id = m_fetch_id++;
                 m_inst_buffer.push(inst);
             }
         }
@@ -180,7 +185,6 @@ void FetchUnit::fetch3()
     m_state[F3].vpc = m_state[F2].vpc;
     FetchPacket pkt;
     pkt.valid = true;
-    pkt.fetch_id = m_next_fetch_id++;
     pkt.base_pc = m_state[F3].vpc;
     pkt.insts.clear();
 
@@ -197,7 +201,7 @@ void FetchUnit::fetch3()
         finst.valid    = true;
         finst.pc       = inst.pc;
         finst.insn     = inst.insn;
-        finst.fetch_id = pkt.fetch_id;
+        finst.fetch_id = inst.fetch_id;
         finst.size     = k_inst_bytes;
 
         pkt.insts.push_back(finst);
@@ -249,12 +253,6 @@ void FetchUnit::fetch4()
     }
     m_state[F4].vpc = m_state[F3].vpc;
 
-    // if squash threshold says this should be dropped
-    if (m_f3_pkt.data.fetch_id >= m_squash_id && m_squash_id > 0) {
-        // drop silently
-        m_f4_pkt.clear();
-        return;
-    }
     bool pred_taken = false;
     for (int i = 0; i < m_fetch_width; ++i) {
         if (m_f3_pkt.data.br_mask & (1u << i) && m_f3_pred[i].valid) {
@@ -323,6 +321,34 @@ u32 FetchUnit::align_group(pc_t pc) const
 
 void FetchUnit::flush()
 {
+    if (!m_flush_event.valid) {
+        return;
+    }
+    switch (m_flush_event.type) {
+    case FlushType::EXCEPTION:
+    case FlushType::DEBUG:
+    case FlushType::INTERRUPT:
+    case FlushType::MEMORY_ORDER:
+    case FlushType::LOAD_REPLAY:
+    case FlushType::FENCE: {
+        assert(false);
+    }
+    case FlushType::BRANCH_MISPRED: {
+        m_redirect_pc[RESET_PC].valid = true;
+        m_redirect_pc[RESET_PC].pc = m_flush_event.redirect_pc;
+        m_epoch++;
+        for (int i = 0; i < MAX_STATES; ++i) {
+            m_state[i].clear();
+        }
+        m_inst_buffer = std::queue<F2Inst>();
+        m_f3_pkt.clear();
+        m_f4_pkt.clear();
+        m_f5_pkt.clear();
+        m_fetch_decode_q.clear();
+    } break;
+    default:
+        assert(false);
+    }
 }
 
 /* -------------------- Debug / state dump -------------------- */
@@ -365,6 +391,10 @@ void FetchUnit::dump_state() const
     if (m_state[F4].valid) {
         LOG_LEVEL1("F4 Predict", "req vpc:0x%lx, redirect pc:0x%lx",
                     m_state[F4].vpc, m_redirect_pc[RES_F4].pc);
+    }
+    if (m_flush_event.valid) {
+        LOG_LEVEL1("FetchUnit Flush Event", "type: %d, redirect pc:0x%lx",
+                    m_flush_event.type, m_flush_event.redirect_pc);
     }
     return;
 }

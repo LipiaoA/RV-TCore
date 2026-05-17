@@ -29,6 +29,7 @@ private:
     void                                    send_redirect(pc_t target);
     void                                    send_flush(MInstPtr inst);
     void                                    dump_states() const;
+    void                                    wakeup(MInstPtr inst);
 
 private:
     FUStage                                 m_input_latch;

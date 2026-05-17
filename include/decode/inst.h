@@ -89,21 +89,25 @@ typedef struct MicroOp {
     RegType rs2;
     RegType rd;
     i64 imm;
+    u64 fetch_id { 0 };
     u64 inst_id { 0 };
     ROBID rid {};
     i32 latency;
     uint64_t base;
     int64_t  offset;
     uint64_t addr;
-    bool     addr_ready = false;
+    bool     addr_ready { false };
     uint64_t data;
-    bool     data_ready = false;
+    bool     data_ready { false };
     uint64_t store_idx;
     uint64_t load_idx;
     uint64_t load_data;
     bool executed = false;
     bool replay = false;
-    uint32_t ssid = 0;
+    u64 ssid { 0 };
+    // checkpoint id
+    u32 c_id { 0 };
+    u64 epoch { 0 };
 
     bool rs1_ready = false;
     bool rs2_ready = false;

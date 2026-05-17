@@ -45,6 +45,8 @@ private:
     std::deque<MInstPtr>                m_r2_buf;
 
     size_t                              m_rename_width { 4 };
+
+    FlushEvent&                         m_flush_event;
 };
 
 #endif
