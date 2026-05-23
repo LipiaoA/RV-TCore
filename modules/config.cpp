@@ -193,6 +193,7 @@ ExecConfig TCoreConfig::execute_config() const {
     conf.fpu_num = m_core_config.fpu_num;
     conf.bru_num = m_core_config.bru_num;
     conf.agu_num = m_core_config.agu_num;
+    conf.commit_width = m_core_config.exec_commit_width;
     ALUConfig alu_conf;
     FPUConfig fpu_conf;
     BRUConfig bru_conf;

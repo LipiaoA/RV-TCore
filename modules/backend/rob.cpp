@@ -1,9 +1,14 @@
 #include "rob/rob.h"
 
 ROB::ROB(const ROBConfig& conf, const ROBDeps& deps)
-    : m_execute_commit_q(*deps.execute_commit_q),
-      m_capacity(conf.capacity)
-{ }
+    : m_capacity(conf.capacity)
+{
+    m_head = ROBID{ 0, 0 };
+    m_tail = ROBID{ 0, 0 };
+    m_size = 0;
+    assert(m_capacity > 0);
+    memset(m_entries, 0, sizeof(m_entries));
+}
 
 void ROB::build() {
 }
@@ -38,11 +43,11 @@ void ROB::mark_ready(ROBID rid, u64 result_val) {
     }
 }
 
-std::optional<RobEntry> ROB::try_commit_head() {
+std::optional<RobEntry> ROB::commit_head() {
     if (empty())
         return std::nullopt;
     RobEntry& e = m_entries[m_head.idx];
-    if (!e.valid || !e.ready)
+    if (!e.valid || e.inst->state != InstState::RETIRED)
         return std::nullopt;
     RobEntry out = e;
     e.valid = false;
@@ -50,6 +55,13 @@ std::optional<RobEntry> ROB::try_commit_head() {
     m_head.direct = (m_head.idx == 0) ? 1 - m_head.direct : m_head.direct;
     --m_size;
     return out;
+}
+
+std::optional<RobEntry> ROB::head() {
+    if (empty())
+        return std::nullopt;
+    RobEntry& e = m_entries[m_head.idx];
+    return std::make_optional<RobEntry>(e);
 }
 
 bool ROB::full() const {
@@ -65,17 +77,4 @@ bool ROB::is_older_than(const ROBID& a, const ROBID& b) const
     u32 a_idx = (a.direct == m_tail.direct) ? a.idx : a.idx + m_capacity;
     u32 b_idx = (b.direct == m_tail.direct) ? b.idx : b.idx + m_capacity;
     return a_idx < b_idx;
-}
-
-void ROB::tick() {
-    ExecResult res;
-    while (m_execute_commit_q.read(res)) {
-        if (!res.valid || res.rid < 0)
-            continue;
-        mark_ready(ROBID{static_cast<u32>(res.rid), 0}, res.result);
-    }
-}
-
-void ROB::commit() {
-    // 顺序提交在 CommitUnit 中驱动，ROB 仅提供 try_commit_head
 }

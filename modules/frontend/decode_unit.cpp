@@ -136,6 +136,7 @@ DecodeUnit::DecodeUnit(const DecodeConfig& conf, const DecodeDeps& deps)
     : m_fetch_decode_q(*deps.fetch_decode_q)
     , m_decode_rename_q(*deps.decode_rename_q)
     , m_decode_width(conf.width)
+    , m_flush_event(*deps.flush_event)
 {
     m_decoded_q.clear();
     rv64i_insts_size = sizeof(rv64i_table) / sizeof(rv64i_table[0]);
@@ -157,6 +158,7 @@ bool DecodeUnit::try_pop_decoded(MicroOp& out)
 
 void DecodeUnit::tick()
 {
+    flush();
     if (m_stall)
         return;
     d1();
@@ -178,9 +180,9 @@ void DecodeUnit::d0() {
         dinst->pc = finst.pc;
         if (!decode(finst.insn, dinst) || dinst->opcode == OP_INVALID)
             continue;
-        LOG_LEVEL1("DecodeUnit", "d0 decode inst: %s", dinst->inst_name.c_str());
+        LOG_LEVEL1("DecodeUnit", "d0 decode pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
         dinst->valid = true;
-        dinst->inst_id = m_next_decode_id++;
+        dinst->fetch_id = finst.fetch_id;
         m_d0_pkt.emplace_back(dinst);
         ++inst_count;
     }
@@ -188,15 +190,18 @@ void DecodeUnit::d0() {
 
 void DecodeUnit::d1() {
     for (auto& dinst : m_d0_pkt) {
-        if (!dinst->valid)
+        if (!dinst->valid) {
+            delete dinst;
+            dinst = nullptr;
             continue;
+        }
         // 对于 CSR / FENCE 等 RV_FMT_NONE 类型，这里 imm 保持为 0，
         // 具体语义由执行阶段使用 raw_inst 自行解析。
         if (dinst->format != RV_FMT_NONE)
             dinst->imm = extract_imm(dinst->raw_inst, dinst->format, dinst->opcode);
         else
             dinst->imm = 0;
-        LOG_LEVEL1("DecodeUnit", "d1 inst: %s", dinst->inst_name.c_str());
+        LOG_LEVEL1("DecodeUnit", "d1 pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
         m_decode_rename_q.write(dinst);
     }
     m_d0_pkt.clear();
@@ -222,4 +227,34 @@ InstType DecodeUnit::get_inst_type(InstOp op) {
         type = InstType::INT;
     }
     return type;
+}
+
+void DecodeUnit::flush()
+{
+    if (!m_flush_event.valid) {
+        return;
+    }
+    switch (m_flush_event.scope) {
+    case FlushScope::YOUNGER_THAN: {
+        for (auto& dinst : m_d0_pkt) {
+            if (dinst->fetch_id > m_flush_event.fetch_id) {
+                dinst->valid = false;
+            }
+        }
+        m_decode_rename_q.for_each_mut([&](MInstPtr& dinst) {
+            if (dinst->fetch_id > m_flush_event.fetch_id) {
+                dinst->valid = false;
+            }
+        });
+    } break;
+    case FlushScope::ALL: {
+        m_fetch_decode_q.clear();
+        m_d0_pkt.clear();
+        m_decode_rename_q.clear();
+    } break;
+    default:
+        assert(false);
+        break;
+    }
+    return;
 }

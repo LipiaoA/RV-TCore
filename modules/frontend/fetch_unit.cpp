@@ -340,11 +340,25 @@ void FetchUnit::flush()
         for (int i = 0; i < MAX_STATES; ++i) {
             m_state[i].clear();
         }
+        m_state[F0].valid = true;
         m_inst_buffer = std::queue<F2Inst>();
         m_f3_pkt.clear();
         m_f4_pkt.clear();
         m_f5_pkt.clear();
-        m_fetch_decode_q.clear();
+        m_fetch_decode_q.for_each_mut([&](FetchPacket& pkt) {
+            for (size_t i = 0; i < pkt.insts.size(); ++i) {
+                auto& fi = pkt.insts[i];
+                if (!fi.valid)
+                    continue;
+                if (fi.fetch_id > m_flush_event.fetch_id) {
+                    fi.valid = false;
+                    pkt.valid_mask &= ~(1u << i);
+                    pkt.br_mask    &= ~(1u << i);
+                }
+            }
+            // 返回 false => 从队列删掉空包
+            return pkt.valid_mask != 0;
+        });
     } break;
     default:
         assert(false);

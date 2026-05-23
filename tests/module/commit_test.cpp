@@ -12,14 +12,14 @@
 
 int main()
 {
-    ASyncQueue<ExecResult> execute_commit_q(64);
+    ASyncQueue<ExecResult> inst_commit_q(64);
     ASyncQueue<MicroOp> decode_rename_q(64);
     ASyncQueue<MicroOp> dispatch_issue_q(64);
 
     ROBConfig rob_conf {};
     rob_conf.capacity = 8;
     ROBDeps rob_deps {};
-    rob_deps.execute_commit_q = &execute_commit_q;
+    rob_deps.inst_commit_q = &inst_commit_q;
     ROB rob(rob_conf, rob_deps);
 
     RenameDeps rename_deps {};
@@ -31,7 +31,7 @@ int main()
     rename.build();
 
     CommitDeps commit_deps {};
-    commit_deps.execute_commit_q = &execute_commit_q;
+    commit_deps.inst_commit_q = &inst_commit_q;
     commit_deps.rob = &rob;
     commit_deps.rename = &rename;
     CommitConfig commit_conf {};

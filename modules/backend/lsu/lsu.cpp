@@ -37,7 +37,6 @@ LSU::~LSU() {
 void LSU::tick()
 {
     m_sched.tick();
-    flush();
     schedule();
 }
 
@@ -175,7 +174,7 @@ void LSU::replay(SQEntry& store_entry) {
     store_entry.state = LdStState::WAIT_ADDR;
 }
 
-void LSU::flush() {
+void LSU::flush(const FlushEvent& event) {
 }
 
 void LSU::reset() {

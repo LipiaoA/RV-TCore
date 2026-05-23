@@ -47,7 +47,7 @@ typedef struct {
     RegType rs2;
     RegType rd;
     i64 imm;
-    u64 inst_id { 0 };
+    u64 fetch_id { 0 };
     ROBID rid {};
     bool issued { false };
 } DecodeInst;
@@ -90,7 +90,6 @@ typedef struct MicroOp {
     RegType rd;
     i64 imm;
     u64 fetch_id { 0 };
-    u64 inst_id { 0 };
     ROBID rid {};
     i32 latency;
     uint64_t base;

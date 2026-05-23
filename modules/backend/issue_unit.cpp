@@ -6,28 +6,62 @@
 IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
     : IIssue("issue_unit"),
       m_rename_issue_q(*deps.rename_issue_q),
-      m_issue_execute_q(*deps.issue_execute_q),
       m_rob(*deps.rob),
       m_exec(*deps.exec),
       m_int_issue_width(conf.int_issue_width),
       m_ls_issue_width(conf.ls_issue_width),
-      m_fp_issue_width(conf.fp_issue_width)
+      m_fp_issue_width(conf.fp_issue_width),
+      m_wakeup_bus(*deps.wakeup_bus),
+      m_flush_event(*deps.flush_event)
 {}
 
 void IssueUnit::build() {
 }
 
 void IssueUnit::tick() {
+    flush();
     async();
-
+    wakeup();
     issue();
     select();
 }
 
-void IssueUnit::commit() {}
+void IssueUnit::commit()
+{
+    return;
+}
 
 void IssueUnit::wakeup() {
-
+    auto match = [](const MInstPtr inst, const WakeupEvent& event) {
+        if (event.type == WakeupType::WAKEUP_BYPASS ||
+            event.type == WakeupType::WAKEUP_WRITEBACK) {
+            if (inst->rs1.ptag == event.ptag || inst->rs2.ptag == event.ptag) {
+                return true;
+            }
+            return false;
+        }
+        return false;
+    };
+    for (const auto& event : m_wakeup_bus) {
+        for (auto inst : m_int_q) {
+            if (match(inst, event)) {
+                inst->rs1.ready = true && inst->rs1.valid;
+                inst->rs2.ready = true && inst->rs2.valid;
+            }
+        }
+        for (auto inst : m_ls_q) {
+            if (match(inst, event)) {
+                inst->rs1.ready = true && inst->rs1.valid;
+                inst->rs2.ready = true && inst->rs2.valid;
+            }
+        }
+        for (auto inst : m_fp_q) {
+            if (match(inst, event)) {
+                inst->rs1.ready = true && inst->rs1.valid;
+                inst->rs2.ready = true && inst->rs2.valid;
+            }
+        }
+    }
 }
 
 void IssueUnit::select()
@@ -102,12 +136,57 @@ void IssueUnit::issue()
 void IssueUnit::async() {
     MInstPtr inst;
     while (m_rename_issue_q.read(inst)) {
+        if (!inst->valid) {
+            delete inst;
+            continue;
+        }
         InstOp op = inst->opcode;
         if (is_load_store(op))
             m_ls_q.emplace_back(inst);
         else {
             m_int_q.emplace_back(inst);
         }
+    }
+    return;
+}
+
+void IssueUnit::flush() {
+    if (!m_flush_event.valid) {
+        return;
+    }
+    auto clear_q = [&](std::vector<MInstPtr>& q) {
+        std::vector<MInstPtr> tmp_q;
+        for (auto inst : q) {
+            if (m_rob.is_older_than(m_flush_event.rid, inst->rid)) {
+                tmp_q.emplace_back(inst);
+            } else {
+                inst->valid = false;
+            }
+        }
+        q.swap(tmp_q);
+        return;
+    };
+
+    switch (m_flush_event.type) {
+    case FlushType::BRANCH_MISPRED: {
+        clear_q(m_int_q);
+        clear_q(m_ls_q);
+        clear_q(m_select_buffer);
+        clear_q(m_fp_q);
+        m_rename_issue_q.flush_if([&](const MInstPtr& inst) {
+            return m_rob.is_older_than(m_flush_event.rid, inst->rid);
+        });
+    } break;
+    case FlushType::EXCEPTION:
+    case FlushType::INTERRUPT:
+    case FlushType::DEBUG:
+    case FlushType::MEMORY_ORDER:
+    case FlushType::LOAD_REPLAY:
+    case FlushType::FENCE: {
+        assert(0);
+    } break;
+    default:
+        assert(0);
     }
     return;
 }

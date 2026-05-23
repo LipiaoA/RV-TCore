@@ -9,6 +9,8 @@
 #include <queue>
 #include <cassert>
 #include <iterator>
+#include <functional>
+#include <type_traits>
 
 #define DEFAULT_QUEUE_CAPACITY 1024
 
@@ -38,6 +40,46 @@ public:
             return false;
         m_write_buffer.push_back(std::move(item));
         return true;
+    }
+
+    void flush_if(std::function<bool(const T&)> predicate)
+    {
+        for (size_t i = 0; i < m_write_buffer.size(); i++) {
+            if (predicate(m_write_buffer[i])) {
+                m_write_buffer.erase(m_write_buffer.begin() + i);
+            }
+        }
+        for (size_t i = 0; i < m_read_buffer.size(); i++) {
+            if (predicate(m_read_buffer[i])) {
+                m_read_buffer.erase(m_read_buffer.begin() + i);
+            }
+        }
+    }
+
+    template <typename Fn>
+    void for_each_mut(Fn && fn)
+    {
+        for_each_mut_impl(m_read_buffer, fn);
+        for_each_mut_impl(m_write_buffer, fn);
+    }
+
+    template <typename Fn>
+    void for_each_mut_read(Fn&& fn)
+    {
+        for_each_mut_impl(m_read_buffer, fn);
+    }
+    template <typename Fn>
+    void for_each_mut_write(Fn&& fn)
+    {
+        for_each_mut_impl(m_write_buffer, fn);
+    }
+    template <typename Fn>
+    void for_each(Fn&& fn) const
+    {
+        for (const auto& item : m_read_buffer)
+            fn(item);
+        for (const auto& item : m_write_buffer)
+            fn(item);
     }
 
     // 读端接口：从读缓冲区读取
@@ -104,6 +146,23 @@ public:
             m_read_buffer.push_back(m_write_buffer[i]);
         }
         m_write_buffer.clear();
+     }
+private:
+     template <typename Fn>
+     static void for_each_mut_impl(std::deque<T>& buffer, Fn && fn)
+     {
+        for (size_t i = 0; i < buffer.size();) {
+            if constexpr (std::is_same_v<
+                std::invoke_result_t<Fn, T&>, bool>) {
+                if (!fn(buffer[i])) {
+                    buffer.erase(buffer.begin() + static_cast<std::ptrdiff_t>(i));
+                    continue;
+                }
+            } else {
+                fn(buffer[i]);
+            }
+            ++i;
+        }
      }
 
 private:

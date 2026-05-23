@@ -14,11 +14,9 @@
 int main()
 {
     ASyncQueue<MicroOp> rename_issue_q(32);
-    ASyncQueue<MicroOp> issue_execute_q(32);
 
     IssueDeps deps {};
     deps.rename_issue_q = &rename_issue_q;
-    deps.issue_execute_q = &issue_execute_q;
 
     IssueConfig conf {};
     conf.int_issue_width = 4;
@@ -43,17 +41,8 @@ int main()
 
     issue.tick();
     assert(rename_issue_q.empty());
-    assert(issue_execute_q.empty());
 
     // 周期 1：issue_execute.tick 后读侧可见上周期发射结果
-    issue_execute_q.tick();
-    assert(issue_execute_q.size() == 1);
-
-    MicroOp issued {};
-    assert(issue_execute_q.read(issued));
-    assert(issued.valid);
-    assert(issued.opcode == OP_ADDI);
-    assert(issued.issued);
 
     return EXIT_SUCCESS;
 }

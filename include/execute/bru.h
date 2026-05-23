@@ -4,6 +4,7 @@
 #include "module_comm.h"
 #include "tools/intf.h"
 #include "config.h"
+#include "rob/rob.h"
 
 class BRU : public DevIntf {
     constexpr static u32 MAX_STAGES = 8;
@@ -18,11 +19,16 @@ public:
     bool                                    dispatch(MInstPtr inst);
     bool                                    accept() const;
 
+    bool                                    commit_ready() const;
+    MInstPtr                                commit_inst() const;
+    void                                    commit_ack();
+
+    void                                    flush(const FlushEvent& event);
+
 private:
     void                                    R0();
     void                                    R1();
     void                                    E0();
-    void                                    flush(const FlushEvent& event);
 
     void                                    shift();
 
@@ -33,6 +39,8 @@ private:
 
 private:
     FUStage                                 m_input_latch;
+    FUStage                                 m_commit_latch;
+    ROB&                                    m_rob;
 
     i32                                     m_stages { 4 };
     FUStage                                 m_pipe[MAX_STAGES];

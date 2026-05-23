@@ -2,10 +2,10 @@
 
 ExecuteUnit::ExecuteUnit(const ExecConfig& conf, const ExecDeps& deps)
     : IExecute(),
-     m_issue_execute_q(*deps.issue_execute_q),
-     m_execute_commit_q(*deps.execute_commit_q),
+     m_inst_commit_q(*deps.inst_commit_q),
      m_flush_event(*deps.flush_event),
      m_lsu(*deps.lsu),
+     m_rob(*deps.rob),
      m_alu_num(conf.alu_num),
      m_fpu_num(conf.fpu_num),
      m_bru_num(conf.bru_num),
@@ -29,6 +29,7 @@ void ExecuteUnit::build() {
 }
 
 void ExecuteUnit::tick() {
+
     for (int i = 0; i < m_alu_num; i++) {
         m_alus[i].tick();
     }
@@ -39,6 +40,7 @@ void ExecuteUnit::tick() {
         m_brus[i].tick();
     }
     m_lsu.tick();
+    arbitration();
     return;
 }
 
@@ -53,6 +55,7 @@ void ExecuteUnit::commit() {
         m_brus[i].commit();
     }
     m_lsu.commit();
+    m_inst_commit_q.commit();
     return;
 }
 
@@ -89,3 +92,49 @@ bool ExecuteUnit::dispatch(MInstPtr inst) {
     return false;
 }
 
+void ExecuteUnit::arbitration() {
+    u32 committed = 0;
+
+    auto try_commit = [&](auto& fu) {
+        if (committed >= m_commit_width || !fu.commit_ready()) {
+            return;
+        }
+
+        MInstPtr inst = fu.commit_inst();
+        if (m_inst_commit_q.write(inst)) {
+            fu.commit_ack();
+            ++committed;
+        }
+        return;
+    };
+
+    for (u32 i = 0; i < m_alu_num && committed < m_commit_width; ++i) {
+        try_commit(m_alus[i]);
+    }
+    for (u32 i = 0; i < m_bru_num && committed < m_commit_width; ++i) {
+        try_commit(m_brus[i]);
+    }
+    // for (u32 i = 0; i < m_lsu_width && committed < m_commit_width; ++i) {
+    //     try_commit(m_lsu);
+    // }
+}
+
+void ExecuteUnit::flush() {
+    if (!m_flush_event.valid) {
+        return;
+    }
+    for (int i = 0; i < m_alu_num; i++) {
+        m_alus[i].flush(m_flush_event);
+    }
+    for (int i = 0; i < m_fpu_num; i++) {
+        m_fpus[i].flush(m_flush_event);
+    }
+    for (int i = 0; i < m_bru_num; i++) {
+        m_brus[i].flush(m_flush_event);
+    }
+    m_lsu.flush(m_flush_event);
+    m_inst_commit_q.flush_if([&](const MInstPtr& inst) {
+        return m_rob.is_older_than(m_flush_event.rid, inst->rid);
+    });
+    return;
+}

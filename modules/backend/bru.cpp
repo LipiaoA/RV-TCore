@@ -1,6 +1,7 @@
 #include "bru.h"
 #include "isa/opcode.h"
 #include "inst_exec.h"
+#include "rob/rob.h"
 
 BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
     : DevIntf("bru"),
@@ -8,14 +9,18 @@ BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
       m_reg_req_q(*deps.reg_req_q),
       m_reg_resp_q(*deps.reg_resp_q),
       m_reg_bypass_q(*deps.reg_bypass_q),
-      m_flush_req_q(*deps.flush_req_q)
+      m_flush_req_q(*deps.flush_req_q),
+      m_rob(*deps.rob)
 {
+    assert(m_stages == 3);
     for (i32 i = 0; i < m_stages; i++) {
         m_pipe[i].valid = false;
         m_pipe[i].inst = nullptr;
     }
     m_input_latch.valid = false;
     m_input_latch.inst = nullptr;
+    m_commit_latch.valid = false;
+    m_commit_latch.inst = nullptr;
 }
 
 bool branch_taken(InstOp op, u64 v1, u64 v2)
@@ -146,7 +151,7 @@ void BRU::R1()
             event.recover_c_id = true;
             event.c_id = inst->c_id;
             event.inst_pc = inst->pc;
-            event.inst_id = inst->fetch_id;
+            event.fetch_id = inst->fetch_id;
             event.epoch = inst->epoch;
             m_flush_req_q.write(event);
         }
@@ -155,8 +160,9 @@ void BRU::R1()
 
 void BRU::E0()
 {
-    if (!m_pipe[2].valid || !m_pipe[2].inst)
+    if (!m_pipe[2].valid || !m_pipe[2].inst || m_commit_latch.valid) {
         return;
+    }
     MInstPtr inst = m_pipe[2].inst;
     InstExec::BruExecResult ret = InstExec::exec_bru(inst);
     if (!ret.valid)
@@ -177,23 +183,19 @@ void BRU::E0()
         event.recover_c_id = true;
         event.c_id = inst->c_id;
         event.inst_pc = inst->pc;
-        event.inst_id = inst->fetch_id;
+        event.fetch_id = inst->fetch_id;
         event.epoch = inst->epoch;
         m_flush_req_q.write(event);
     }
 
     if (inst->rd.valid) {
         inst->rd.val = ret.link;
-        RegReq req;
-        req.valid = true;
-        req.write = true;
-        req.ptag = inst->rd.ptag;
-        req.atag = inst->rd.atag;
-        req.fu = FuType::BRU;
-        req.val = inst->rd.val;
-        req.rid = inst->rid;
-        m_reg_req_q.write(req);
     }
+    m_pipe[2].valid = false;
+    m_pipe[2].inst = nullptr;
+    m_commit_latch.inst = inst;
+    m_commit_latch.valid = true;
+    return;
 }
 
 void BRU::wakeup(MInstPtr inst)
@@ -225,30 +227,50 @@ void BRU::flush(const FlushEvent& event)
 void BRU::shift()
 {
     for (i32 i = m_stages - 1; i > 0; --i) {
-        m_pipe[i] = m_pipe[i - 1];
+        if (!m_pipe[i].valid) {
+            m_pipe[i] = m_pipe[i - 1];
+            m_pipe[i - 1].valid = false;
+            m_pipe[i - 1].inst = nullptr;
+        }
     }
-    m_pipe[0].valid = false;
-    m_pipe[0].inst = nullptr;
 }
 
 void BRU::dump_states() const
 {
     if (m_pipe[0].valid) {
-        auto &inst = m_pipe[0].inst;
-        LOG_LEVEL1("BRU R0", "rs1: v-%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
-            inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
+        auto inst = m_pipe[0].inst;
+        LOG_LEVEL1("BRU R0", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
+            inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
     }
     if (m_pipe[1].valid) {
-        auto &inst = m_pipe[1].inst;
-        LOG_LEVEL1("BRU R1", "rs1: v-%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx, pred_taken: %d, real_taken: %d",
+        auto inst = m_pipe[1].inst;
+        LOG_LEVEL1("BRU R1", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx, pred_taken: %d, real_taken: %d",
+            inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
             inst->pred_taken, m_pred_taken);
     }
-    if (m_pipe[2].valid) {
-        auto &inst = m_pipe[2].inst;
-        LOG_LEVEL1("BRU E0", "rd: v-%d-a%d-p%d-0x%lx",
-            inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
+    if (m_commit_latch.valid) {
+        auto inst = m_commit_latch.inst;
+        LOG_LEVEL1("BRU E0", "pc: 0x%lx, inst: %s, rd: v%d-a%d-p%d-0x%lx",
+            inst->pc, inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
     }
+}
+
+
+bool BRU::commit_ready() const
+{
+    return m_commit_latch.valid && m_commit_latch.inst;
+}
+
+MInstPtr BRU::commit_inst() const
+{
+    return m_commit_latch.inst;
+}
+
+void BRU::commit_ack()
+{
+    m_commit_latch.valid = false;
+    m_commit_latch.inst = nullptr;
 }

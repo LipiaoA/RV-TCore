@@ -52,14 +52,6 @@ typedef struct {
     u64 ghr_snapshot = 0;
 } branch_pred;
 
-struct ExecResult {
-    DecodeInst inst;
-    bool valid { false };
-    u64 exec_id { 0 };
-    int rid { -1 };
-    u64 result { 0 };
-};
-
 struct CommitAck {
     u64 commit_id { 0 };
 };
@@ -84,11 +76,6 @@ typedef struct{
     FuType fu { FuType::NONE };
     int fu_id { -1 };
 } RegResp;
-
-typedef struct {
-    bool valid { false };
-    i32 tag { -1 };
-} WakeupEvent;
 
 enum class FlushSource {
     NONE,
@@ -125,6 +112,19 @@ enum class FlushScope {
     ALL,
 };
 
+enum WakeupType {
+    WAKEUP_BYPASS,     // 可旁路
+    WAKEUP_WRITEBACK,  // 已写回PRF
+    WAKEUP_REPLAY,     // 依赖失效
+    WAKEUP_KILL        // flush
+};
+typedef struct {
+    bool       valid { false };
+    WakeupType type;
+    i32        ptag;
+    ROBID      rid;
+} WakeupEvent;
+
 typedef struct {
     bool                valid { false };
     FlushType           type { FlushType::NONE };
@@ -133,7 +133,7 @@ typedef struct {
     ROBID               rid { 0 };
     bool                redirect { false };
     pc_t                redirect_pc { 0 };
-    u64                 inst_id { 0 };
+    u64                 fetch_id { 0 };
     pc_t                inst_pc { 0 };
     // 分支恢复信息
     bool branch_taken { false };
@@ -216,7 +216,7 @@ struct ModuleCommQueues {
     ASyncQueue<MInstPtr>*           decode_to_rename  { nullptr };  // Decode 写 -> Rename 读
     ASyncQueue<MInstPtr>*           rename_to_issue{ nullptr };     // Rename 写 -> Dispatch 读
     ASyncQueue<MInstPtr>*           issue_to_execute  { nullptr };  // Issue 写 -> Execute 读
-    ASyncQueue<ExecResult>*         execute_to_commit { nullptr };  // Execute 写 -> Commit/ROB 读
+    ASyncQueue<MInstPtr>*           inst_commit_q { nullptr };  // Execute 写 -> Commit/ROB 读
     ASyncQueue<RegReq>*             rename_to_prf     { nullptr };  // Rename 写 -> PRF 读
 
     /* 各模块的 register request 和 response 队列 */
@@ -232,6 +232,7 @@ struct ModuleCommQueues {
     /* 各模块的 flush 事件 */
     ASyncQueue<FlushEvent>*         flush_req_q { nullptr };  // 统一的 flush 请求队列
     FlushEvent*                     flush_event { nullptr };  // 统一的 flush 广播事件，由 FlushUnit 管理
+    std::vector<WakeupEvent>*       wakeup_bus { nullptr };  // 统一的 wakeup 事件，由 IssueUnit 管理
 };
 
 class ICache;
@@ -300,28 +301,31 @@ typedef struct {
 } RegFileDeps;
 
 typedef struct {
-    ASyncQueue<ExecResult>*     execute_commit_q;
+    ASyncQueue<MInstPtr>*       inst_commit_q;
     ROB*                        rob;
     RenameUnit*                 rename;
     FlushEvent*                 flush_event { nullptr };
     ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
+    ASyncQueue<RegReq>*         reg_req_q;
 } CommitDeps;
 
 typedef struct {
     ExecuteUnit*                exec;
     ROB*                        rob;
     ASyncQueue<MInstPtr>*       rename_issue_q;
-    ASyncQueue<MInstPtr>*       issue_execute_q;
+    std::vector<WakeupEvent>*   wakeup_bus;
     FlushEvent*                 flush_event { nullptr };
 } IssueDeps;
 
 typedef struct {
+    ROB*                        rob;
     ASyncQueue<RegReq>*         reg_req_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
 } ALUDeps;
 
 typedef struct {
+    ROB*                        rob;
     ASyncQueue<RegReq>*         reg_req_q;
     ASyncQueue<FlushEvent>*     flush_req_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
@@ -336,7 +340,6 @@ typedef struct {
 } FPUDeps;
 
 typedef struct {
-    ASyncQueue<ExecResult>*     execute_commit_q;
     FlushEvent*                 flush_event { nullptr };
 } ROBDeps;
 
@@ -345,7 +348,6 @@ typedef struct {
     GCache*                     dcache;
     MultiLevelTLB*              dtlb;
     ASyncQueue<MInstPtr>*       rename_issue_q;
-    ASyncQueue<ExecResult>*     execute_commit_q;
     ASyncQueue<RegReq>*         reg_req_q;
     FlushEvent*                 flush_event { nullptr };
     ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
@@ -355,14 +357,14 @@ typedef struct {
 
 typedef struct {
     LSU*                        lsu;
-    ASyncQueue<MInstPtr>*       issue_execute_q;
-    ASyncQueue<ExecResult>*     execute_commit_q;
+    ASyncQueue<MInstPtr>*       inst_commit_q;
     ASyncQueue<FlushEvent>*     flush_req_q;
     FlushEvent*                 flush_event;
     ALUDeps*                    alu_deps;
     BRUDeps*                    bru_deps;
     LSUDeps*                    lsu_deps;
     FPUDeps*                    fpu_deps;
+    ROB*                        rob;
 } ExecDeps;
 
 typedef struct {

@@ -40,11 +40,11 @@ int main()
     dcache.attach_lower(&l2);
     dcache.set_name("dcache");
 
-    ASyncQueue<ExecResult> execute_commit_q(64);
+    ASyncQueue<ExecResult> inst_commit_q(64);
     ASyncQueue<MicroOp> lsu_rename_issue_q(8);
     ASyncQueue<ExecResult> lsu_exec_stub(8);
     ROBDeps rob_deps {};
-    rob_deps.execute_commit_q = &execute_commit_q;
+    rob_deps.inst_commit_q = &inst_commit_q;
     ROBConfig rob_conf {};
     rob_conf.capacity = 16;
     ROB rob(rob_conf, rob_deps);
@@ -54,18 +54,16 @@ int main()
     lsu_deps.dcache = &dcache;
     lsu_deps.dtlb = &tlb;
     lsu_deps.rename_issue_q = &lsu_rename_issue_q;
-    lsu_deps.execute_commit_q = &lsu_exec_stub;
+    lsu_deps.inst_commit_q = &lsu_exec_stub;
 
     LSUConfig lsu_conf {};
     LSU lsu(lsu_conf, lsu_deps);
     lsu.build();
 
-    ASyncQueue<MicroOp> issue_execute_q(32);
     ASyncQueue<ExecResult> exec_to_commit_q(32);
 
     ExecDeps exec_deps {};
-    exec_deps.issue_execute_q = &issue_execute_q;
-    exec_deps.execute_commit_q = &exec_to_commit_q;
+    exec_deps.inst_commit_q = &exec_to_commit_q;
     exec_deps.lsu = &lsu;
 
     ExecConfig exec_conf {};
@@ -79,9 +77,6 @@ int main()
     MicroOp uop {};
     uop.valid = true;
     uop.opcode = OP_ADDI;
-    assert(issue_execute_q.write(uop));
-    issue_execute_q.tick();
-    assert(issue_execute_q.size() == 1);
 
     for (int c = 0; c < 4; ++c) {
         execute.tick();
@@ -92,7 +87,6 @@ int main()
 
     execute.commit();
     assert(exec_to_commit_q.empty());
-    assert(issue_execute_q.size() == 1);
 
     return EXIT_SUCCESS;
 }

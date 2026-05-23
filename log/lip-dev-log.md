@@ -25,7 +25,12 @@
 
 ##### 1.8 Function Model 实现 - PENDING
 
+#### 20260523
 
+第一条指令成功retired，补充部分flush和bypass
+
+1. 完善各模块flush实现
+2. 补充指令resolve & write back
 
 #### 20260517
 

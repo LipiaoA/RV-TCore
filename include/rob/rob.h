@@ -18,22 +18,21 @@ struct RobEntry {
     int           old_phys_rd { -1 };
 };
 
-class ROB : public IRob {
+class ROB {
     constexpr static u32 MAX_ROB_ENTRIES = 512;
 public:
     explicit ROB(const ROBConfig& conf, const ROBDeps& deps);
-    ~ROB() override {};
+    ~ROB() = default;
 public:
-    void                                tick() override;
-    void                                commit() override;
-    void                                build() override;
+    void                                build();
 
     ROBID                               alloc(const MInstPtr inst);
     RobEntry*                           get(ROBID id);
     void                                mark_ready(ROBID id, u64 result_val);
-    std::optional<RobEntry>             try_commit_head();
+    std::optional<RobEntry>             commit_head();
     bool                                full() const;
     bool                                empty() const;
+    std::optional<RobEntry>             head();
     size_t                              size() const { return m_size; }
 
     /// 按程序序比较 ROBID：a 早于 b 返回负数，相等返回 0，a 晚于 b 返回正数。
@@ -41,7 +40,6 @@ public:
     bool                                 is_older_than(const ROBID& a, const ROBID& b) const;
 
 private:
-    ASyncQueue<ExecResult>&             m_execute_commit_q;
     RobEntry                            m_entries[MAX_ROB_ENTRIES];
     u32                                 m_capacity;
     // 当前有效 entry 数量

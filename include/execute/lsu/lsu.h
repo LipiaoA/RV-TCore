@@ -70,7 +70,7 @@ public:
     bool                                dispatch(MInstPtr inst);
     void                                tick();
     void                                commit();
-    void                                flush();
+    void                                flush(const FlushEvent& event);
     void                                reset();
 
     int                                 alloc_load_entry();

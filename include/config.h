@@ -73,7 +73,7 @@ typedef struct {
 } RegFileConfig;
 
 struct ALUConfig {
-    u32 stages {4};
+    u32 stages {3};
 };
 
 typedef struct {
@@ -107,6 +107,7 @@ typedef struct {
     u32 fpu_num { 0 };
     u32 bru_num { 0 };
     u32 agu_num { 0 };
+    u32 commit_width { 4 };
     ALUConfig alu_conf;
     FPUConfig fpu_conf;
     BRUConfig bru_conf;
@@ -126,6 +127,8 @@ typedef struct {
 
 typedef struct {
     u32 width { 4 };
+    u32 resolve_width { 4 };
+    u32 commit_width {4};
 } CommitConfig;
 
 typedef struct {
@@ -152,6 +155,7 @@ typedef struct {
     u32 decode_width = 4;
     u32 rename_width = 4;
     u32 commit_width = 4;
+    u32 exec_commit_width = 4;
 
     u32 prf_width = 4;
     u32 prf_capacity = 192;           // physical register file size
@@ -168,9 +172,9 @@ typedef struct {
     u32 agu_num = 4;
     u32 mshr_buffer_size = 128;
     u32 lsu_issue_width = 2;
-    u32 alu_stages = 4;
+    u32 alu_stages = 3;
     u32 fpu_stages = 4;
-    u32 bru_stages = 4;
+    u32 bru_stages = 3;
 
     // issue / execute widths
     u32 int_issue_width = 4;

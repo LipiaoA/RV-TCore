@@ -30,7 +30,7 @@ public:
 private:
     void                                d0();
     void                                d1();
-
+    void                                flush();
     bool                                decode(insn_t raw, MicroOp *out);
     i64                                 extract_imm(u64 raw, InstFmt fmt, InstOp op);
     InstType                            get_inst_type(InstOp op);
@@ -45,6 +45,8 @@ private:
 
     ASyncQueue<FetchPacket>&            m_fetch_decode_q;
     ASyncQueue<MInstPtr>&               m_decode_rename_q;
+
+    FlushEvent&                         m_flush_event;
 
     u64                                 m_next_decode_id { 0 };
     bool                                m_stall { false };
