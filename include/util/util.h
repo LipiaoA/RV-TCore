@@ -58,7 +58,7 @@ public:
     u64 cycle() const { return m_cycle; }
     void schedule_after(u64 delay, std::function<void()> cb) {
         u64 t = m_cycle + delay;
-        LOG_LEVEL1("schedule", "dealy:%ld, exp m_cycle: %ld \n", delay, t);
+        LOG_LEVEL1("schedule", "dealy:%ld, exp m_cycle: %ld", delay, t);
         m_events[t].push_back(move(cb));
     }
     void tick() {
@@ -67,7 +67,6 @@ public:
         if (it != m_events.end()) {
             auto tasks = move(it->second);
             m_events.erase(it);
-            LOG_LEVEL1("schedule tick", "run: %ld \n", m_cycle);
             for (auto &task : tasks) task();
         }
     }

@@ -54,6 +54,8 @@ private:
     ExecuteUnit*                            m_execute { nullptr };
     CommitUnit*                             m_commit { nullptr };
     FlushUnit*                              m_flush { nullptr };
+    std::array<int, RV_GPR_SIZE>*           m_crat { nullptr };
+    std::vector<RatCheckpoint>*             m_checkpoints { nullptr };
     ROB*                                    m_rob { nullptr };
     LSU*                                    m_lsu { nullptr };
     RegFileUnit*                            m_regfile { nullptr };

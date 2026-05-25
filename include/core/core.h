@@ -37,6 +37,8 @@ private:
     CommitUnit&                             m_commit;
     CycleScheduler&                         m_sched;
     FlushUnit&                              m_flush;
+    ROB&                                    m_rob;
+    FlushEvent&                             m_flush_event;
     bool                                    m_exit { false };
 };
 

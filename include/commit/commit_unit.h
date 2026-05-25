@@ -21,18 +21,23 @@ private:
     void                                write_back(const MInstPtr inst);
     void                                inst_commit();
     void                                inst_reslove();
+    void                                flush();
 
 private:
-    ASyncQueue<MInstPtr>&               m_inst_commit_q;
-    ROB&                                m_rob;
-    RenameUnit&                         m_rename;
     u32                                 m_commit_width;
     /* execute unit 的 commit 宽度 */
     u32                                 m_resolve_width;
 
+    ROB&                                m_rob;
+    RenameUnit&                         m_rename;
+
     OUTPUT ASyncQueue<RegReq>&          m_reg_req_q;
     OUTPUT ASyncQueue<FlushEvent>&      m_flush_req_q;
     INPUT FlushEvent&                   m_flush_event;
+    INPUT ASyncQueue<MInstPtr>&         m_inst_commit_q;
+
+    std::array<int, RV_GPR_SIZE>&       m_crat;
+    std::vector<RatCheckpoint>&         m_checkpoints;
 };
 
 #endif

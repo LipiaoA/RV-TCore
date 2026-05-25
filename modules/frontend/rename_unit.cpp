@@ -10,10 +10,13 @@ RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
     , m_rename_issue_q(*deps.rename_issue_q)
     , m_rob(*deps.rob)
     , m_regfile(*deps.regfile)
-    , m_rename_width(conf.width)
+    , m_crat(*deps.crat)
+    , m_checkpoints(*deps.checkpoints)
     , m_flush_event(*deps.flush_event)
+    , m_rename_width(conf.width)
+    , m_prf_capacity(conf.prf_capacity)
 {
-    for (int p = 1; p < conf.prf_capacity; ++p) {
+    for (int p = 1; p < m_prf_capacity; ++p) {
         m_free_list.push_back(p);
     }
     // 0 is x0, is zero register
@@ -67,10 +70,28 @@ void RenameUnit::r1() {
             break;
         }
         std::string id_pre = inst->rid.idx == 0 ? "++" : "--";
-        LOG_LEVEL1("RenameUnit R1", "r1 inst: %s, v%d-a%d-p%d%s%d",
-                   inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
-                   inst->rd.ptag, id_pre.c_str(), inst->rid.idx);
-        inst->rid = m_rob.alloc(inst);
+        LOG_LEVEL1("RenameUnit R1", "r1 pc:0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx,"
+                   "rd: v%d-a%d-p%d-0x%lx%s%d",
+                   inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
+                   inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
+                   inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val, id_pre.c_str(), inst->rid.idx);
+        auto alloc = m_rob.alloc(inst);
+        if (!alloc) {
+            m_r1_buf.push_front(inst);
+            break;
+        }
+        if (is_branch(inst->opcode)) {
+            RatCheckpoint cp;
+            cp.valid = true;
+            cp.rat = m_rat;
+            cp.free_list = m_free_list;
+            cp.c_id = m_checkpoint_id++;
+            inst->c_id = cp.c_id;
+            cp.rid = inst->rid;
+            m_checkpoints.emplace_back(cp);
+        }
+
+        inst->rid = alloc.value();
         m_r2_buf.push_back(inst);
         ++n;
     }
@@ -87,23 +108,23 @@ void RenameUnit::r2() {
 }
 
 void RenameUnit::tick() {
+    flush();
     r2();
     r1();
     r0();
 }
 
-void RenameUnit::recycle_phys(int phys) {
+void RenameUnit::recycle_phys(i32 phys) {
     if (phys >= 0) {
         m_free_list.push_back(phys);
     }
 }
 
 void RenameUnit::build() {
-    for (int i = 0; i < RV_GPR_SIZE; ++i) {
+    for (u32 i = 0; i < RV_GPR_SIZE; ++i) {
         m_rat[i] = i;
-        m_crat[i] = i;
     }
-    for (int i = RV_GPR_SIZE; i < RV_PHY_REG_SIZE; ++i) {
+    for (u32 i = 1; i < m_prf_capacity; ++i) {
         m_free_list.push_back(i);
     }
     return;
@@ -123,4 +144,35 @@ bool RenameUnit::dispatch(MInstPtr inst) {
                inst->rd.ptag, id_pre.c_str(), inst->rid.idx);
     m_rename_issue_q.write(inst);
     return true;
+}
+
+
+void RenameUnit::flush() {
+    if (!m_flush_event.valid) {
+        return;
+    }
+    m_r1_buf.clear();
+    m_r2_buf.clear();
+    m_rename_issue_q.clear();
+    if (m_flush_event.scope == FlushScope::ALL) {
+        m_rat = m_crat;
+        m_checkpoints.clear();
+        /* TODO:rebuild free list from committed state */
+        assert(0);
+        return;
+    }
+    if (!m_flush_event.recover_c_id) {
+        return;
+    }
+    auto it = std::find_if(m_checkpoints.begin(), m_checkpoints.end(),
+        [&](const RatCheckpoint& cp) {
+            return cp.c_id == m_flush_event.c_id;
+        });
+    if (it == m_checkpoints.end())
+        return;
+    m_rat = it->rat;
+    m_free_list = it->free_list;
+    // 这个 checkpoint 以及比它年轻的 checkpoint 都失效。
+    m_checkpoints.erase(it, m_checkpoints.end());
+    return;
 }

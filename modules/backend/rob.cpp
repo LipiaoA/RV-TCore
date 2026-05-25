@@ -7,15 +7,45 @@ ROB::ROB(const ROBConfig& conf, const ROBDeps& deps)
     m_tail = ROBID{ 0, 0 };
     m_size = 0;
     assert(m_capacity > 0);
-    memset(m_entries, 0, sizeof(m_entries));
+    std::fill(m_entries, m_entries + MAX_ROB_ENTRIES, RobEntry());
 }
 
-void ROB::build() {
+void ROB::flush(const FlushEvent& event) {
+    ROBID cur, cut;
+    switch (event.scope) {
+    case FlushScope::ALL: {
+        reset();
+        return;
+    } break;
+    case FlushScope::YOUNGER_THAN: {
+        cut = next_id(event.rid);
+    } break;
+    case FlushScope::FROM_RID: {
+        cut = event.rid;
+    } break;
+    default:
+        assert(0);
+    }
+    cur = cut;
+    while (!(cur.idx == m_tail.idx && cur.direct == m_tail.direct)) {
+        m_entries[cur.idx].valid = false;
+        cur = next_id(cur);
+        --m_size;
+    }
+    m_tail = cut;
 }
 
-ROBID ROB::alloc(const MInstPtr inst) {
+void ROB::reset() {
+    m_head = ROBID{ 0, 0 };
+    m_tail = ROBID{ 0, 0 };
+    m_size = 0;
+    assert(m_capacity > 0);
+    std::fill(m_entries, m_entries + MAX_ROB_ENTRIES, RobEntry());
+}
+
+std::optional<ROBID> ROB::alloc(const MInstPtr inst) {
     if (full()) {
-        return ROBID{ -1, 0 };
+        return std::nullopt;
     }
     ROBID write_id = m_tail;
     RobEntry& e = m_entries[write_id.idx];
@@ -24,7 +54,7 @@ ROBID ROB::alloc(const MInstPtr inst) {
     m_tail.idx = (m_tail.idx + 1) % m_capacity;
     m_tail.direct = (m_tail.idx == 0) ? 1 - m_tail.direct : m_tail.direct;
     ++m_size;
-    return write_id;
+    return std::make_optional<ROBID>(write_id);
 }
 
 RobEntry* ROB::get(ROBID rid) {
@@ -74,7 +104,15 @@ bool ROB::empty() const {
 
 bool ROB::is_older_than(const ROBID& a, const ROBID& b) const
 {
-    u32 a_idx = (a.direct == m_tail.direct) ? a.idx : a.idx + m_capacity;
-    u32 b_idx = (b.direct == m_tail.direct) ? b.idx : b.idx + m_capacity;
+    u32 a_idx = (a.direct == m_head.direct) ? a.idx : a.idx + m_capacity;
+    u32 b_idx = (b.direct == m_head.direct) ? b.idx : b.idx + m_capacity;
     return a_idx < b_idx;
+}
+
+ROBID ROB::next_id(ROBID id) const
+{
+    id.idx = (id.idx + 1) % m_capacity;
+    if (id.idx == 0)
+        id.direct = 1 - id.direct;
+    return id;
 }

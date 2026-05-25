@@ -1,6 +1,8 @@
+#include <string>
+
 #include "lsu.h"
 
-#include <string>
+u32 LSU::lsu_idx = 0;
 
 LSU::LSU(const LSUConfig& conf, const LSUDeps& deps)
     : m_conf(conf),
@@ -20,6 +22,7 @@ LSU::LSU(const LSUConfig& conf, const LSUDeps& deps)
     AGUConfig agu_conf;
     agu_conf.stages = conf.agu_stages;
     m_agus.init(m_agus_num, agu_conf, agu_deps);
+    m_idx = LSU::lsu_idx++;
 }
 
 void LSU::build() {

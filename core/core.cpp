@@ -21,7 +21,9 @@ Core::Core(const CoreDeps &deps)
    m_execute(*deps.execute),
    m_commit(*deps.commit),
    m_sched(*deps.sched),
-   m_flush(*deps.flush)
+   m_flush(*deps.flush),
+   m_rob(*deps.rob),
+   m_flush_event(*deps.flush_event)
 { }
 
 Core::~Core() { }
@@ -29,7 +31,9 @@ Core::~Core() { }
 void Core::tick() {
     /* 上一拍产生的flush 在当前拍仲裁后 同时被其它组件看到 */
     m_flush.tick();
-
+    if (m_flush_event.valid) {
+        m_rob.flush(m_flush_event);
+    }
     m_fetch.tick();
     m_decode.tick();
     m_rename.tick();

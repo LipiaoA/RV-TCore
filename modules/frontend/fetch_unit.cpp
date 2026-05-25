@@ -29,6 +29,7 @@ FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
 
     m_pc          = 0;
     m_squash_id   = 0;
+    memset(m_run, 0, sizeof(m_run));
 }
 
 void FetchUnit::build() {
@@ -38,8 +39,8 @@ void FetchUnit::build() {
 
 void FetchUnit::tick()
 {
+    preprocess();
     flush();
-    m_sched.tick();
     fetch5();
     fetch4();
     fetch3();
@@ -60,6 +61,11 @@ void FetchUnit::redirct(pc_t new_pc, u64 fetch_id)
     m_redirect_pc[RESET_PC].pc = new_pc;
     m_pc = new_pc;
     m_state[F0].valid = true;
+}
+
+void FetchUnit::preprocess()
+{
+    memset(m_run, 0, sizeof(m_run));
 }
 
 void FetchUnit::fetch0()
@@ -90,6 +96,7 @@ void FetchUnit::fetch0()
         }
     }
     m_state[F1].valid = true;
+    m_run[F0] = true;
 }
 
 void FetchUnit::fetch1()
@@ -116,6 +123,7 @@ void FetchUnit::fetch1()
     // TODO: request itlb
 
     m_state[F2].valid = true;
+    m_run[F1] = true;
     return;
 }
 
@@ -150,6 +158,7 @@ void FetchUnit::fetch2()
     } else {
         m_redirect_pc[RES_F2].valid = true;
         m_redirect_pc[RES_F2].pc = m_state[F2].vpc;
+        m_state[F1].valid = false;
     }
     for (int i = 0; i < m_fetch_width; ++i) {
         m_f2_pred.pred[i].target = m_f1_pred.pred[i].target;
@@ -157,6 +166,9 @@ void FetchUnit::fetch2()
             if (m_f2_pred.pred[i].taken) {
                 m_redirect_pc[RES_F2].valid = true;
                 m_redirect_pc[RES_F2].pc = m_f2_pred.pred[i].target;
+            } else {
+                m_redirect_pc[RES_F2].valid = true;
+                m_redirect_pc[RES_F2].pc = m_state[F2].vpc + 4;
             }
             if (m_f2_pred.pred[i].taken != m_f1_pred.pred[i].taken) {
                 m_state[F2].valid = false;
@@ -166,6 +178,7 @@ void FetchUnit::fetch2()
         }
     }
     m_state[F3].valid = true;
+    m_run[F2] = true;
 }
 
 void FetchUnit::fetch3()
@@ -243,11 +256,13 @@ void FetchUnit::fetch3()
     const auto &last = m_f3_pkt.data.insts.back();
     m_redirect_pc[RES_F3].valid = true;
     m_redirect_pc[RES_F3].pc = last.pc + last.size;
+    m_state[F4].valid = true;
+    m_run[F3] = true;
 }
 
 void FetchUnit::fetch4()
 {
-    if (!m_f3_pkt.valid) {
+    if (!m_f3_pkt.valid || !m_state[F4].valid) {
         m_f4_pkt.clear();
         return;
     }
@@ -272,15 +287,18 @@ void FetchUnit::fetch4()
     m_redirect_pc[RES_F4].pc = pred_taken ? m_redirect_pc[RES_F4].pc : fall_addr;
     m_f4_pkt.valid = true;
     m_f4_pkt.data = m_f3_pkt.data;
+    m_state[F5].valid = true;
+    m_run[F4] = true;
 }
 void FetchUnit::fetch5()
 {
-    if (!m_f4_pkt.valid || m_fetch_decode_q.full()) {
+    if (!m_f4_pkt.valid || !m_state[F5].valid || m_fetch_decode_q.full()) {
         return;
     }
     m_f5_pkt.valid = true;
     m_f5_pkt.data = m_f4_pkt.data;
     m_fetch_decode_q.write(m_f5_pkt.data);
+    m_run[F5] = true;
 }
 
 FetchUnit::~FetchUnit() { }
@@ -369,46 +387,65 @@ void FetchUnit::flush()
 
 void FetchUnit::dump_state() const
 {
-    std::cout << "FetchUnit state:\n";
-    if (m_state[F0].valid) {
-        LOG_LEVEL1("F0 Predict", "req vpc:0x%lx", m_state[F0].vpc);
-    }
-    if (m_state[F1].valid) {
-        auto &pred = m_f1_pred.pred;
-        LOG_LEVEL1("F1 Predict", "req vpc:0x%lx,ghr:0x%lx,"
-                    "pred:[%d,%d,0x%lx -- %d,%d,0x%lx -- %d,%d,0x%lx -- %d,%d,0x%lx]",
-                    m_state[F1].vpc, m_f1_pred.ghr_snapshot,
-                    pred[0].valid, pred[0].taken, pred[0].target,
-                    pred[1].valid, pred[1].taken, pred[1].target,
-                    pred[2].valid, pred[2].taken, pred[2].target,
-                    pred[3].valid, pred[3].taken, pred[3].target);
-
-        LOG_LEVEL1("F1 Predict", "redirect pc:0x%lx", m_redirect_pc[RES_F1].pc);
-    }
-
-    if (m_state[F2].valid) {
-        auto &pred = m_f2_pred.pred;
-        LOG_LEVEL1("F2 Predict", "req vpc:0x%lx,ghr:0x%lx,"
-                    " pred:[%d,%d,0x%lx -- %d,%d,0x%lx -- %d,%d,0x%lx -- %d,%d,0x%lx]",
-                    m_state[F2].vpc, m_f2_pred.ghr_snapshot,
-                    pred[0].valid, pred[0].taken, pred[0].target,
-                    pred[1].valid, pred[1].taken, pred[1].target,
-                    pred[2].valid, pred[2].taken, pred[2].target,
-                    pred[3].valid, pred[3].taken, pred[3].target);
-        LOG_LEVEL1("F2 Predict", "redirect pc:0x%lx", m_redirect_pc[RES_F2].pc);
-    }
-    if (m_state[F3].valid) {
-        auto &pred = m_f3_bpred.pred;
-        LOG_LEVEL1("F3 Predict", "req vpc:0x%lx, redirect pc:0x%lx",
-                    m_state[F3].vpc, m_redirect_pc[RES_F3].pc);
-    }
-    if (m_state[F4].valid) {
-        LOG_LEVEL1("F4 Predict", "req vpc:0x%lx, redirect pc:0x%lx",
-                    m_state[F4].vpc, m_redirect_pc[RES_F4].pc);
-    }
     if (m_flush_event.valid) {
-        LOG_LEVEL1("FetchUnit Flush Event", "type: %d, redirect pc:0x%lx",
-                    m_flush_event.type, m_flush_event.redirect_pc);
+        auto evt = m_flush_event;
+        auto type = FlushTypeStr[static_cast<int>(evt.type)];
+        auto source = FlushSourceStr[static_cast<int>(evt.source)];
+        auto scope = FlushScopeStr[static_cast<int>(evt.scope)];
+        auto fetch_id = evt.fetch_id;
+        auto inst_pc = evt.inst_pc;
+        auto r_pc = evt.redirect_pc;
+        auto rid = evt.rid;
+        std::string id_pre = rid.idx == 0 ? "++" : "--";
+        LOG_LEVEL1("FetchUnit Flush Event", "type: %s, source: %s, scope: %s, rid: %s%d, rdirect pc:0x%lx, "
+                   "fetch_id: %d, inst_pc:0x%lx",
+                   type, source, scope, id_pre.c_str(), rid.idx, r_pc, fetch_id, inst_pc);
+    }
+    if (m_state[F0].valid) {
+        pc_t line_addr = m_icache.align_line(m_state[F0].vpc);
+        pc_t buffer_addr = m_line_buffer.line_addr;
+        bool line_valid = m_line_buffer.valid;
+        pc_t vpc = m_state[F0].vpc;
+        LOG_LEVEL1("Fetch0", "vpc:0x%lx,line vld:%d, buffer addr:0x%lx, req line:0x%lx",
+            vpc, line_valid, buffer_addr, line_addr);
+    }
+    if (m_run[F1]) {
+        auto &pred = m_f1_pred.pred;
+        LOG_LEVEL1("Fetch1", "vpc:0x%lx,ghr:0x%lx, redirect:(%d-%lx),"
+                    "pred:[v%d-t%d-0x%lx | v%d-t%d-0x%lx | v%d-t%d-0x%lx | v%d-t%d-0x%lx]",
+                    m_state[F1].vpc, m_f1_pred.ghr_snapshot, m_redirect_pc[RES_F1].valid, m_redirect_pc[RES_F1].pc,
+                    pred[0].valid, pred[0].taken, pred[0].target, pred[1].valid, pred[1].taken, pred[1].target,
+                    pred[2].valid, pred[2].taken, pred[2].target, pred[3].valid, pred[3].taken, pred[3].target);
+    }
+
+    if (m_run[F2]) {
+        auto &pred = m_f2_pred.pred;
+        LOG_LEVEL1("Fetch2", "vpc:0x%lx,ghr:0x%lx,redirect:(%d-%lx), "
+                    "pred:[v%d-t%d-0x%lx | v%d-t%d-0x%lx | v%d-t%d-0x%lx | v%d-t%d-0x%lx]",
+                    m_state[F2].vpc, m_f2_pred.ghr_snapshot, m_redirect_pc[RES_F2].valid, m_redirect_pc[RES_F2].pc,
+                    pred[0].valid, pred[0].taken, pred[0].target, pred[1].valid, pred[1].taken, pred[1].target,
+                    pred[2].valid, pred[2].taken, pred[2].target, pred[3].valid, pred[3].taken, pred[3].target);
+    }
+    if (m_run[F3]) {
+        auto &pred = m_f3_bpred.pred;
+        auto &pkt = m_f3_pkt.data;
+        auto r_v = m_redirect_pc[RES_F3].valid;
+        auto r_pc = m_redirect_pc[RES_F3].pc;
+        LOG_LEVEL1("Fetch3", "vpc:0x%lx, redirect:(%d-%lx), base pc:0x%lx, valid mask:0b%b, br mask:0b%b",
+                    m_state[F3].vpc, r_v, r_pc, pkt.base_pc, pkt.valid_mask, pkt.br_mask);
+
+    }
+    if (m_run[F4]) {
+        auto r_v = m_redirect_pc[RES_F4].valid;
+        auto r_pc = m_redirect_pc[RES_F4].pc;
+        auto &pkt = m_f4_pkt.data;
+        LOG_LEVEL1("Fetch4", "vpc:0x%lx, redirect:(%d-%lx), base pc:0x%lx, valid mask:0b%b, br mask:0b%b",
+                    m_state[F4].vpc, r_v, r_pc, pkt.base_pc, pkt.valid_mask, pkt.br_mask);
+    }
+    if (m_run[F5]) {
+        auto &pkt = m_f5_pkt.data;
+        LOG_LEVEL1("Fetch5", "base pc:0x%lx, valid mask:0b%b, br mask:0b%b",
+                    pkt.base_pc, pkt.valid_mask, pkt.br_mask);
     }
     return;
 }

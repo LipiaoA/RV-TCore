@@ -8,8 +8,9 @@
 #include "decode/inst.h"
 
 // 简化寄存器配置：32 逻辑寄存器，64 物理寄存器（含额外的重命名空间）
-constexpr int RV_GPR_SIZE  = 32;
-constexpr int RV_PHY_REG_SIZE = 64;
+constexpr u32 RV_GPR_SIZE  = 32;
+constexpr u32 TCORE_CHECKPOINT_SIZE  = 8;
+constexpr u32 RV_PHY_REG_SIZE = 64;
 
 enum class FuType {
     NONE,
@@ -27,6 +28,7 @@ struct FetchInst {
     u64 fetch_id { 0 };  // 用于 squash 精确识别
     u8  size { 4 };      // 指令字节数（支持 2/4/8 等变长）
 };
+
 
 struct FetchPacket {
     std::vector<FetchInst> insts;
@@ -102,6 +104,37 @@ enum class FlushType {
     FLUSH_TYPE_COUNT
 };
 
+constexpr static const char* FlushTypeStr[] = {
+    "NONE",
+    "MACHINE_CHECK",
+    "BRANCH_MISPRED",
+    "DEBUG",
+    "EXCEPTION",
+    "INTERRUPT",
+    "MEMORY_ORDER",
+    "LOAD_REPLAY",
+    "FENCE",
+};
+
+constexpr static const char* FlushScopeStr[] = {
+    "NONE",
+    "YOUNGER_THAN",
+    "FROM_RID",
+    "ALL",
+};
+
+constexpr static const char* FlushSourceStr[] = {
+    "NONE",
+    "IFETCH",
+    "DECODE",
+    "RENAME",
+    "ISSUE",
+    "EXECUTE",
+    "COMMIT",
+    "LSU",
+    "BRU",
+};
+
 enum class FlushScope {
     NONE,
     // 清除 rid 之后的年轻指令，保留 rid 本身。
@@ -139,7 +172,7 @@ typedef struct {
     bool branch_taken { false };
     pc_t branch_target { 0 };
     bool recover_c_id { false };
-    u32 c_id { 0 };
+    u64 c_id { 0 };
 
     bool has_exception { false };
     u64 exception_cause { 0 };
@@ -207,6 +240,14 @@ typedef struct {
     bool valid { false };
     MInstPtr inst { nullptr };
 } FUStage;
+
+struct RatCheckpoint {
+    bool valid { false };
+    std::array<int, RV_GPR_SIZE> rat { 0 };
+    ROBID  rid { 0, 0 };
+    std::deque<int> free_list;
+    u64 c_id { 0 };
+};
 
 // 各段通信队列的指针集合，由 Top 在 build() 中填充并传入各模块
 constexpr static u32 MAX_REGISTER_REQ_CAPACITY = 16;
@@ -289,6 +330,8 @@ typedef struct {
     ASyncQueue<MInstPtr>*       rename_issue_q { nullptr };
     RegFileUnit*                regfile { nullptr };
     FlushEvent*                 flush_event { nullptr };
+    std::array<int, RV_GPR_SIZE>*   crat { nullptr };
+    std::vector<RatCheckpoint>*     checkpoints { nullptr };
 } RenameDeps;
 
 typedef struct {
@@ -307,6 +350,8 @@ typedef struct {
     FlushEvent*                 flush_event { nullptr };
     ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
     ASyncQueue<RegReq>*         reg_req_q;
+    std::array<int, RV_GPR_SIZE>*   crat { nullptr };
+    std::vector<RatCheckpoint>*     checkpoints { nullptr };
 } CommitDeps;
 
 typedef struct {
@@ -382,6 +427,8 @@ typedef struct {
     CommitUnit*                 commit;
     CycleScheduler*             sched;
     FlushUnit*                  flush;
+    ROB*                        rob;
+    FlushEvent*                 flush_event;
 } CoreDeps;
 
 #endif // RV_TCORE_MODULE_COMM_H

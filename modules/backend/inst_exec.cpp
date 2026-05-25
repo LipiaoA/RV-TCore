@@ -110,6 +110,12 @@ AluExecResult exec_alu(MInstPtr inst) {
     case OP_ADDD: {
         result.value = inst->rs1.val + static_cast<u64>(inst->imm);
     } break;
+    case OP_AUIPC: {
+        result.value = inst->pc + inst->imm;
+    } break;
+    case OP_LUI: {
+        result.value = inst->imm;
+    } break;
     case OP_SUBD:
     case OP_SLLD:
     case OP_SRLD:

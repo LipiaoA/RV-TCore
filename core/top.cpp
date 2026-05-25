@@ -107,6 +107,10 @@ void Top::build() {
     m_sched             =   new CycleScheduler();
     m_mem               =   new Memory();
     m_bpu               =   new BranchPredictor(bp_conf);
+    m_crat              =   new std::array<int, RV_GPR_SIZE>();
+    m_checkpoints       =   new std::vector<RatCheckpoint>();
+    m_checkpoints->resize(TCORE_CHECKPOINT_SIZE);
+
 
     m_l2                =   new DCache(m_sched, l2_conf);
     m_l2->set_name("l2 Cache");
@@ -155,6 +159,8 @@ void Top::build() {
     rename_deps.rename_issue_q = m_comm_queues.rename_to_issue;
     rename_deps.flush_event = m_comm_queues.flush_event;
     rename_deps.regfile = m_regfile;
+    rename_deps.crat = m_crat;
+    rename_deps.checkpoints = m_checkpoints;
     m_rename = new RenameUnit(rename_conf, rename_deps);
 
     CommitDeps commit_deps;
@@ -164,6 +170,8 @@ void Top::build() {
     commit_deps.flush_event = m_comm_queues.flush_event;
     commit_deps.flush_req_q = m_comm_queues.flush_req_q;
     commit_deps.reg_req_q = m_comm_queues.reg_req_q;
+    commit_deps.crat = m_crat;
+    commit_deps.checkpoints = m_checkpoints;
     m_commit = new CommitUnit(commit_conf, commit_deps);
 
 
@@ -232,5 +240,7 @@ CoreDeps Top::get_core_deps() const {
     deps.commit  = m_commit;
     deps.sched   = m_sched;
     deps.flush   = m_flush;
+    deps.rob     = m_rob;
+    deps.flush_event = m_comm_queues.flush_event;
     return deps;
 }

@@ -2,13 +2,15 @@
 #include "rename/prf.h"
 #include "inst_exec.h"
 
+u32 ALU::alu_idx = 0;
+
 ALU::ALU(const ALUConfig& conf, const ALUDeps& deps)
     : DevIntf("alu")
     , m_stages(conf.stages)
+    , m_rob(*deps.rob)
     , m_reg_req_q(*deps.reg_req_q)
     , m_reg_resp_q(*deps.reg_resp_q)
     , m_reg_bypass_q(*deps.reg_bypass_q)
-    , m_rob(*deps.rob)
 {
     assert(m_stages == 3);
     for (i32 i = 0; i < m_stages; i++) {
@@ -19,6 +21,7 @@ ALU::ALU(const ALUConfig& conf, const ALUDeps& deps)
     m_input_latch.inst = nullptr;
     m_commit_latch.valid = false;
     m_commit_latch.inst = nullptr;
+    m_idx = ALU::alu_idx++;
 }
 
 void ALU::tick()
@@ -76,47 +79,33 @@ void ALU::R0()
 
 void ALU::R1()
 {
-    if (!m_pipe[1].valid || !m_pipe[1].inst || m_reg_resp_q.empty())
+    if (!m_pipe[1].valid || !m_pipe[1].inst)
         return;
     MInstPtr inst = m_pipe[1].inst;
-    if (inst->rs1.valid) {
-        bool found = false;
+    auto read_reg = [&](RegType &src) -> bool {
         for (auto& resp : m_reg_bypass_q) {
-            if (resp.valid && resp.ptag == inst->rs1.ptag) {
-                inst->rs1.val = resp.val;
-                found = true;
-                break;
+            if (resp.valid && resp.ptag == src.ptag) {
+                src.val = resp.val;
+                return true;
             }
         }
-        if (!found) {
-            for (auto& resp : m_reg_resp_q) {
-                if (resp.valid && resp.ptag == inst->rs1.ptag) {
-                    inst->rs1.val = resp.val;
-                    break;
-                }
+        for (auto& resp : m_reg_resp_q) {
+            if (resp.valid && resp.ptag == src.ptag) {
+                src.val = resp.val;
+                return true;
             }
         }
+        return false;
+    };
+    if (inst->rs1.valid && !read_reg(inst->rs1)) {
+        return;
     }
-
-    if (inst->rs2.valid) {
-        bool found = false;
-        for (auto& resp : m_reg_bypass_q) {
-            if (resp.valid && resp.ptag == inst->rs2.ptag) {
-                inst->rs2.val = resp.val;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            for (auto& resp : m_reg_resp_q) {
-                if (resp.valid && resp.ptag == inst->rs2.ptag) {
-                    inst->rs2.val = resp.val;
-                    break;
-                }
-            }
-        }
+    if (inst->rs2.valid && !read_reg(inst->rs2)) {
+        return;
     }
-    wakeup(inst);
+    if (inst->rd.valid) {
+        wakeup(inst);
+    }
 }
 
 void ALU::E0()
@@ -124,7 +113,6 @@ void ALU::E0()
     if (!m_pipe[2].valid || !m_pipe[2].inst || m_commit_latch.valid) {
         return;
     }
-        return;
     MInstPtr inst = m_pipe[2].inst;
     InstExec::AluExecResult ret = InstExec::exec_alu(inst);
     (void)ret;
@@ -136,7 +124,6 @@ void ALU::E0()
     m_pipe[2].inst = nullptr;
     m_commit_latch.inst = inst;
     m_commit_latch.valid = true;
-    return;
 }
 
 void ALU::shift()
@@ -200,21 +187,24 @@ void ALU::commit_ack()
 
 void ALU::dump_states() const
 {
+    std::string log_prefix = "EXECUTE ALU" + std::to_string(m_idx) + " ";
+    auto print_inst = [](std::string log_prefix, const MInstPtr inst) {
+        auto &rs1 = inst->rs1;
+        auto &rs2 = inst->rs2;
+        auto &rd = inst->rd;
+        LOG_LEVEL1(log_prefix, "pc:0x%lx, inst: %s,rs1:v%d-x%d-p%d-0x%lx,rs2:v%d-x%d-p%d-0x%lx,"
+            "rd:v%d-x%d-p%d-0x%016lx,imm:0x%08lx",
+            inst->pc, inst->inst_name.c_str(), rs1.valid, rs1.atag, rs1.ptag, rs1.val,
+            rs2.valid, rs2.atag, rs2.ptag, rs2.val, rd.valid, rd.atag, rd.ptag, rd.val,
+            inst->imm);
+    };
     if (m_pipe[0].valid) {
-        auto inst = m_pipe[0].inst;
-        LOG_LEVEL1("ALU R0", "rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
-            inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
-            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
+        print_inst(log_prefix + "R0 ", m_pipe[0].inst);
     }
     if (m_pipe[1].valid) {
-        auto inst = m_pipe[1].inst;
-        LOG_LEVEL1("ALU R1", "rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
-            inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
-            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
+        print_inst(log_prefix + "R1 ", m_pipe[1].inst);
     }
     if (m_commit_latch.valid) {
-        auto inst = m_commit_latch.inst;
-        LOG_LEVEL1("ALU E0", "rd: v%d-a%d-p%d-0x%lx",
-            inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
+        print_inst(log_prefix + "E0 ", m_commit_latch.inst);
     }
 }

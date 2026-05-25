@@ -15,7 +15,7 @@ void DecodeUnit::predecode(insn_t raw, PredecodeInfo* out)
             continue;
         InstOp op = rv64i_table[i].opcode;
         out->valid = true;
-        if (op >= OP_BEQ && op <= OP_BGEU)
+        if (is_branch(op))
             out->is_branch = true;
         else if (op >= OP_LB && op <= OP_LWU)
             out->is_load = true;
@@ -62,7 +62,7 @@ i64 DecodeUnit::extract_imm(u64 raw, InstFmt fmt, InstOp op)
     }
 
     case RV_FMT_U:
-        return (i64)(raw & 0xfffff000);
+        return (i64)(sign_extend(raw & 0xfffff000, 32));
 
     case RV_FMT_J: {
         u64 imm =
@@ -169,7 +169,6 @@ void DecodeUnit::d0() {
     FetchPacket pkt;
     if (!m_fetch_decode_q.read(pkt))
         return;
-    std::cout << "d0 pkt ======================== start ======================== " << std::endl;
     size_t inst_count = 0;
     for (size_t i = 0; i < pkt.insts.size() && inst_count < m_decode_width; ++i) {
         const auto& finst = pkt.insts[i];
@@ -180,7 +179,7 @@ void DecodeUnit::d0() {
         dinst->pc = finst.pc;
         if (!decode(finst.insn, dinst) || dinst->opcode == OP_INVALID)
             continue;
-        LOG_LEVEL1("DecodeUnit", "d0 decode pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
+        LOG_LEVEL1("DecodeUnit d0", "decode pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
         dinst->valid = true;
         dinst->fetch_id = finst.fetch_id;
         m_d0_pkt.emplace_back(dinst);
@@ -201,7 +200,7 @@ void DecodeUnit::d1() {
             dinst->imm = extract_imm(dinst->raw_inst, dinst->format, dinst->opcode);
         else
             dinst->imm = 0;
-        LOG_LEVEL1("DecodeUnit", "d1 pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
+        LOG_LEVEL1("DecodeUnit d1", "pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
         m_decode_rename_q.write(dinst);
     }
     m_d0_pkt.clear();

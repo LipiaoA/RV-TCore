@@ -28,6 +28,8 @@ public:
     void                                    tick() override;
     void                                    commit() override;
 
+    void                                    dump_states() const;
+
 private:
     virtual void                            R0();
     virtual void                            R1();
@@ -52,6 +54,8 @@ private:
 
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_resp_q;
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_bypass_q;
+    u32                                     m_idx { 0 };
+    static u32                              agu_idx;
 };
 
 #endif

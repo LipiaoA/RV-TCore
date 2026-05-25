@@ -105,7 +105,7 @@ typedef struct MicroOp {
     bool replay = false;
     u64 ssid { 0 };
     // checkpoint id
-    u32 c_id { 0 };
+    u64 c_id { 0 };
     u64 epoch { 0 };
 
     bool rs1_ready = false;

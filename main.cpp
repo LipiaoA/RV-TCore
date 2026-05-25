@@ -1,4 +1,7 @@
 #include <iostream>
+#include <signal.h>
+#include <execinfo.h>
+#include <unistd.h>
 
 #include "model.h"
 #include "arg_parser.h"
@@ -10,10 +13,12 @@ u64 g_max_cycles = 1000;
 static Model *model;
 static std::string elf_path = "";
 
+static void signal_handler(int sig);
 static bool args_init(int argc, char *argv[]);
 
-int main(int argc, char *argv[]) {
-
+int main(int argc, char *argv[])
+{
+    // signal(SIGSEGV, signal_handler);
     if (argc < 2) {
         std::cout << "argument is missing ..." << std::endl;
         return 0;
@@ -74,3 +79,12 @@ bool args_init(int argc, char *argv[])
     return true;
 }
 
+
+static void signal_handler(int sig) {
+    void *array[50];
+    int size = backtrace(array, 50);
+
+    fprintf(stderr, "segmentation fault: %d\n", sig);
+    backtrace_symbols_fd(array, size, STDERR_FILENO);
+    exit(1);
+}

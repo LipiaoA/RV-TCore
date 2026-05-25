@@ -20,9 +20,15 @@ TCoreConfig& TCoreConfig::get_instance() {
 void TCoreConfig::init_config() {
     // pipeline
     m_core_config.fetch_width  = 4;
+    m_core_config.fetch_group_size = 32;
+    m_core_config.fetch_bank_size = 16;
     m_core_config.decode_width = 4;
     m_core_config.rename_width = 4;
     m_core_config.commit_width = 4;
+    m_core_config.exec_commit_width = 4;
+
+    m_core_config.prf_width = 4;
+    m_core_config.prf_capacity = 192;
 
     // queues / structures
     m_core_config.rob_entries = 128;
@@ -37,6 +43,10 @@ void TCoreConfig::init_config() {
     m_core_config.mshr_buffer_size  = 128;
     m_core_config.lsu_issue_width   = 2;
 
+    m_core_config.alu_stages        = 3;
+    m_core_config.fpu_stages        = 4;
+    m_core_config.bru_stages        = 3;
+
     // issue / executetop
     m_core_config.int_issue_width = 4;
     m_core_config.ls_issue_width  = 2;
@@ -45,15 +55,15 @@ void TCoreConfig::init_config() {
     m_core_config.fpu_num         = 2;
     m_core_config.bru_num         = 1;
 
-    // i-cache configuration
-    m_core_config.icache_size             = 32 * 1024;
-    m_core_config.icache_line_size        = 64;
-    m_core_config.icache_ways             = 4;
-    m_core_config.icache_fetch_width      = 4;
-    m_core_config.icache_hit_latency      = 1;
-    m_core_config.icache_miss_penalty     = 3;
-    m_core_config.icache_install_latency  = 1;
-    m_core_config.icache_writeback_latency = 8;
+    // i-TLB configuration
+    m_core_config.itlb_hit_latency        = 12;
+    m_core_config.itlb_miss_penalty       = 3;
+    m_core_config.itlb_install_latency    = 1;
+
+    // d-TLB configuration
+    m_core_config.dtlb_hit_latency        = 12;
+    m_core_config.dtlb_miss_penalty       = 3;
+    m_core_config.dtlb_install_latency    = 1;
 
     // d-cache configuration
     m_core_config.dcache_size            = 64 * 1024;
@@ -64,22 +74,47 @@ void TCoreConfig::init_config() {
     m_core_config.dcache_miss_penalty    = 8;
     m_core_config.dcache_install_latency = 2;
     m_core_config.dcache_wb_latency      = 5;
-    m_core_config.dcache_inclusive       = false;
+    m_core_config.dcache_inclusive       = 1;
+
+    // i-cache configuration
+    m_core_config.icache_size             = 32 * 1024;
+    m_core_config.icache_line_size        = 64;
+    m_core_config.icache_ways             = 4;
+    m_core_config.icache_fetch_width      = 4;
+    m_core_config.icache_hit_latency      = 1;
+    m_core_config.icache_miss_penalty     = 3;
+    m_core_config.icache_install_latency  = 1;
+    m_core_config.icache_writeback_latency = 8;
+    m_core_config.icache_inclusive        = 1;
 
     // L2 cache configuration
     m_core_config.l2_size             = 512 * 1024;
     m_core_config.l2_ways             = 8;
     m_core_config.l2_line_size        = 64;
     m_core_config.l2_fetch_width      = 4;
-    m_core_config.l2_hit_latency      = 10;
-    m_core_config.l2_miss_penalty     = 30;
+    m_core_config.l2_hit_latency      = 5;
+    m_core_config.l2_miss_penalty     = 8;
     m_core_config.l2_install_latency  = 5;
-    m_core_config.l2_writeback_latency = 12;
-    m_core_config.l2_inclusive        = true;
+    m_core_config.l2_writeback_latency = 8;
+    m_core_config.l2_inclusive        = 1;
 
     // legacy L1 size fields track I$/D$ capacity
     m_core_config.l1iSize = static_cast<int>(m_core_config.icache_size);
     m_core_config.l1dSize = static_cast<int>(m_core_config.dcache_size);
+
+    m_core_config.bim_entries = 0x4000;
+    m_core_config.bim_hist_len = 16;
+    m_core_config.bim_fetch_width = 4;
+    m_core_config.btb_nsets = 256;
+    m_core_config.btb_ways = 4;
+    m_core_config.btb_tag_bits = 16;
+    m_core_config.btb_pc_lowdrop = 2;
+
+    m_core_config.ras_capacity = 64;
+    m_core_config.ras_tag_bits = 10;
+
+    m_core_config.flush_width = 4;
+    return;
 }
 
 void TCoreConfig::print_config() const {

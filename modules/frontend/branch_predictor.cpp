@@ -2,13 +2,13 @@
 #include "branch_predictor.h"
 
 BranchPredictor::BranchPredictor(const BPConfig& config)
-    : m_bim(config.bim_config),
+    : m_time(0),
+      m_ras(config.ras_capacity),
       m_ibtb(config.btb_config),
       m_tage(config.tage_config),
-      m_ras(config.ras_capacity),
+      m_bim(config.bim_config),
       m_fetch_width(config.bim_config.fetch_width)
 {
-    m_time = 0;
 }
 
 void BranchPredictor::update() {
@@ -21,6 +21,8 @@ BranchPredictor::~BranchPredictor() {
 void BranchPredictor::reset() {
     m_ibtb.invalidate_all();
     m_ras.reset();
+    m_time = 0;
+    return;
 }
 
 branch_pred BranchPredictor::f1_pred(pc_t pc) {

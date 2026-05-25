@@ -11,11 +11,12 @@
 
 struct RobEntry {
     bool          valid     { false };
-    MInstPtr      inst;
+    MInstPtr      inst      { nullptr };
     bool          mispred   { false };
     bool          ready     { false };
-    u64           result    { 0 };
+    u64           result    { 0ull };
     int           old_phys_rd { -1 };
+    RobEntry() : valid(false), inst(nullptr), mispred(false), ready(false), result(0ull), old_phys_rd(-1) {}
 };
 
 class ROB {
@@ -25,8 +26,8 @@ public:
     ~ROB() = default;
 public:
     void                                build();
-
-    ROBID                               alloc(const MInstPtr inst);
+    void                                flush(const FlushEvent& event);
+    std::optional<ROBID>                alloc(const MInstPtr inst);
     RobEntry*                           get(ROBID id);
     void                                mark_ready(ROBID id, u64 result_val);
     std::optional<RobEntry>             commit_head();
@@ -34,10 +35,12 @@ public:
     bool                                empty() const;
     std::optional<RobEntry>             head();
     size_t                              size() const { return m_size; }
+    void                                reset();
 
-    /// 按程序序比较 ROBID：a 早于 b 返回负数，相等返回 0，a 晚于 b 返回正数。
-    /// 若某一 id 当前不在有效占用窗口内，则退化为按 (direct, id) 字典序，保证全序稳定。
+    // 若某一 id 当前不在有效占用窗口内，则退化为按 (direct, id) 字典序，保证全序稳定。
     bool                                 is_older_than(const ROBID& a, const ROBID& b) const;
+private:
+    ROBID                               next_id(ROBID id) const;
 
 private:
     RobEntry                            m_entries[MAX_ROB_ENTRIES];

@@ -3,6 +3,8 @@
 #include "inst_exec.h"
 #include "rob/rob.h"
 
+u32 BRU::bru_idx = 0;
+
 BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
     : DevIntf("bru"),
       m_stages(conf.stages),
@@ -21,6 +23,7 @@ BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
     m_input_latch.inst = nullptr;
     m_commit_latch.valid = false;
     m_commit_latch.inst = nullptr;
+    m_idx = BRU::bru_idx++;
 }
 
 bool branch_taken(InstOp op, u64 v1, u64 v2)
@@ -237,15 +240,16 @@ void BRU::shift()
 
 void BRU::dump_states() const
 {
+    std::string log_prefix = "BRU" + std::to_string(m_idx) + " ";
     if (m_pipe[0].valid) {
         auto inst = m_pipe[0].inst;
-        LOG_LEVEL1("BRU R0", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
+        LOG_LEVEL1(log_prefix + "R0", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
             inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
     }
     if (m_pipe[1].valid) {
         auto inst = m_pipe[1].inst;
-        LOG_LEVEL1("BRU R1", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx, pred_taken: %d, real_taken: %d",
+        LOG_LEVEL1(log_prefix + "R1", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx, pred_taken: %d, real_taken: %d",
             inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
@@ -253,7 +257,7 @@ void BRU::dump_states() const
     }
     if (m_commit_latch.valid) {
         auto inst = m_commit_latch.inst;
-        LOG_LEVEL1("BRU E0", "pc: 0x%lx, inst: %s, rd: v%d-a%d-p%d-0x%lx",
+        LOG_LEVEL1(log_prefix + "E0", "pc: 0x%lx, inst: %s, rd: v%d-a%d-p%d-0x%lx",
             inst->pc, inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
     }
 }

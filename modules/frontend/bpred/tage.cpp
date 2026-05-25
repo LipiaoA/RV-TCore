@@ -22,7 +22,7 @@ TAGE::TAGE(const TageConfig &cfg)
 TagePred TAGE::predict(u64 pc)
 {
     TagePred pred;
-    for (u32 t = m_ntables - 1; t >= 0; t--) {
+    for (i32 t = m_ntables - 1; t >= 0; t--) {
         u32 idx = index(t, pc);
         u16 tag  = ctag(t, pc);
 

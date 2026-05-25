@@ -48,7 +48,7 @@ typedef struct {
 } FetchState;
 
 class FetchUnit : public IFetch {
-    constexpr static u32 MAX_STATES = 5;
+    constexpr static u32 MAX_STATES = 8;
     constexpr static u32 MAX_FETCH_WIDTH = 4;
     constexpr static u32 MAX_INST_COUNT = 32;
     enum {
@@ -57,6 +57,7 @@ class FetchUnit : public IFetch {
         F2 = 2,
         F3 = 3,
         F4 = 4,
+        F5 = 5,
     };
     enum {RES_F1 = 0, RES_F2 = 1, RES_F3 = 2, RES_F4 = 3, RES_F5 = 4, RES_F6 = 5, RES_F7 = 6, RESET_PC = 7};
     typedef struct {
@@ -95,6 +96,7 @@ public:
 
 private:
     void                                flush();
+    void                                preprocess();
     void                                fetch0();
     void                                fetch1();
     void                                fetch2();
@@ -135,6 +137,7 @@ private:
 
 
     FetchState                          m_state[MAX_STATES];
+    bool                                m_run[MAX_STATES];
     size_t                              m_fetch_decode_cap {8};
 
     bool                                m_icache_req_pending { false };

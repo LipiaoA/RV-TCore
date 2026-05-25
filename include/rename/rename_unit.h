@@ -15,6 +15,7 @@
 class ROB;
 
 class RenameUnit : public IRename {
+    constexpr static u32 MAX_CHECKPOINT_DEPTH = 6;
 public:
     RenameUnit(const RenameConfig& conf, const RenameDeps& deps);
     ~RenameUnit() override = default;
@@ -26,6 +27,7 @@ public:
     void                                recycle_phys(int phys);
 
 private:
+    void                                flush();
     void                                r0();
     void                                r1();
     void                                r2();
@@ -34,19 +36,22 @@ private:
     OUTPUT ASyncQueue<MInstPtr>&        m_rename_issue_q;
     ROB&                                m_rob;
     RegFileUnit&                        m_regfile;
+    std::array<i32, RV_GPR_SIZE>&       m_crat;
+    std::vector<RatCheckpoint>&         m_checkpoints;
 
+    FlushEvent&                         m_flush_event;
 
-    FixedArray<int, RV_GPR_SIZE>        m_rat {};
-    FixedArray<int, RV_GPR_SIZE>        m_crat {};
-    std::deque<int>                     m_free_list;
-    std::vector<RatCheckpoint>          m_checkpoints;
+    std::array<i32, RV_GPR_SIZE>        m_rat;
+    std::deque<i32>                     m_free_list;
 
     std::deque<MInstPtr>                m_r1_buf;
     std::deque<MInstPtr>                m_r2_buf;
 
     size_t                              m_rename_width { 4 };
 
-    FlushEvent&                         m_flush_event;
+
+    u64                                 m_checkpoint_id { 0 };
+    u32                                 m_prf_capacity { 0 };
 };
 
 #endif

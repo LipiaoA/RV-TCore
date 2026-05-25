@@ -78,7 +78,7 @@ SimpleFuture<MemResp> GCache::fetch_line_async(MemReq req)
                 return fut;
             }
         }
-        LOG_LEVEL1(m_name, " Miss addr:0x%x, set_idx:%d, tag:0x%x, epoch:%d\n", req.line_addr, set_idx, tag, req.epoch);
+        LOG_LEVEL1(m_name, "Miss addr:0x%lx, set_idx:%d, tag:0x%x, epoch:%d", req.line_addr, set_idx, tag, req.epoch);
 
         // miss
         m_stats.misses++;
@@ -97,7 +97,7 @@ SimpleFuture<MemResp> GCache::fetch_line_async(MemReq req)
         if (m_lower) {
             auto lf = m_lower->fetch_line_async(req);
 
-            LOG_LEVEL1(m_name, "send req addr:%x\n", req.line_addr);
+            LOG_LEVEL1(m_name, "send req addr:0x%lx", req.line_addr);
 
             lf.then([this, req, start_cycle](const MemResp& resp) {
                 // install after install_latency
@@ -109,7 +109,7 @@ SimpleFuture<MemResp> GCache::fetch_line_async(MemReq req)
             });
         } else {
             // main memory
-            LOG_LEVEL1(m_name, "send req addr:%x to main memory, epoch:%d", req.line_addr, req.epoch);
+            LOG_LEVEL1(m_name, "send req addr:0x%lx to main memory, epoch:%d", req.line_addr, req.epoch);
             auto data = this->on_lower_fetch(req.line_addr);
             MemResp resp;
             resp.valid = true;

@@ -11,7 +11,7 @@ add_compile_options(-Wall -O0)
 set(CMAKE_BUILD_TYPE Debug)
 
 # 关闭所有警告
-add_definitions(-w)
+# add_definitions(-w)
 
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/bin)
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_SOURCE_DIR}/lib)

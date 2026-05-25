@@ -5,7 +5,7 @@ BIM::BIM(u32 entries, u32 histLen, u32 fetchWidth)
       m_histLen(histLen),
       m_fetch_width(fetchWidth)
 {
-    memset(m_table, 0, sizeof(m_table));
+    std::fill(m_table, m_table + MAX_ENTRIES, SatCounter());
 }
 
 BIM::BIM(const BIMConfig& config)
@@ -13,7 +13,7 @@ BIM::BIM(const BIMConfig& config)
       m_histLen(config.hist_len),
       m_fetch_width(config.fetch_width)
 {
-    memset(m_table, 0, sizeof(m_table));
+    std::fill(m_table, m_table + MAX_ENTRIES, SatCounter());
 }
 
 branch_pred BIM::predict(pc_t pc)

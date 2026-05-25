@@ -106,6 +106,8 @@ private:
     u32                                 m_store_q_size;
     u32                                 m_agus_num;
     u32                                 m_mshr_buffer_size;
+    u32                                 m_idx { 0 };
+    static u32                          lsu_idx;
 };
 
 #endif

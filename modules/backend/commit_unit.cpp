@@ -4,19 +4,22 @@
 
 CommitUnit::CommitUnit(const CommitConfig& conf, const CommitDeps& deps)
     : ICommit()
-    , m_inst_commit_q(*deps.inst_commit_q)
-    , m_rob(*deps.rob)
-    , m_reg_req_q(*deps.reg_req_q)
-    , m_rename(*deps.rename)
-    , m_flush_req_q(*deps.flush_req_q)
-    , m_flush_event(*deps.flush_event)
     , m_commit_width(conf.commit_width)
     , m_resolve_width(conf.resolve_width)
+    , m_rob(*deps.rob)
+    , m_rename(*deps.rename)
+    , m_reg_req_q(*deps.reg_req_q)
+    , m_flush_req_q(*deps.flush_req_q)
+    , m_flush_event(*deps.flush_event)
+    , m_inst_commit_q(*deps.inst_commit_q)
+    , m_crat(*deps.crat)
+    , m_checkpoints(*deps.checkpoints)
 {}
 
 void CommitUnit::build() {}
 
 void CommitUnit::tick() {
+    flush();
     inst_commit();
     inst_reslove();
 }
@@ -75,4 +78,10 @@ void CommitUnit::write_back(const MInstPtr inst)
 void CommitUnit::commit()
 {
 
+}
+
+void CommitUnit::flush() {
+    if (!m_flush_event.valid) {
+        return;
+    }
 }

@@ -1,6 +1,8 @@
 #include "agu.h"
 #include "inst_exec.h"
 
+u32 AGU::agu_idx = 0;
+
 AGU::AGU(const AGUConfig& conf, const AGUDeps& deps)
     : DevIntf("agu")
     , m_stages(conf.stages)
@@ -12,6 +14,7 @@ AGU::AGU(const AGUConfig& conf, const AGUDeps& deps)
         m_pipe[i].valid = false;
         m_pipe[i].inst = nullptr;
     }
+    m_idx = AGU::agu_idx++;
 }
 
 void AGU::tick()
@@ -19,6 +22,7 @@ void AGU::tick()
     E0();
     R1();
     R0();
+    dump_states();
     shift();
 }
 
@@ -125,11 +129,15 @@ void AGU::broadcast(MInstPtr inst)
 
 
 StoreReq AGU::genStoreReq(MInstPtr inst) {
-
+    StoreReq req;
+    req.valid = false;
+    return req;
 }
 
 LoadReq AGU::genLoadReq(MInstPtr inst) {
     LoadReq req;
+    req.valid = false;
+    return req;
 }
 
 void AGU::commit()
@@ -139,5 +147,27 @@ void AGU::commit()
         m_pipe[0].valid = true;
         m_input_latch.valid = false;
         m_input_latch.inst = nullptr;
+    }
+}
+
+void AGU::dump_states() const
+{
+    std::string log_prefix = "AGU" + std::to_string(m_idx) + " ";
+    if (m_pipe[0].valid) {
+        auto inst = m_pipe[0].inst;
+        LOG_LEVEL1(log_prefix + "R0", "rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
+            inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
+            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
+    }
+    if (m_pipe[1].valid) {
+        auto inst = m_pipe[1].inst;
+        LOG_LEVEL1(log_prefix + "R1", "rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
+            inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
+            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
+    }
+    if (m_pipe[3].valid) {
+        auto inst = m_pipe[3].inst;
+        LOG_LEVEL1(log_prefix + "E0", "rd: v%d-a%d-p%d-0x%lx",
+            inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
     }
 }
