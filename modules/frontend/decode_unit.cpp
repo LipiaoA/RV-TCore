@@ -123,6 +123,23 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
                 out->rs1.valid = false;
                 out->rs2.valid = false;
                 break;
+            case RV_FMT_A:
+                out->rd.valid = true;
+                out->rs1.valid = true;
+                out->rs2.valid = true;
+                break;
+            case RV_FMT_C:
+                out->rd.valid = true;
+                out->rs1.valid = true;
+                out->rs2.valid = false;
+                break;
+            case RV_FMT_K:
+            case RV_FMT_H:
+            case RV_FMT_NONE:
+                out->rd.valid = false;
+                out->rs1.valid = false;
+                out->rs2.valid = false;
+                break;
             }
             return true;
         }
@@ -133,9 +150,9 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
 }
 
 DecodeUnit::DecodeUnit(const DecodeConfig& conf, const DecodeDeps& deps)
-    : m_fetch_decode_q(*deps.fetch_decode_q)
+    : m_decode_width(conf.width)
+    , m_fetch_decode_q(*deps.fetch_decode_q)
     , m_decode_rename_q(*deps.decode_rename_q)
-    , m_decode_width(conf.width)
     , m_flush_event(*deps.flush_event)
 {
     m_decoded_q.clear();

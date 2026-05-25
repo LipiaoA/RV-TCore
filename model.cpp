@@ -27,9 +27,6 @@ void  Model::reset() {
 }
 
 void Model::run() {
-    u16 op = 0;
-    u64 addr = m_entry;
-
     while(g_cycles < g_max_cycles) {
         g_cycles++;
         m_log->write("\nCycle:%d \n-------------------------", g_cycles);

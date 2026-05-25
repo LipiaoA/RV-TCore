@@ -13,7 +13,7 @@ u64 g_max_cycles = 1000;
 static Model *model;
 static std::string elf_path = "";
 
-static void signal_handler(int sig);
+[[maybe_unused]] static void signal_handler(int sig);
 static bool args_init(int argc, char *argv[]);
 
 int main(int argc, char *argv[])
@@ -80,7 +80,7 @@ bool args_init(int argc, char *argv[])
 }
 
 
-static void signal_handler(int sig) {
+[[maybe_unused]] static void signal_handler(int sig) {
     void *array[50];
     int size = backtrace(array, 50);
 

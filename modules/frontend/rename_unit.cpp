@@ -16,8 +16,8 @@ RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
     , m_rename_width(conf.width)
     , m_prf_capacity(conf.prf_capacity)
 {
-    for (int p = 1; p < m_prf_capacity; ++p) {
-        m_free_list.push_back(p);
+    for (u32 p = 1; p < m_prf_capacity; ++p) {
+        m_free_list.push_back(static_cast<i32>(p));
     }
     // 0 is x0, is zero register
     m_rat[0] = 0;

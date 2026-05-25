@@ -5,14 +5,14 @@
 
 IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
     : IIssue("issue_unit"),
-      m_rename_issue_q(*deps.rename_issue_q),
       m_rob(*deps.rob),
       m_exec(*deps.exec),
+      m_rename_issue_q(*deps.rename_issue_q),
+      m_flush_event(*deps.flush_event),
       m_int_issue_width(conf.int_issue_width),
       m_ls_issue_width(conf.ls_issue_width),
       m_fp_issue_width(conf.fp_issue_width),
-      m_wakeup_bus(*deps.wakeup_bus),
-      m_flush_event(*deps.flush_event)
+      m_wakeup_bus(*deps.wakeup_bus)
 {}
 
 void IssueUnit::build() {

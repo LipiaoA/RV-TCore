@@ -74,8 +74,6 @@ void FetchUnit::fetch0()
         return;
     }
     m_state[F0].vpc = next_pc();
-    i32 start_idx = m_state[F0].vpc / 4 % m_bank_size;
-    pc_t t_pc = align_bank(m_state[F0].vpc);
     pc_t line_addr = m_icache.align_line(m_state[F0].vpc);
 
     if ((m_line_buffer.valid && m_line_buffer.line_addr == line_addr) ||
@@ -110,7 +108,7 @@ void FetchUnit::fetch1()
     m_f1_pred = m_bpu.f1_pred(m_state[F1].vpc);
     pc_t fall_addr = (m_state[F1].vpc / m_bank_size) * m_bank_size + m_bank_size;
     bool pred_taken = false;
-    for (int i = 0; i < m_fetch_width; ++i) {
+    for (u32 i = 0; i < m_fetch_width; ++i) {
         if (m_f1_pred.pred[i].valid) {
             pred_taken = true;
             m_redirect_pc[RES_F1].valid = true;
@@ -139,12 +137,12 @@ void FetchUnit::fetch2()
         memcpy(m_line_buffer.data, resp.data, sizeof(m_line_buffer.data));
         auto &line = m_line_buffer.data;
         pc_t cur_pc = m_state[F2].vpc;
-        int idx = bank_idx(cur_pc);
+        u32 idx = bank_idx(cur_pc);
         u32 oft = cur_pc - align_bank(cur_pc) + idx * m_bank_size;
 
-        for (int c = 0; c < m_bank_count / m_group_count; ++c) {
+        for (u32 c = 0; c < m_bank_count / m_group_count; ++c) {
             m_line_buffer.bmask |= (1u << idx);
-            for (int i = oft % m_bank_size; i < m_bank_size; i += 4, oft += 4, cur_pc += 4) {
+            for (u32 i = oft % m_bank_size; i < m_bank_size; i += 4, oft += 4, cur_pc += 4) {
                 F2Inst inst;
                 for (int j = 0; j < 4; ++j) {
                     inst.insn |= line[oft + j] << (8 * j);
@@ -160,7 +158,7 @@ void FetchUnit::fetch2()
         m_redirect_pc[RES_F2].pc = m_state[F2].vpc;
         m_state[F1].valid = false;
     }
-    for (int i = 0; i < m_fetch_width; ++i) {
+    for (u32 i = 0; i < m_fetch_width; ++i) {
         m_f2_pred.pred[i].target = m_f1_pred.pred[i].target;
         if (m_f2_pred.pred[i].valid) {
             if (m_f2_pred.pred[i].taken) {
@@ -186,10 +184,6 @@ void FetchUnit::fetch3()
     // - 每条指令固定 4 字节，不支持 2 字节压缩指令。
     // - 若当前剩余字节不足以组成一条完整指令，则停在这里，等待下一条 cache line 合并后再解析。
 
-    static bytes_t s_f3_buffer;      // 累积尚未完全解析的字节
-    static pc_t    s_f3_base_pc = 0; // 对应 s_f3_buffer[0] 的 PC
-    static bool    s_f3_buf_valid = false;
-
     // 如果本周期有新的 I$ 行返回，则把它 append 到缓冲中
     if (m_inst_buffer.empty()) {
         return;
@@ -203,8 +197,6 @@ void FetchUnit::fetch3()
 
     // 从缓冲头部开始，逐条解析 4 字节定长指令（不支持 2 字节压缩指令）
     constexpr u8 k_inst_bytes = 4;
-    size_t buf_idx = 0;
-    pc_t cur_pc  = m_state[F3].vpc;
 
     for (u8 i = 0; i < m_fetch_width && !m_inst_buffer.empty(); ++i) {
         auto& inst = m_inst_buffer.front();
@@ -241,7 +233,6 @@ void FetchUnit::fetch3()
             break;
             LOG_LEVEL1("F3 Predict", "branch mask:0b%b", pkt.br_mask);
         }
-        cur_pc  += finst.size;
     }
 
     // 若本轮一个指令都没解析出来，则无法前进，等待更多字节
@@ -269,7 +260,7 @@ void FetchUnit::fetch4()
     m_state[F4].vpc = m_state[F3].vpc;
 
     bool pred_taken = false;
-    for (int i = 0; i < m_fetch_width; ++i) {
+    for (u32 i = 0; i < m_fetch_width; ++i) {
         if (m_f3_pkt.data.br_mask & (1u << i) && m_f3_pred[i].valid) {
             auto &pred = m_f3_pred[i];
             if (pred.valid) {
@@ -355,7 +346,7 @@ void FetchUnit::flush()
         m_redirect_pc[RESET_PC].valid = true;
         m_redirect_pc[RESET_PC].pc = m_flush_event.redirect_pc;
         m_epoch++;
-        for (int i = 0; i < MAX_STATES; ++i) {
+        for (u32 i = 0; i < MAX_STATES; ++i) {
             m_state[i].clear();
         }
         m_state[F0].valid = true;
@@ -427,7 +418,6 @@ void FetchUnit::dump_state() const
                     pred[2].valid, pred[2].taken, pred[2].target, pred[3].valid, pred[3].taken, pred[3].target);
     }
     if (m_run[F3]) {
-        auto &pred = m_f3_bpred.pred;
         auto &pkt = m_f3_pkt.data;
         auto r_v = m_redirect_pc[RES_F3].valid;
         auto r_pc = m_redirect_pc[RES_F3].pc;

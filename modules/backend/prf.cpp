@@ -20,13 +20,13 @@ void PRF::reset()
 
 u64 PRF::read(i32 pidx) const
 {
-    assert(pidx >= 0 && pidx < m_phys_n);
+    assert(pidx >= 0 && static_cast<u32>(pidx) < m_phys_n);
     return m_regs[pidx];
 }
 
 bool PRF::write(i32 pidx, u64 val)
 {
-    assert(pidx >= 0 && pidx < m_phys_n);
+    assert(pidx >= 0 && static_cast<u32>(pidx) < m_phys_n);
     if (pidx == 0) {
         val = 0;
     }
@@ -38,23 +38,23 @@ bool PRF::write(i32 pidx, u64 val)
 
 void PRF::mark_valid(i32 pidx)
 {
-    assert(pidx >= 0 && pidx < m_phys_n);
+    assert(pidx >= 0 && static_cast<u32>(pidx) < m_phys_n);
     m_valid[pidx] = true;
 }
 
 bool PRF::is_valid(i32 pidx) const
 {
-    return pidx >= 0 && pidx < m_phys_n && m_valid[pidx];
+    return pidx >= 0 && static_cast<u32>(pidx) < m_phys_n && m_valid[pidx];
 }
 
 bool PRF::is_ready(i32 pidx) const
 {
-    assert(pidx >= 0 && pidx < MAX_PHY_REG_SIZE);
+    assert(pidx >= 0 && static_cast<u32>(pidx) < MAX_PHY_REG_SIZE);
     return m_busy[pidx] == false;
 }
 
 void PRF::set_busy(i32 pidx)
 {
-    assert(pidx >= 0 && pidx < m_phys_n);
+    assert(pidx >= 0 && static_cast<u32>(pidx) < m_phys_n);
     m_busy[pidx] = true;
 }

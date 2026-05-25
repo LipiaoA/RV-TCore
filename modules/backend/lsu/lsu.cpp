@@ -5,15 +5,15 @@
 u32 LSU::lsu_idx = 0;
 
 LSU::LSU(const LSUConfig& conf, const LSUDeps& deps)
-    : m_conf(conf),
+    : m_rob(*deps.rob),
       m_dcache(*deps.dcache),
       m_dtlb(*deps.dtlb),
-      m_rob(*deps.rob),
-      m_agus_num(conf.agu_num),
-      m_mshr_buffer_size(conf.mshr_buffer_size),
+      m_conf(conf),
+      m_issue_width(conf.issue_width),
       m_load_q_size(conf.load_q_size),
       m_store_q_size(conf.store_q_size),
-      m_issue_width(conf.issue_width)
+      m_agus_num(conf.agu_num),
+      m_mshr_buffer_size(conf.mshr_buffer_size)
 {
     AGUDeps agu_deps;
     agu_deps.reg_req_q = deps.reg_req_q;
@@ -45,7 +45,7 @@ void LSU::tick()
 
 bool LSU::dispatch(MInstPtr inst)
 {
-    for (int i = 0; i < m_agus_num; i++) {
+    for (u32 i = 0; i < m_agus_num; i++) {
         if (m_agus[i].accept()) {
             m_agus[i].dispatch(inst);
             return true;
@@ -146,7 +146,7 @@ bool LSU::checkViolation(uint64_t addr, ROBID rob_idx) {
 }
 
 void LSU::commit() {
-    for (int i = 0; i < m_agus_num; i++) {
+    for (u32 i = 0; i < m_agus_num; i++) {
         m_agus[i].commit();
     }
 }

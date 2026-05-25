@@ -2,18 +2,18 @@
 
 ExecuteUnit::ExecuteUnit(const ExecConfig& conf, const ExecDeps& deps)
     : IExecute(),
-     m_inst_commit_q(*deps.inst_commit_q),
-     m_flush_event(*deps.flush_event),
      m_lsu(*deps.lsu),
-     m_rob(*deps.rob),
+     m_alu_conf(conf.alu_conf),
+     m_fpu_conf(conf.fpu_conf),
+     m_bru_conf(conf.bru_conf),
+     m_lsu_conf(conf.lsu_conf),
      m_alu_num(conf.alu_num),
      m_fpu_num(conf.fpu_num),
      m_bru_num(conf.bru_num),
      m_lsu_width(conf.agu_num),
-     m_alu_conf(conf.alu_conf),
-     m_fpu_conf(conf.fpu_conf),
-     m_bru_conf(conf.bru_conf),
-     m_lsu_conf(conf.lsu_conf)
+     m_inst_commit_q(*deps.inst_commit_q),
+     m_flush_event(*deps.flush_event),
+     m_rob(*deps.rob)
 {
     ALUDeps *alu_deps = deps.alu_deps;
     FPUDeps *fpu_deps = deps.fpu_deps;
@@ -30,13 +30,13 @@ void ExecuteUnit::build() {
 
 void ExecuteUnit::tick() {
 
-    for (int i = 0; i < m_alu_num; i++) {
+    for (u32 i = 0; i < m_alu_num; i++) {
         m_alus[i].tick();
     }
-    for (int i = 0; i < m_fpu_num; i++) {
+    for (u32 i = 0; i < m_fpu_num; i++) {
         m_fpus[i].tick();
     }
-    for (int i = 0; i < m_bru_num; i++) {
+    for (u32 i = 0; i < m_bru_num; i++) {
         m_brus[i].tick();
     }
     m_lsu.tick();
@@ -45,13 +45,13 @@ void ExecuteUnit::tick() {
 }
 
 void ExecuteUnit::commit() {
-    for (int i = 0; i < m_alu_num; i++) {
+    for (u32 i = 0; i < m_alu_num; i++) {
         m_alus[i].commit();
     }
-    for (int i = 0; i < m_fpu_num; i++) {
+    for (u32 i = 0; i < m_fpu_num; i++) {
         m_fpus[i].commit();
     }
-    for (int i = 0; i < m_bru_num; i++) {
+    for (u32 i = 0; i < m_bru_num; i++) {
         m_brus[i].commit();
     }
     m_lsu.commit();
@@ -65,14 +65,14 @@ bool ExecuteUnit::dispatch(MInstPtr inst) {
     switch (inst->type) {
     case InstType::INT:
     case InstType::STD:
-    for (int i = 0; i < m_alu_num; i++) {
+    for (u32 i = 0; i < m_alu_num; i++) {
         if (m_alus[i].dispatch(inst)) {
             inst->state = InstState::ISSUED;
             return true;
         }
     } break;
     case InstType::BRANCH:
-        for (int i = 0; i < m_bru_num; i++) {
+        for (u32 i = 0; i < m_bru_num; i++) {
             if (m_brus[i].dispatch(inst)) {
                 inst->state = InstState::ISSUED;
                 return true;
@@ -80,7 +80,7 @@ bool ExecuteUnit::dispatch(MInstPtr inst) {
         } break;
     case InstType::STA:
     case InstType::LOAD:
-        for (int i = 0; i < m_lsu_width; i++) {
+        for (u32 i = 0; i < m_lsu_width; i++) {
             if (m_lsu.dispatch(inst)) {
                 inst->state = InstState::ISSUED;
                 return true;
@@ -123,13 +123,13 @@ void ExecuteUnit::flush() {
     if (!m_flush_event.valid) {
         return;
     }
-    for (int i = 0; i < m_alu_num; i++) {
+    for (u32 i = 0; i < m_alu_num; i++) {
         m_alus[i].flush(m_flush_event);
     }
-    for (int i = 0; i < m_fpu_num; i++) {
+    for (u32 i = 0; i < m_fpu_num; i++) {
         m_fpus[i].flush(m_flush_event);
     }
-    for (int i = 0; i < m_bru_num; i++) {
+    for (u32 i = 0; i < m_bru_num; i++) {
         m_brus[i].flush(m_flush_event);
     }
     m_lsu.flush(m_flush_event);

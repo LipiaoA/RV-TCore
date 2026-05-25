@@ -99,7 +99,6 @@ void Top::build() {
     ExecConfig      exec_conf       = m_config.execute_config();
     CommitConfig    commit_conf     = m_config.commit_config();
     LSUConfig       lsu_conf        = m_config.lsu_config();
-    RASConfig       ras_conf        = m_config.ras_config();
     BPConfig        bp_conf         = m_config.bp_config();
     RegFileConfig   regfile_conf    = m_config.regfile_config();
     FlushUnitConfig flush_conf      = m_config.flush_config();

@@ -53,11 +53,13 @@ struct TageTable {
 
     TageTable(u32 sz, u32 hlen, u32 tag_bits, u32 idx_bits)
         : hist_len(hlen),
+          idx_bits(idx_bits),
+          tag_bits(tag_bits),
           size(sz),
+          tag_mask(static_cast<u16>((1u << tag_bits) - 1)),
           fold_idx(hlen, idx_bits),
           fold_tag1(hlen, tag_bits),
-          fold_tag2(hlen, tag_bits - 1),
-          tag_mask((1 << tag_bits) - 1) {}
+          fold_tag2(hlen, tag_bits - 1) {}
     TageTable() = default;
 };
 

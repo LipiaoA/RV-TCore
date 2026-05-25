@@ -86,10 +86,10 @@ void TAGE::update(u64 pc, bool taken, TagePred &pred)
     bool found = false;
     /* 如果provider的预测失败 */
     if(pred.final_pred != taken) {
-        for(int t = pred.provider + 1; t < m_ntables; t++) {
-            auto &e = m_tables[t].entries[index(t, pc)];
+        for(u32 t = static_cast<u32>(pred.provider) + 1; t < m_ntables; t++) {
+            auto &e = m_tables[t].entries[index(static_cast<i32>(t), pc)];
             if(e.u == 0) {
-                e.tag = ctag(t, pc);
+                e.tag = ctag(static_cast<i32>(t), pc);
                 e.ctr = taken ? 0 : -1;
                 e.u   = 0;
                 found = true;
@@ -102,9 +102,9 @@ void TAGE::update(u64 pc, bool taken, TagePred &pred)
     assert(found);
 
     // 更新全局历史
-    m_ghr = ((m_ghr << 1) | taken) & ((1 << 128) - 1);
+    m_ghr = (m_ghr << 1) | taken;
 
-    for(int i = 0; i < m_ntables; i++)
+    for(u32 i = 0; i < m_ntables; i++)
     {
         auto &fold_idx = m_tables[i].fold_idx;
         auto &fold_tag1 = m_tables[i].fold_tag1;

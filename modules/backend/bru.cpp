@@ -7,12 +7,12 @@ u32 BRU::bru_idx = 0;
 
 BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
     : DevIntf("bru"),
+      m_rob(*deps.rob),
       m_stages(conf.stages),
       m_reg_req_q(*deps.reg_req_q),
-      m_reg_resp_q(*deps.reg_resp_q),
-      m_reg_bypass_q(*deps.reg_bypass_q),
       m_flush_req_q(*deps.flush_req_q),
-      m_rob(*deps.rob)
+      m_reg_resp_q(*deps.reg_resp_q),
+      m_reg_bypass_q(*deps.reg_bypass_q)
 {
     assert(m_stages == 3);
     for (i32 i = 0; i < m_stages; i++) {

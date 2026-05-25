@@ -1,14 +1,14 @@
 #include "regfile_unit.h"
 
 RegFileUnit::RegFileUnit(const RegFileConfig& conf, const RegFileDeps& deps)
-    : m_alu_resp_q(*deps.alu_resp_q),
+    : m_reg_width(conf.width),
+      m_reg_capacity(conf.capacity),
+      m_prf(conf.capacity),
+      m_reg_req_q(*deps.reg_req_q),
+      m_alu_resp_q(*deps.alu_resp_q),
       m_bru_resp_q(*deps.bru_resp_q),
       m_lsu_resp_q(*deps.lsu_resp_q),
-      m_fpu_resp_q(*deps.fpu_resp_q),
-      m_reg_req_q(*deps.reg_req_q),
-      m_reg_width(conf.width),
-      m_prf(conf.capacity),
-      m_reg_capacity(conf.capacity)
+      m_fpu_resp_q(*deps.fpu_resp_q)
 {
 }
 

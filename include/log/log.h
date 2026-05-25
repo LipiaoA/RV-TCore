@@ -149,12 +149,16 @@ private:
     template <typename... Args>
     std::string format_string(const char* format, Args&&... args) {
         try {
-            int size = std::snprintf(nullptr, 0, format, args...);
-            if (size <= 0) return "[Format Error]";
+            if constexpr (sizeof...(Args) == 0) {
+                return std::string(format);
+            } else {
+                int size = std::snprintf(nullptr, 0, format, args...);
+                if (size <= 0) return "[Format Error]";
 
-            std::string result(size, '\0');
-            std::snprintf(&result[0], size + 1, format, args...);
-            return result;
+                std::string result(size, '\0');
+                std::snprintf(&result[0], size + 1, format, args...);
+                return result;
+            }
         } catch (...) {
             return "[Format Exception]";
         }
