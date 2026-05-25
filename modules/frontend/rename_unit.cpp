@@ -21,6 +21,14 @@ RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
     }
     // 0 is x0, is zero register
     m_rat[0] = 0;
+    m_checkpoint_id = 1;
+}
+
+void RenameUnit::tick() {
+    flush();
+    r2();
+    r1();
+    r0();
 }
 
 void RenameUnit::r0() {
@@ -31,14 +39,16 @@ void RenameUnit::r0() {
     while (n < m_rename_width && m_decode_rename_q.read(inst)) {
         if (!inst->valid)
             continue;
+        LOG_LEVEL1("RenameUnit R0", "r0 pc:0x%lx, inst: %s", inst->pc, inst->inst_name.c_str());
         m_r1_buf.push_back(inst);
         ++n;
     }
 }
 
 void RenameUnit::r1() {
-    if (m_r1_buf.empty())
+    if (m_r1_buf.empty()) {
         return;
+    }
     size_t n = 0;
     while (n < m_rename_width && !m_r1_buf.empty()) {
         MInstPtr inst = m_r1_buf.front();
@@ -105,13 +115,6 @@ void RenameUnit::r2() {
         dispatch(uop);
         ++n;
     }
-}
-
-void RenameUnit::tick() {
-    flush();
-    r2();
-    r1();
-    r0();
 }
 
 void RenameUnit::recycle_phys(i32 phys) {

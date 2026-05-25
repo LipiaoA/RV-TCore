@@ -22,6 +22,8 @@ public:
         , m_capacity(capacity)
         {
             stalled = false;
+            m_write_buffer.clear();
+            m_read_buffer.clear();
         }
     virtual ~ASyncQueue() = default;
 

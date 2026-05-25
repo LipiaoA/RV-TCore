@@ -108,8 +108,6 @@ void Top::build() {
     m_bpu               =   new BranchPredictor(bp_conf);
     m_crat              =   new std::array<int, RV_GPR_SIZE>();
     m_checkpoints       =   new std::vector<RatCheckpoint>();
-    m_checkpoints->resize(TCORE_CHECKPOINT_SIZE);
-
 
     m_l2                =   new DCache(m_sched, l2_conf);
     m_l2->set_name("l2 Cache");
