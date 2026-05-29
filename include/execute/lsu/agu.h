@@ -8,7 +8,7 @@
 typedef struct {
     ASyncQueue<RegReq>*         reg_req_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
 } AGUDeps;
 
 typedef struct {
@@ -53,7 +53,7 @@ private:
     OUTPUT std::vector<LoadReq>*            m_load_req_q { nullptr };
 
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_resp_q;
-    INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_bypass_q;
+    INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_bypass_bus;
     u32                                     m_idx { 0 };
     static u32                              agu_idx;
 };

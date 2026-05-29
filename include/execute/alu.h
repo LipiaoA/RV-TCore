@@ -28,7 +28,6 @@ public:
     virtual void                            flush(const FlushEvent& event);
 
 protected:
-    virtual void                            R0();
     virtual void                            R1();
     virtual void                            E0();
 
@@ -45,11 +44,10 @@ private:
     FUStage                                 m_pipe[MAX_STAGES];
     ROB&                                    m_rob;
 
-    OUTPUT std::vector<WakeupEvent>         m_wakeup_q;
-    OUTPUT ASyncQueue<RegReq>&              m_reg_req_q;
+    OUTPUT std::vector<WakeupEvent>&        m_wakeup_bus;
 
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>& m_reg_resp_q;
-    INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>& m_reg_bypass_q;
+    INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>& m_reg_bypass_bus;
     u32                                     m_idx { 0 };
 
     static u32                              alu_idx;

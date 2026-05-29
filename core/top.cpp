@@ -57,7 +57,7 @@ Top::~Top() {
     delete_ptr(m_comm_queues.lsu_resp_q);
     delete_ptr(m_comm_queues.fpu_resp_q);
     delete_ptr(m_comm_queues.reg_req_q);
-    delete_ptr(m_comm_queues.reg_bypass_q);
+    delete_ptr(m_comm_queues.reg_bypass_bus);
     delete_ptr(m_comm_queues.inst_commit_q);
 }
 
@@ -76,6 +76,7 @@ void Top::build() {
     m_comm_queues.flush_req_q        = new ASyncQueue<FlushEvent>(DEFAULT_QUEUE_CAPACITY);
     m_comm_queues.reg_req_q          = new ASyncQueue<RegReq>(DEFAULT_QUEUE_CAPACITY);
     m_comm_queues.inst_commit_q      = new ASyncQueue<MInstPtr>(DEFAULT_QUEUE_CAPACITY);
+    m_comm_queues.reg_bypass_bus     = new FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>();
 
     m_comm_queues.alu_resp_q         = new FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>();
     m_comm_queues.bru_resp_q         = new FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>();
@@ -147,6 +148,7 @@ void Top::build() {
     regfile_deps.bru_resp_q = m_comm_queues.bru_resp_q;
     regfile_deps.lsu_resp_q = m_comm_queues.lsu_resp_q;
     regfile_deps.fpu_resp_q = m_comm_queues.fpu_resp_q;
+    regfile_deps.wakeup_bus = m_comm_queues.wakeup_bus;
     regfile_deps.flush_event = m_comm_queues.flush_event;
     m_regfile = new RegFileUnit(regfile_conf, regfile_deps);
 
@@ -181,7 +183,7 @@ void Top::build() {
     lsu_deps.flush_event = m_comm_queues.flush_event;
     lsu_deps.reg_req_q = m_comm_queues.reg_req_q;
     lsu_deps.reg_resp_q = m_comm_queues.lsu_resp_q;
-    lsu_deps.reg_bypass_q = m_comm_queues.reg_bypass_q;
+    lsu_deps.reg_bypass_bus = m_comm_queues.reg_bypass_bus;
     lsu_deps.flush_req_q = m_comm_queues.flush_req_q;
 
     m_lsu = new LSU(lsu_conf, lsu_deps);
@@ -192,13 +194,15 @@ void Top::build() {
     ALUDeps alu_deps;
     alu_deps.reg_req_q = m_comm_queues.reg_req_q;
     alu_deps.reg_resp_q = m_comm_queues.alu_resp_q;
-    alu_deps.reg_bypass_q = m_comm_queues.reg_bypass_q;
+    alu_deps.reg_bypass_bus = m_comm_queues.reg_bypass_bus;
+    alu_deps.wakeup_bus = m_comm_queues.wakeup_bus;
     alu_deps.rob = m_rob;
     BRUDeps bru_deps;
     bru_deps.reg_req_q = m_comm_queues.reg_req_q;
     bru_deps.reg_resp_q = m_comm_queues.bru_resp_q;
     bru_deps.flush_req_q = m_comm_queues.flush_req_q;
-    bru_deps.reg_bypass_q = m_comm_queues.reg_bypass_q;
+    bru_deps.reg_bypass_bus = m_comm_queues.reg_bypass_bus;
+    bru_deps.wakeup_bus = m_comm_queues.wakeup_bus;
     bru_deps.rob = m_rob;
 
     FPUDeps fpu_deps;
@@ -219,6 +223,7 @@ void Top::build() {
     issue_deps.rob = m_rob;
     issue_deps.flush_event = m_comm_queues.flush_event;
     issue_deps.wakeup_bus = m_comm_queues.wakeup_bus;
+    issue_deps.reg_req_q = m_comm_queues.reg_req_q;
     m_issue = new IssueUnit(issue_conf, issue_deps);
     FlushUnitDeps flush_deps;
     flush_deps.flush_event = m_comm_queues.flush_event;

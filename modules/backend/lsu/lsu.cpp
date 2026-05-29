@@ -18,7 +18,7 @@ LSU::LSU(const LSUConfig& conf, const LSUDeps& deps)
     AGUDeps agu_deps;
     agu_deps.reg_req_q = deps.reg_req_q;
     agu_deps.reg_resp_q = deps.reg_resp_q;
-    agu_deps.reg_bypass_q = deps.reg_bypass_q;
+    agu_deps.reg_bypass_bus = deps.reg_bypass_bus;
     AGUConfig agu_conf;
     agu_conf.stages = conf.agu_stages;
     m_agus.init(m_agus_num, agu_conf, agu_deps);

@@ -1,92 +1,110 @@
 #include <cassert>
 #include <cstdlib>
 #include <vector>
-#include <memory>
-#include "log.h"
 
-#include "execute/execute_unit.h"
-#include "execute/lsu/lsu.h"
-#include "icache/dcache.h"
-#include "memory/cache.h"
-#include "memory/tlb.h"
+#include "execute/alu.h"
+#include "execute/bru.h"
+#include "regfile_unit.h"
 #include "rob/rob.h"
 #include "tools/queue.h"
-#include "util/util.h"
 #include "isa/opcode.h"
 
-// 当前 ExecuteUnit::tick/commit 不消费 issue_execute、不写 execute_commit（空实现）。
-// 本测例验证时序约束：在 issue_execute 读侧注入 MicroOp 后，多周期 tick 后下游队列仍无输出。
+// Execute-side wakeup sources: ALU/BRU announce bypass readiness in R1, and
+// RegFile announces writeback readiness when a physical register is written.
 
 int main()
 {
-    using namespace std;
-    auto &log = LogSystem::instance();
-    log.set_level(LogLevel::LEVEL3);
-    log.add_writer(make_shared<ConsoleSink>());
-    log.set_mode(LogMode::SYNC);
-    LOG_LEVEL1("ExecuteTest", "Starting in synchronous mode");
-    CycleScheduler sched;
-    std::vector<PTWLevelConfig> levels = {{1}};
-    MultiLevelTLB tlb(&sched, 12, levels);
+    ASyncQueue<RegReq> reg_req_q(32);
+    ASyncQueue<FlushEvent> flush_req_q(8);
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> alu_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> bru_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> lsu_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> fpu_resp_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> bypass_q;
+    FlushEvent flush_event {};
+    std::vector<WakeupEvent> wakeup_bus;
 
-    CacheConfig l2cfg(static_cast<size_t>(512 * 1024), 64, 8, 4);
-    l2cfg.inclusion_policy = InclusionPolicy::Inclusive;
-    DCache l2(&sched, l2cfg);
-    l2.set_name("l2");
-
-    CacheConfig dcfg(static_cast<size_t>(64 * 1024), 64, 4, 4);
-    dcfg.inclusion_policy = InclusionPolicy::NonInclusive;
-    DCache dcache(&sched, dcfg);
-    dcache.attach_lower(&l2);
-    dcache.set_name("dcache");
-
-    ASyncQueue<ExecResult> inst_commit_q(64);
-    ASyncQueue<MicroOp> lsu_rename_issue_q(8);
-    ASyncQueue<ExecResult> lsu_exec_stub(8);
     ROBDeps rob_deps {};
-    rob_deps.inst_commit_q = &inst_commit_q;
+    rob_deps.flush_event = &flush_event;
     ROBConfig rob_conf {};
     rob_conf.capacity = 16;
     ROB rob(rob_conf, rob_deps);
 
-    LSUDeps lsu_deps {};
-    lsu_deps.rob = &rob;
-    lsu_deps.dcache = &dcache;
-    lsu_deps.dtlb = &tlb;
-    lsu_deps.rename_issue_q = &lsu_rename_issue_q;
-    lsu_deps.inst_commit_q = &lsu_exec_stub;
+    ALUDeps alu_deps {};
+    alu_deps.rob = &rob;
+    alu_deps.reg_req_q = &reg_req_q;
+    alu_deps.reg_resp_q = &alu_resp_q;
+    alu_deps.reg_bypass_bus = &bypass_q;
+    alu_deps.wakeup_bus = &wakeup_bus;
+    ALUConfig alu_conf {};
+    alu_conf.stages = 2;
+    ALU alu(alu_conf, alu_deps);
 
-    LSUConfig lsu_conf {};
-    LSU lsu(lsu_conf, lsu_deps);
-    lsu.build();
+    MInstPtr alu_inst = new MicroOp();
+    alu_inst->valid = true;
+    alu_inst->opcode = OP_ADDI;
+    alu_inst->type = InstType::INT;
+    alu_inst->rd.valid = true;
+    alu_inst->rd.ptag = 11;
+    assert(alu.dispatch(alu_inst));
+    alu.commit();
+    alu.tick();
+    assert(wakeup_bus.size() == 1);
+    assert(wakeup_bus[0].valid);
+    assert(wakeup_bus[0].type == WAKEUP_BYPASS);
+    assert(wakeup_bus[0].ptag == alu_inst->rd.ptag);
+    wakeup_bus.clear();
 
-    ASyncQueue<ExecResult> exec_to_commit_q(32);
+    BRUDeps bru_deps {};
+    bru_deps.rob = &rob;
+    bru_deps.reg_req_q = &reg_req_q;
+    bru_deps.flush_req_q = &flush_req_q;
+    bru_deps.reg_resp_q = &bru_resp_q;
+    bru_deps.reg_bypass_bus = &bypass_q;
+    bru_deps.wakeup_bus = &wakeup_bus;
+    BRUConfig bru_conf {};
+    bru_conf.stages = 2;
+    BRU bru(bru_conf, bru_deps);
 
-    ExecDeps exec_deps {};
-    exec_deps.inst_commit_q = &exec_to_commit_q;
-    exec_deps.lsu = &lsu;
+    MInstPtr bru_inst = new MicroOp();
+    bru_inst->valid = true;
+    bru_inst->opcode = OP_JAL;
+    bru_inst->type = InstType::BRANCH;
+    bru_inst->rd.valid = true;
+    bru_inst->rd.ptag = 12;
+    assert(bru.dispatch(bru_inst));
+    bru.commit();
+    bru.tick();
+    assert(wakeup_bus.size() == 1);
+    assert(wakeup_bus[0].valid);
+    assert(wakeup_bus[0].type == WAKEUP_BYPASS);
+    assert(wakeup_bus[0].ptag == bru_inst->rd.ptag);
+    wakeup_bus.clear();
 
-    ExecConfig exec_conf {};
-    exec_conf.alu_num = 1;
-    exec_conf.fpu_num = 0;
-    exec_conf.bru_num = 0;
+    RegFileDeps regfile_deps {};
+    regfile_deps.reg_req_q = &reg_req_q;
+    regfile_deps.alu_resp_q = &alu_resp_q;
+    regfile_deps.bru_resp_q = &bru_resp_q;
+    regfile_deps.lsu_resp_q = &lsu_resp_q;
+    regfile_deps.fpu_resp_q = &fpu_resp_q;
+    regfile_deps.flush_event = &flush_event;
+    regfile_deps.wakeup_bus = &wakeup_bus;
+    RegFileConfig regfile_conf {};
+    regfile_conf.capacity = 64;
+    RegFileUnit regfile(regfile_conf, regfile_deps);
 
-    ExecuteUnit execute(exec_conf, exec_deps);
-    execute.build();
-
-    MicroOp uop {};
-    uop.valid = true;
-    uop.opcode = OP_ADDI;
-
-    for (int c = 0; c < 4; ++c) {
-        execute.tick();
-        assert(exec_to_commit_q.empty());
-        exec_to_commit_q.tick();
-        assert(exec_to_commit_q.empty());
-    }
-
-    execute.commit();
-    assert(exec_to_commit_q.empty());
+    RegReq write_req {};
+    write_req.valid = true;
+    write_req.write = true;
+    write_req.ptag = 13;
+    write_req.val = 0x1234;
+    assert(reg_req_q.write(write_req));
+    reg_req_q.commit();
+    regfile.tick();
+    assert(wakeup_bus.size() == 1);
+    assert(wakeup_bus[0].valid);
+    assert(wakeup_bus[0].type == WAKEUP_WRITEBACK);
+    assert(wakeup_bus[0].ptag == write_req.ptag);
 
     return EXIT_SUCCESS;
 }

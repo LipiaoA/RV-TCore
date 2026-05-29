@@ -8,11 +8,11 @@ ALU::ALU(const ALUConfig& conf, const ALUDeps& deps)
     : DevIntf("alu")
     , m_stages(conf.stages)
     , m_rob(*deps.rob)
-    , m_reg_req_q(*deps.reg_req_q)
+    , m_wakeup_bus(*deps.wakeup_bus)
     , m_reg_resp_q(*deps.reg_resp_q)
-    , m_reg_bypass_q(*deps.reg_bypass_q)
+    , m_reg_bypass_bus(*deps.reg_bypass_bus)
 {
-    assert(m_stages == 3);
+    assert(m_stages == 2);
     for (i32 i = 0; i < m_stages; i++) {
         m_pipe[i].valid = false;
         m_pipe[i].inst = nullptr;
@@ -28,7 +28,6 @@ void ALU::tick()
 {
     E0();
     R1();
-    R0();
     dump_states();
     shift();
 }
@@ -57,33 +56,13 @@ bool ALU::dispatch(const MInstPtr inst)
     return true;
 }
 
-void ALU::R0()
+void ALU::R1()
 {
     if (!m_pipe[0].valid || !m_pipe[0].inst)
         return;
-    RegReq req;
     MInstPtr inst = m_pipe[0].inst;
-    if (inst->rs1.valid) {
-        req.valid = true;
-        req.ptag = inst->rs1.ptag;
-        req.write = false;
-        m_reg_req_q.write(req);
-    }
-    if (inst->rs2.valid) {
-        req.valid = true;
-        req.ptag = inst->rs2.ptag;
-        req.write = false;
-        m_reg_req_q.write(req);
-    }
-}
-
-void ALU::R1()
-{
-    if (!m_pipe[1].valid || !m_pipe[1].inst)
-        return;
-    MInstPtr inst = m_pipe[1].inst;
     auto read_reg = [&](RegType &src) -> bool {
-        for (auto& resp : m_reg_bypass_q) {
+        for (auto& resp : m_reg_bypass_bus) {
             if (resp.valid && resp.ptag == src.ptag) {
                 src.val = resp.val;
                 return true;
@@ -110,18 +89,18 @@ void ALU::R1()
 
 void ALU::E0()
 {
-    if (!m_pipe[2].valid || !m_pipe[2].inst || m_commit_latch.valid) {
+    if (!m_pipe[1].valid || !m_pipe[1].inst || m_commit_latch.valid) {
         return;
     }
-    MInstPtr inst = m_pipe[2].inst;
+    MInstPtr inst = m_pipe[1].inst;
     InstExec::AluExecResult ret = InstExec::exec_alu(inst);
     (void)ret;
     broadcast(inst);
     if (inst->rd.valid) {
         inst->rd.val = ret.value;
     }
-    m_pipe[2].valid = false;
-    m_pipe[2].inst = nullptr;
+    m_pipe[1].valid = false;
+    m_pipe[1].inst = nullptr;
     m_commit_latch.inst = inst;
     m_commit_latch.valid = true;
 }
@@ -143,8 +122,10 @@ void ALU::wakeup(MInstPtr inst)
         return;
     WakeupEvent event;
     event.valid = true;
+    event.type  = WAKEUP_BYPASS;
     event.ptag   = inst->rd.ptag;
-    m_wakeup_q.push_back(event);
+    event.rid    = inst->rid;
+    m_wakeup_bus.push_back(event);
 }
 
 void ALU::broadcast(MInstPtr inst)
@@ -199,11 +180,9 @@ void ALU::dump_states() const
             inst->imm);
     };
     if (m_pipe[0].valid) {
-        print_inst(log_prefix + "R0 ", m_pipe[0].inst);
+        print_inst(log_prefix + "R1 ", m_pipe[0].inst);
     }
-    if (m_pipe[1].valid) {
-        print_inst(log_prefix + "R1 ", m_pipe[1].inst);
-    }
+
     if (m_commit_latch.valid) {
         print_inst(log_prefix + "E0 ", m_commit_latch.inst);
     }

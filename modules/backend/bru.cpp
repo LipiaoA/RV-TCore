@@ -9,12 +9,12 @@ BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
     : DevIntf("bru"),
       m_rob(*deps.rob),
       m_stages(conf.stages),
-      m_reg_req_q(*deps.reg_req_q),
       m_flush_req_q(*deps.flush_req_q),
+      m_wakeup_bus(*deps.wakeup_bus),
       m_reg_resp_q(*deps.reg_resp_q),
-      m_reg_bypass_q(*deps.reg_bypass_q)
+      m_reg_bypass_bus(*deps.reg_bypass_bus)
 {
-    assert(m_stages == 3);
+    assert(m_stages == 2);
     for (i32 i = 0; i < m_stages; i++) {
         m_pipe[i].valid = false;
         m_pipe[i].inst = nullptr;
@@ -47,7 +47,6 @@ void BRU::tick()
 {
     E0();
     R1();
-    R0();
     dump_states();
     shift();
 }
@@ -76,97 +75,43 @@ bool BRU::accept() const
     return !m_pipe[0].valid && !m_input_latch.valid;
 }
 
-void BRU::R0()
-{
-    if (!m_pipe[0].valid)
-        return;
-    RegReq req;
-    MInstPtr inst = m_pipe[0].inst;
-    if (inst->rs1.valid) {
-        req.valid = true;
-        req.ptag = inst->rs1.ptag;
-        req.write = false;
-        m_reg_req_q.write(req);
-    }
-    if (inst->rs2.valid) {
-        req.valid = true;
-        req.ptag = inst->rs2.ptag;
-        req.write = false;
-        m_reg_req_q.write(req);
-    }
-}
-
 void BRU::R1()
 {
-    if (!m_pipe[1].valid)
+    if (!m_pipe[0].valid || !m_pipe[0].inst)
         return;
-    MInstPtr inst = m_pipe[1].inst;
-    if (inst->rs1.valid) {
-        bool found = false;
-        for (auto& resp : m_reg_bypass_q) {
-            if (resp.valid && resp.ptag == inst->rs1.ptag) {
-                inst->rs1.val = resp.val;
-                found = true;
-                break;
+    MInstPtr inst = m_pipe[0].inst;
+    auto read_reg = [&](RegType &src) -> bool {
+        for (auto& resp : m_reg_bypass_bus) {
+            if (resp.valid && resp.ptag == src.ptag) {
+                src.val = resp.val;
+                return true;
             }
         }
-        if (!found) {
-            for (auto& resp : m_reg_resp_q) {
-                if (resp.valid && resp.ptag == inst->rs1.ptag) {
-                    inst->rs1.val = resp.val;
-                    break;
-                }
+        for (auto& resp : m_reg_resp_q) {
+            if (resp.valid && resp.ptag == src.ptag) {
+                src.val = resp.val;
+                return true;
             }
         }
+        return false;
+    };
+    if (inst->rs1.valid && !read_reg(inst->rs1)) {
+        return;
     }
-
-    if (inst->rs2.valid) {
-        bool found = false;
-        for (auto& resp : m_reg_bypass_q) {
-            if (resp.valid && resp.ptag == inst->rs2.ptag) {
-                inst->rs2.val = resp.val;
-                found = true;
-                break;
-            }
-        }
-        if (!found) {
-            for (auto& resp : m_reg_resp_q) {
-                if (resp.valid && resp.ptag == inst->rs2.ptag) {
-                    inst->rs2.val = resp.val;
-                    break;
-                }
-            }
-        }
+    if (inst->rs2.valid && !read_reg(inst->rs2)) {
+        return;
     }
-
-    m_pred_taken= branch_taken(inst->opcode, inst->rs1.val, inst->rs2.val);
-    if (m_pred_taken != inst->pred_taken) {
-        if (!m_pred_taken) {
-            FlushEvent event;
-            event.valid = true;
-            event.type = FlushType::BRANCH_MISPRED;
-            event.source = FlushSource::BRU;
-            event.scope = FlushScope::YOUNGER_THAN;
-            event.rid = inst->rid;
-            event.redirect = true;
-            event.redirect_pc = inst->pc + 4;
-            event.branch_taken = false;
-            event.recover_c_id = true;
-            event.c_id = inst->c_id;
-            event.inst_pc = inst->pc;
-            event.fetch_id = inst->fetch_id;
-            event.epoch = inst->epoch;
-            m_flush_req_q.write(event);
-        }
+    if (inst->rd.valid) {
+        wakeup(inst);
     }
 }
 
 void BRU::E0()
 {
-    if (!m_pipe[2].valid || !m_pipe[2].inst || m_commit_latch.valid) {
+    if (!m_pipe[1].valid || !m_pipe[1].inst || m_commit_latch.valid) {
         return;
     }
-    MInstPtr inst = m_pipe[2].inst;
+    MInstPtr inst = m_pipe[1].inst;
     InstExec::BruExecResult ret = InstExec::exec_bru(inst);
     if (!ret.valid)
         return;
@@ -194,8 +139,8 @@ void BRU::E0()
     if (inst->rd.valid) {
         inst->rd.val = ret.link;
     }
-    m_pipe[2].valid = false;
-    m_pipe[2].inst = nullptr;
+    m_pipe[1].valid = false;
+    m_pipe[1].inst = nullptr;
     m_commit_latch.inst = inst;
     m_commit_latch.valid = true;
     return;
@@ -203,7 +148,14 @@ void BRU::E0()
 
 void BRU::wakeup(MInstPtr inst)
 {
-
+    if (!inst || !inst->rd.valid)
+        return;
+    WakeupEvent event;
+    event.valid = true;
+    event.type  = WAKEUP_BYPASS;
+    event.ptag  = inst->rd.ptag;
+    event.rid   = inst->rid;
+    m_wakeup_bus.push_back(event);
 }
 
 void BRU::send_redirect(pc_t target)
@@ -251,7 +203,6 @@ void BRU::dump_states() const
         auto inst = m_pipe[1].inst;
         LOG_LEVEL1(log_prefix + "R1", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx, pred_taken: %d, real_taken: %d",
             inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
-            inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
             inst->pred_taken, m_pred_taken);
     }

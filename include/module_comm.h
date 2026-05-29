@@ -268,7 +268,7 @@ struct ModuleCommQueues {
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*            lsu_resp_q { nullptr };  // LSU 读 -> RegFile 写
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*            fpu_resp_q { nullptr };  // FPU 读 -> RegFile 写
 
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*            reg_bypass_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*            reg_bypass_bus { nullptr };
 
     /* 各模块的 flush 事件 */
     ASyncQueue<FlushEvent>*         flush_req_q { nullptr };  // 统一的 flush 请求队列
@@ -340,6 +340,7 @@ typedef struct {
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        bru_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        lsu_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        fpu_resp_q;
+    std::vector<WakeupEvent>*   wakeup_bus { nullptr };
     FlushEvent*                 flush_event { nullptr };
 } RegFileDeps;
 
@@ -359,6 +360,7 @@ typedef struct {
     ROB*                        rob;
     ASyncQueue<MInstPtr>*       rename_issue_q;
     std::vector<WakeupEvent>*   wakeup_bus;
+    ASyncQueue<RegReq>*         reg_req_q;
     FlushEvent*                 flush_event { nullptr };
 } IssueDeps;
 
@@ -366,7 +368,8 @@ typedef struct {
     ROB*                        rob;
     ASyncQueue<RegReq>*         reg_req_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
+    std::vector<WakeupEvent>*   wakeup_bus { nullptr };
 } ALUDeps;
 
 typedef struct {
@@ -374,13 +377,14 @@ typedef struct {
     ASyncQueue<RegReq>*         reg_req_q;
     ASyncQueue<FlushEvent>*     flush_req_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
+    std::vector<WakeupEvent>*   wakeup_bus { nullptr };
 } BRUDeps;
 
 typedef struct {
     ASyncQueue<RegReq>*         reg_req_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
     FlushEvent*                 flush_event { nullptr };
 } FPUDeps;
 
@@ -397,7 +401,7 @@ typedef struct {
     FlushEvent*                 flush_event { nullptr };
     ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_q;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
 } LSUDeps;
 
 typedef struct {

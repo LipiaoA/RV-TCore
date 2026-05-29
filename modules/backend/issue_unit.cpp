@@ -9,6 +9,7 @@ IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
       m_exec(*deps.exec),
       m_rename_issue_q(*deps.rename_issue_q),
       m_flush_event(*deps.flush_event),
+      m_reg_req_q(*deps.reg_req_q),
       m_int_issue_width(conf.int_issue_width),
       m_ls_issue_width(conf.ls_issue_width),
       m_fp_issue_width(conf.fp_issue_width),
@@ -20,8 +21,11 @@ void IssueUnit::build() {
 
 void IssueUnit::tick() {
     flush();
+    /* run at previous clock cycle */
     async();
     wakeup();
+
+    /* run at current clock cycle */
     issue();
     select();
 }
@@ -32,36 +36,31 @@ void IssueUnit::commit()
 }
 
 void IssueUnit::wakeup() {
-    auto match = [](const MInstPtr inst, const WakeupEvent& event) {
-        if (event.type == WakeupType::WAKEUP_BYPASS ||
-            event.type == WakeupType::WAKEUP_WRITEBACK) {
-            if (inst->rs1.ptag == event.ptag || inst->rs2.ptag == event.ptag) {
-                return true;
-            }
-            return false;
+    auto apply = [](const MInstPtr inst, const WakeupEvent& event) {
+        if (!event.valid ||
+            (event.type != WAKEUP_BYPASS && event.type != WAKEUP_WRITEBACK)) {
+            return;
         }
-        return false;
+        if (inst->rs1.valid && inst->rs1.ptag == event.ptag) {
+            inst->rs1.ready = true;
+        }
+        if (inst->rs2.valid && inst->rs2.ptag == event.ptag) {
+            inst->rs2.ready = true;
+        }
     };
+
     for (const auto& event : m_wakeup_bus) {
         for (auto inst : m_int_q) {
-            if (match(inst, event)) {
-                inst->rs1.ready = true && inst->rs1.valid;
-                inst->rs2.ready = true && inst->rs2.valid;
-            }
+            apply(inst, event);
         }
         for (auto inst : m_ls_q) {
-            if (match(inst, event)) {
-                inst->rs1.ready = true && inst->rs1.valid;
-                inst->rs2.ready = true && inst->rs2.valid;
-            }
+            apply(inst, event);
         }
         for (auto inst : m_fp_q) {
-            if (match(inst, event)) {
-                inst->rs1.ready = true && inst->rs1.valid;
-                inst->rs2.ready = true && inst->rs2.valid;
-            }
+            apply(inst, event);
         }
     }
+    m_wakeup_bus.clear();
 }
 
 void IssueUnit::select()
@@ -97,12 +96,16 @@ void IssueUnit::select()
         auto &inst = candidates[i];
         if (inst->type == InstType::INT || inst->type == InstType::STD || inst->type == InstType::BRANCH) {
             m_select_buffer.emplace_back(inst);
+            EmitSrcRead(inst, inst->rs1, 1);
+            EmitSrcRead(inst, inst->rs2, 2);
         }
     }
     for (size_t i = 0; i < m_ls_issue_width && i < candidates.size(); ++i) {
         auto &inst = candidates[i];
         if (inst->type == InstType::LOAD || inst->type == InstType::STA) {
             m_select_buffer.emplace_back(inst);
+            EmitSrcRead(inst, inst->rs1, 1);
+            EmitSrcRead(inst, inst->rs2, 2);
         }
     }
 }
@@ -189,4 +192,43 @@ void IssueUnit::flush() {
         assert(0);
     }
     return;
+}
+
+FuType IssueUnit::GetFuType(const MInstPtr inst)
+{
+    switch (inst->type) {
+    case InstType::INT:
+    case InstType::STD:
+        return FuType::ALU;
+    case InstType::BRANCH:
+        return FuType::BRU;
+    case InstType::LOAD:
+    case InstType::STA:
+    case InstType::STORE:
+        return FuType::LSU;
+    case InstType::FP:
+        return FuType::FPU;
+    default:
+        return FuType::NONE;
+    }
+}
+
+void IssueUnit::EmitSrcRead(const MInstPtr inst, const RegType& src, int idx)
+{
+    if (!src.valid) {
+        return;
+    }
+    FuType fu = GetFuType(inst);
+    if (fu == FuType::NONE) {
+        assert(false);
+    }
+    RegReq req;
+    req.valid = true;
+    req.write = false;
+    req.idx = idx;
+    req.ptag = src.ptag;
+    req.atag = src.atag;
+    req.rid = inst->rid;
+    req.fu = fu;
+    m_reg_req_q.write(req);
 }

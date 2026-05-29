@@ -8,7 +8,7 @@ AGU::AGU(const AGUConfig& conf, const AGUDeps& deps)
     , m_stages(conf.stages)
     , m_reg_req_q(*deps.reg_req_q)
     , m_reg_resp_q(*deps.reg_resp_q)
-    , m_reg_bypass_q(*deps.reg_bypass_q)
+    , m_reg_bypass_bus(*deps.reg_bypass_bus)
 {
     for (i32 i = 0; i < m_stages; i++) {
         m_pipe[i].valid = false;
@@ -60,7 +60,7 @@ void AGU::R1()
     MInstPtr inst = m_pipe[1].inst;
     if (inst->rs1.valid) {
         bool found = false;
-        for (auto& resp : m_reg_bypass_q) {
+        for (auto& resp : m_reg_bypass_bus) {
             if (resp.valid && resp.ptag == inst->rs1.ptag) {
                 inst->rs1.val = resp.val;
                 found = true;

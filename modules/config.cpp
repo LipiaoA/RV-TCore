@@ -43,9 +43,9 @@ void TCoreConfig::init_config() {
     m_core_config.mshr_buffer_size  = 128;
     m_core_config.lsu_issue_width   = 2;
 
-    m_core_config.alu_stages        = 3;
+    m_core_config.alu_stages        = 2;
     m_core_config.fpu_stages        = 4;
-    m_core_config.bru_stages        = 3;
+    m_core_config.bru_stages        = 2;
 
     // issue / executetop
     m_core_config.int_issue_width = 4;

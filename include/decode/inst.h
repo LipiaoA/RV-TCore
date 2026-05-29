@@ -108,16 +108,13 @@ typedef struct MicroOp {
     u64 c_id { 0 };
     u64 epoch { 0 };
 
-    bool rs1_ready = false;
-    bool rs2_ready = false;
-
     bool ready() const {
         bool ready = true;
         if (rs1.valid) {
-            ready &= rs1_ready;
+            ready &= rs1.ready;
         }
         if (rs2.valid) {
-            ready &= rs2_ready;
+            ready &= rs2.ready;
         }
         return ready;
     }

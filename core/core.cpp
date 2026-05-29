@@ -37,9 +37,9 @@ void Core::tick() {
     m_fetch.tick();
     m_decode.tick();
     m_rename.tick();
-    m_issue.tick();
     m_regfile.tick();
     m_execute.tick();
+    m_issue.tick();
     m_commit.tick();
     m_sched.tick();
 }

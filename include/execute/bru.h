@@ -26,7 +26,6 @@ public:
     void                                    flush(const FlushEvent& event);
 
 private:
-    void                                    R0();
     void                                    R1();
     void                                    E0();
 
@@ -47,11 +46,11 @@ private:
     bool                                    m_pred_taken { false };
     pc_t                                    m_pred_target { 0 };
 
-    OUTPUT ASyncQueue<RegReq>&              m_reg_req_q;
     OUTPUT ASyncQueue<FlushEvent>&          m_flush_req_q;
+    OUTPUT std::vector<WakeupEvent>&        m_wakeup_bus;
 
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_resp_q;
-    INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_bypass_q;
+    INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_bypass_bus;
 
     u32                                     m_idx { 0 };
     static u32                              bru_idx;

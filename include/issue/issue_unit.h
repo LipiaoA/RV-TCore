@@ -23,8 +23,10 @@ public:
 private:
     void                                async();
     void                                flush();
-private:
+    void                                EmitSrcRead(const MInstPtr inst, const RegType& src, int idx);
+    FuType                              GetFuType(const MInstPtr inst);
 
+private:
     std::vector<MInstPtr>               m_int_q;
     std::vector<MInstPtr>               m_ls_q;
     std::vector<MInstPtr>               m_fp_q;
@@ -32,6 +34,7 @@ private:
     ExecuteUnit&                        m_exec;
     INPUT ASyncQueue<MInstPtr>&         m_rename_issue_q;
     INPUT FlushEvent&                   m_flush_event;
+    OUTPUT ASyncQueue<RegReq>&          m_reg_req_q;
     std::vector<MInstPtr>               m_select_buffer;
 
     size_t                              m_int_issue_width  { 4 };

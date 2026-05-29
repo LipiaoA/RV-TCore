@@ -8,7 +8,8 @@ RegFileUnit::RegFileUnit(const RegFileConfig& conf, const RegFileDeps& deps)
       m_alu_resp_q(*deps.alu_resp_q),
       m_bru_resp_q(*deps.bru_resp_q),
       m_lsu_resp_q(*deps.lsu_resp_q),
-      m_fpu_resp_q(*deps.fpu_resp_q)
+      m_fpu_resp_q(*deps.fpu_resp_q),
+      m_wakeup_bus(*deps.wakeup_bus)
 {
 }
 
@@ -21,6 +22,7 @@ void RegFileUnit::tick() {
 }
 
 void RegFileUnit::commit() {
+    m_reg_req_q.commit();
 }
 
 void RegFileUnit::dispatch(MInstPtr inst) {
@@ -31,9 +33,7 @@ void RegFileUnit::accept() const {
 
 void RegFileUnit::r0() {
     auto invalidate = [](FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>& resp_q) {
-        for (auto& resp : resp_q) {
-            resp.valid = false;
-        }
+        resp_q.clear();
     };
     invalidate(m_bru_resp_q);
     invalidate(m_lsu_resp_q);
@@ -47,7 +47,14 @@ void RegFileUnit::r0() {
         if (!ret || !req.valid)
             continue;
         if (req.write) {
-            m_prf.write(req.ptag, req.val);
+            if (m_prf.write(req.ptag, req.val)) {
+                WakeupEvent event;
+                event.valid = true;
+                event.type = WAKEUP_WRITEBACK;
+                event.ptag = req.ptag;
+                event.rid = req.rid;
+                m_wakeup_bus.push_back(event);
+            }
         } else {
             resp.valid = true;
             resp.ptag = req.ptag;

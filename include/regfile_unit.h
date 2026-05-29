@@ -36,6 +36,7 @@ private:
     OUTPUT FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&         m_bru_resp_q;
     OUTPUT FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&         m_lsu_resp_q;
     OUTPUT FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&         m_fpu_resp_q;
+    OUTPUT std::vector<WakeupEvent>&                               m_wakeup_bus;
 };
 
 #endif
