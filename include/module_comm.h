@@ -311,16 +311,16 @@ typedef struct IFetchResp {
 } IFetchResp;
 
 typedef struct {
-    CycleScheduler*             sched;
-    ICache*                     icache;
-    BranchPredictor*            bpu;
-    ASyncQueue<FetchPacket>*    fetch_decode_q;
+    CycleScheduler*             sched { nullptr };
+    ICache*                     icache { nullptr };
+    BranchPredictor*            bpu { nullptr };
+    ASyncQueue<FetchPacket>*    fetch_decode_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
 } IFetchDeps;
 
 typedef struct {
-    ASyncQueue<FetchPacket>*    fetch_decode_q;
-    ASyncQueue<MInstPtr>*       decode_rename_q;
+    ASyncQueue<FetchPacket>*    fetch_decode_q { nullptr };
+    ASyncQueue<MInstPtr>*       decode_rename_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
 } DecodeDeps;
 
@@ -335,56 +335,56 @@ typedef struct {
 } RenameDeps;
 
 typedef struct {
-    ASyncQueue<RegReq>*         reg_req_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        alu_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        bru_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        lsu_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        fpu_resp_q;
+    ASyncQueue<RegReq>*         reg_req_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        alu_resp_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        bru_resp_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        lsu_resp_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        fpu_resp_q { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
     FlushEvent*                 flush_event { nullptr };
 } RegFileDeps;
 
 typedef struct {
-    ASyncQueue<MInstPtr>*       inst_commit_q;
-    ROB*                        rob;
-    RenameUnit*                 rename;
+    ASyncQueue<MInstPtr>*       inst_commit_q { nullptr };
+    ROB*                        rob { nullptr };
+    RenameUnit*                 rename { nullptr };
     FlushEvent*                 flush_event { nullptr };
     ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
-    ASyncQueue<RegReq>*         reg_req_q;
+    ASyncQueue<RegReq>*         reg_req_q { nullptr };
     std::array<int, RV_GPR_SIZE>*   crat { nullptr };
     std::vector<RatCheckpoint>*     checkpoints { nullptr };
 } CommitDeps;
 
 typedef struct {
-    ExecuteUnit*                exec;
-    ROB*                        rob;
-    ASyncQueue<MInstPtr>*       rename_issue_q;
-    std::vector<WakeupEvent>*   wakeup_bus;
-    ASyncQueue<RegReq>*         reg_req_q;
+    ExecuteUnit*                exec { nullptr };
+    ROB*                        rob { nullptr };
+    ASyncQueue<MInstPtr>*       rename_issue_q { nullptr };
+    std::vector<WakeupEvent>*   wakeup_bus { nullptr };
+    ASyncQueue<RegReq>*         reg_req_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
 } IssueDeps;
 
 typedef struct {
-    ROB*                        rob;
-    ASyncQueue<RegReq>*         reg_req_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
+    ROB*                        rob { nullptr };
+    ASyncQueue<RegReq>*         reg_req_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
 } ALUDeps;
 
 typedef struct {
-    ROB*                        rob;
-    ASyncQueue<RegReq>*         reg_req_q;
-    ASyncQueue<FlushEvent>*     flush_req_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
+    ROB*                        rob { nullptr };
+    ASyncQueue<RegReq>*         reg_req_q { nullptr };
+    ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
 } BRUDeps;
 
 typedef struct {
-    ASyncQueue<RegReq>*         reg_req_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
+    ASyncQueue<RegReq>*         reg_req_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
     FlushEvent*                 flush_event { nullptr };
 } FPUDeps;
 
@@ -393,46 +393,46 @@ typedef struct {
 } ROBDeps;
 
 typedef struct {
-    ROB*                        rob;
-    GCache*                     dcache;
-    MultiLevelTLB*              dtlb;
-    ASyncQueue<MInstPtr>*       rename_issue_q;
-    ASyncQueue<RegReq>*         reg_req_q;
+    ROB*                        rob { nullptr };
+    GCache*                     dcache { nullptr };
+    MultiLevelTLB*              dtlb { nullptr };
+    ASyncQueue<MInstPtr>*       rename_issue_q { nullptr };
+    ASyncQueue<RegReq>*         reg_req_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
     ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
 } LSUDeps;
 
 typedef struct {
-    LSU*                        lsu;
-    ASyncQueue<MInstPtr>*       inst_commit_q;
-    ASyncQueue<FlushEvent>*     flush_req_q;
-    FlushEvent*                 flush_event;
-    ALUDeps*                    alu_deps;
-    BRUDeps*                    bru_deps;
-    LSUDeps*                    lsu_deps;
-    FPUDeps*                    fpu_deps;
-    ROB*                        rob;
+    LSU*                        lsu { nullptr };
+    ASyncQueue<MInstPtr>*       inst_commit_q { nullptr };
+    ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
+    FlushEvent*                 flush_event { nullptr };
+    ALUDeps*                    alu_deps { nullptr };
+    BRUDeps*                    bru_deps { nullptr };
+    LSUDeps*                    lsu_deps { nullptr };
+    FPUDeps*                    fpu_deps { nullptr };
+    ROB*                        rob { nullptr };
 } ExecDeps;
 
 typedef struct {
-    ASyncQueue<FlushEvent>*     flush_req_q;
-    FlushEvent*                 flush_event;
+    ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
+    FlushEvent*                 flush_event { nullptr };
 } FlushUnitDeps;
 
 typedef struct {
-    FetchUnit*                  fetch;
-    DecodeUnit*                 decode;
-    RenameUnit*                 rename;
-    IssueUnit*                  issue;
-    RegFileUnit*                regfile;
-    ExecuteUnit*                execute;
-    CommitUnit*                 commit;
-    CycleScheduler*             sched;
-    FlushUnit*                  flush;
-    ROB*                        rob;
-    FlushEvent*                 flush_event;
+    FetchUnit*                  fetch { nullptr };
+    DecodeUnit*                 decode { nullptr };
+    RenameUnit*                 rename { nullptr };
+    IssueUnit*                  issue { nullptr };
+    RegFileUnit*                regfile { nullptr };
+    ExecuteUnit*                execute { nullptr };
+    CommitUnit*                 commit { nullptr };
+    CycleScheduler*             sched { nullptr };
+    FlushUnit*                  flush { nullptr };
+    ROB*                        rob { nullptr };
+    FlushEvent*                 flush_event { nullptr };
 } CoreDeps;
 
 #endif // RV_TCORE_MODULE_COMM_H

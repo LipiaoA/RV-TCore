@@ -29,6 +29,7 @@ void ExecuteUnit::build() {
 }
 
 void ExecuteUnit::tick() {
+    flush();
 
     for (u32 i = 0; i < m_alu_num; i++) {
         m_alus[i].tick();

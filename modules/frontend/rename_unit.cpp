@@ -21,6 +21,9 @@ RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
     }
     // 0 is x0, is zero register
     m_rat[0] = 0;
+    for (u32 i = 1; i < RV_GPR_SIZE; ++i) {
+        m_rat[i] = 0;
+    }
     m_checkpoint_id = 1;
 }
 
@@ -80,8 +83,8 @@ void RenameUnit::r1() {
             break;
         }
         std::string id_pre = inst->rid.idx == 0 ? "++" : "--";
-        LOG_LEVEL1("RenameUnit R1", "r1 pc:0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx,"
-                   "rd: v%d-a%d-p%d-0x%lx%s%d",
+        LOG_LEVEL1("RenameUnit R1", "r1 pc:0x%lx, inst: %s, rs1: v%d-x%d-p%d-0x%lx, rs2: v%d-x%d-p%d-0x%lx,"
+                   "rd: v%d-x%d-p%d-0x%lx%s%d",
                    inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
                    inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
                    inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val, id_pre.c_str(), inst->rid.idx);
@@ -125,7 +128,7 @@ void RenameUnit::recycle_phys(i32 phys) {
 
 void RenameUnit::build() {
     for (u32 i = 0; i < RV_GPR_SIZE; ++i) {
-        m_rat[i] = i;
+        m_rat[i] = 0;
     }
     for (u32 i = 1; i < m_prf_capacity; ++i) {
         m_free_list.push_back(i);

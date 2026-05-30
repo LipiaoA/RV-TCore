@@ -118,7 +118,8 @@ void TAGE::update(u64 pc, bool taken, TagePred &pred)
 
 u32 TAGE::index(i32 t, pc_t pc) const
 {
-    return pc ^ m_tables[t].fold_idx.value();
+    uint64_t idx_mask = (1 << m_tables[t].idx_bits) - 1;
+    return (pc ^ m_tables[t].fold_idx.value()) & idx_mask;
 }
 
 u16 TAGE::ctag(i32 t, pc_t pc) const

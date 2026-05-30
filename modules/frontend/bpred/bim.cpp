@@ -24,7 +24,7 @@ branch_pred BIM::predict(pc_t pc)
     u64 spec_ghr = m_ghr;
 
     for (u32 i = 0; i < m_fetch_width; i++) {
-        pc_t pc = pc + i * 4;
+        pc += i * 4;
 
         u32 idx = ((pc >> 2) ^ spec_ghr) % m_entries;
         bool taken = m_table[idx].predict();

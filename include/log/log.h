@@ -18,7 +18,7 @@ typedef enum LogLevel { LEVEL1 = 0, LEVEL2, LEVEL3, LEVEL4, LEVEL5, LEVEL6, TOTA
 enum LogMode { SYNC, ASYNC };
 
 // 彩色输出 ANSI
-static std::string level_color[LogLevel::TOTAL_LEVEL] = {"\033[37m", "\033[36m", "\033[32m", "\033[33m", "\033[31m", "\033[41m"};
+static std::string level_color[LogLevel::TOTAL_LEVEL] = {"\033[30m", "\033[36m", "\033[32m", "\033[33m", "\033[31m", "\033[41m"};
 inline std::string color_reset(){ return "\033[0m"; }
 
 class LogOp {

@@ -231,7 +231,7 @@ void FetchUnit::fetch3()
                 }
             }
             break;
-            LOG_LEVEL1("F3 Predict", "branch mask:0b%b", pkt.br_mask);
+            LOG_LEVEL1("F3 Predict", "branch mask:0x%x", pkt.br_mask);
         }
     }
 
@@ -421,7 +421,7 @@ void FetchUnit::dump_state() const
         auto &pkt = m_f3_pkt.data;
         auto r_v = m_redirect_pc[RES_F3].valid;
         auto r_pc = m_redirect_pc[RES_F3].pc;
-        LOG_LEVEL1("Fetch3", "vpc:0x%lx, redirect:(%d-%lx), base pc:0x%lx, valid mask:0b%b, br mask:0b%b",
+        LOG_LEVEL1("Fetch3", "vpc:0x%lx, redirect:(%d-%lx), base pc:0x%lx, valid mask:0x%x, br mask:0x%x",
                     m_state[F3].vpc, r_v, r_pc, pkt.base_pc, pkt.valid_mask, pkt.br_mask);
 
     }
@@ -429,12 +429,12 @@ void FetchUnit::dump_state() const
         auto r_v = m_redirect_pc[RES_F4].valid;
         auto r_pc = m_redirect_pc[RES_F4].pc;
         auto &pkt = m_f4_pkt.data;
-        LOG_LEVEL1("Fetch4", "vpc:0x%lx, redirect:(%d-%lx), base pc:0x%lx, valid mask:0b%b, br mask:0b%b",
+        LOG_LEVEL1("Fetch4", "vpc:0x%lx, redirect:(%d-%lx), base pc:0x%lx, valid mask:0x%x, br mask:0x%x",
                     m_state[F4].vpc, r_v, r_pc, pkt.base_pc, pkt.valid_mask, pkt.br_mask);
     }
     if (m_run[F5]) {
         auto &pkt = m_f5_pkt.data;
-        LOG_LEVEL1("Fetch5", "base pc:0x%lx, valid mask:0b%b, br mask:0b%b",
+        LOG_LEVEL1("Fetch5", "base pc:0x%lx, valid mask:0x%x, br mask:0x%x",
                     pkt.base_pc, pkt.valid_mask, pkt.br_mask);
     }
     return;

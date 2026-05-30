@@ -148,6 +148,18 @@ void ALU::flush(const FlushEvent& event)
             m_pipe[i].inst  = nullptr;
         }
     }
+    if (m_commit_latch.valid && m_rob.is_older_than(event.rid, m_commit_latch.inst->rid)) {
+        m_commit_latch.valid = false;
+        m_commit_latch.inst->state = InstState::FLUSHED;
+        m_commit_latch.inst->valid = false;
+        m_commit_latch.inst = nullptr;
+    }
+    if (m_input_latch.valid && m_rob.is_older_than(event.rid, m_input_latch.inst->rid)) {
+        m_input_latch.valid = false;
+        m_input_latch.inst = nullptr;
+        m_input_latch.inst->state = InstState::FLUSHED;
+        m_input_latch.inst->valid = false;
+    }
 }
 
 bool ALU::commit_ready() const

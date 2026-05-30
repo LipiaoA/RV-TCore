@@ -101,8 +101,27 @@ void BRU::R1()
     if (inst->rs2.valid && !read_reg(inst->rs2)) {
         return;
     }
+    m_pred_taken= branch_taken(inst->opcode, inst->rs1.val, inst->rs2.val);
     if (inst->rd.valid) {
         wakeup(inst);
+    }
+    /* predict taken but not taken, flush*/
+    if (m_pred_taken != inst->pred_taken && !m_pred_taken) {
+        FlushEvent event;
+        event.valid = true;
+        event.type = FlushType::BRANCH_MISPRED;
+        event.source = FlushSource::BRU;
+        event.scope = FlushScope::YOUNGER_THAN;
+        event.rid = inst->rid;
+        event.redirect = true;
+        event.redirect_pc = inst->pc + 4;
+        event.branch_taken = false;
+        event.recover_c_id = true;
+        event.c_id = inst->c_id;
+        event.inst_pc = inst->pc;
+        event.fetch_id = inst->fetch_id;
+        event.epoch = inst->epoch;
+        m_flush_req_q.write(event);
     }
 }
 
@@ -176,7 +195,29 @@ void BRU::send_flush(MInstPtr inst)
 
 void BRU::flush(const FlushEvent& event)
 {
-
+    for (i32 i = 0; i < m_stages; ++i) {
+        if (!m_pipe[i].valid) {
+            continue;
+        }
+        if (m_rob.is_older_than(event.rid, m_pipe[i].inst->rid)) {
+            m_pipe[i].valid = false;
+            m_pipe[i].inst->valid = false;
+            m_pipe[i].inst->state = InstState::FLUSHED;
+            m_pipe[i].inst  = nullptr;
+        }
+    }
+    if (m_commit_latch.valid && m_rob.is_older_than(event.rid, m_commit_latch.inst->rid)) {
+        m_commit_latch.valid = false;
+        m_commit_latch.inst->state = InstState::FLUSHED;
+        m_commit_latch.inst->valid = false;
+        m_commit_latch.inst = nullptr;
+    }
+    if (m_input_latch.valid && m_rob.is_older_than(event.rid, m_input_latch.inst->rid)) {
+        m_input_latch.valid = false;
+        m_input_latch.inst->state = InstState::FLUSHED;
+        m_input_latch.inst->valid = false;
+        m_input_latch.inst = nullptr;
+    }
 }
 
 void BRU::shift()

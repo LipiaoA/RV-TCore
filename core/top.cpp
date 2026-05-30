@@ -191,6 +191,7 @@ void Top::build() {
     ExecDeps exec_deps;
     exec_deps.flush_event = m_comm_queues.flush_event;
     exec_deps.inst_commit_q = m_comm_queues.inst_commit_q;
+    exec_deps.rob = m_rob;
     ALUDeps alu_deps;
     alu_deps.reg_req_q = m_comm_queues.reg_req_q;
     alu_deps.reg_resp_q = m_comm_queues.alu_resp_q;

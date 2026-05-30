@@ -114,7 +114,7 @@ void IssueUnit::issue()
 {
     for (auto &inst : m_select_buffer) {
         bool ret = m_exec.dispatch(inst);
-        LOG_LEVEL1("IssueUnit", "issued:%s %s, v%d-a%d-p%d%s%d", ret ? "true" : "false",
+        LOG_LEVEL1("IssueUnit", "issued:%s pc:0x%lx, %s, v%d-a%d-p%d%s%d", ret ? "true" : "false", inst->pc,
                    inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
                    inst->rd.ptag, inst->rid.idx == 0 ? "++" : "--", inst->rid.idx);
     }
@@ -160,7 +160,7 @@ void IssueUnit::flush() {
     auto clear_q = [&](std::vector<MInstPtr>& q) {
         std::vector<MInstPtr> tmp_q;
         for (auto inst : q) {
-            if (m_rob.is_older_than(m_flush_event.rid, inst->rid)) {
+            if (m_rob.is_older_than(inst->rid, m_flush_event.rid)) {
                 tmp_q.emplace_back(inst);
             } else {
                 inst->valid = false;

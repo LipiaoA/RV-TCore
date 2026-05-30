@@ -25,6 +25,24 @@
 
 ##### 1.8 Function Model 实现 - PENDING
 
+
+
+#### 20260530
+
+
+
+修复流水线 Flush 与预测器内存问题
+
+1. 补齐各模块依赖指针的默认初始化，并为 `ExecuteUnit` 正确传入 `ROB` 依赖，避免野指针访问。
+2. 修复 `ASyncQueue::flush_if()` 删除元素后跳过相邻元素的问题，保证 flush 队列能清理干净。
+3. 修正 Issue/Execute/ALU/BRU 对分支误预测后年轻指令的 flush 处理，避免错误路径指令继续流动。
+4. 修复 BIM 预测中的 `pc` 未初始化使用，以及 TAGE 索引未限界导致的越界访问。
+5. 调整 fetch 日志格式，避免使用非标准 `%b` 输出导致格式化风险。
+
+后面是在进入到fetch 取指部分 **0x103d4 这个pc的取指存在bug，明天再修**。
+
+
+
 #### 20260523
 
 第一条指令成功retired，补充部分flush和bypass

@@ -46,14 +46,18 @@ public:
 
     void flush_if(std::function<bool(const T&)> predicate)
     {
-        for (size_t i = 0; i < m_write_buffer.size(); i++) {
+        for (size_t i = 0; i < m_write_buffer.size();) {
             if (predicate(m_write_buffer[i])) {
                 m_write_buffer.erase(m_write_buffer.begin() + i);
+            } else {
+                ++i;
             }
         }
-        for (size_t i = 0; i < m_read_buffer.size(); i++) {
+        for (size_t i = 0; i < m_read_buffer.size();) {
             if (predicate(m_read_buffer[i])) {
                 m_read_buffer.erase(m_read_buffer.begin() + i);
+            } else {
+                ++i;
             }
         }
     }
