@@ -152,7 +152,7 @@ void FetchUnit::fetch2()
                 m_inst_buffer.push(inst);
             }
         }
-        LOG_LEVEL1("F2 Data Res", "line_addr:0x%lx", m_state[F2].vpc);
+        LOG_LEVEL1("F2 Data Res", "addr:0x%lx", m_state[F2].vpc);
     } else {
         m_redirect_pc[RES_F2].valid = true;
         m_redirect_pc[RES_F2].pc = m_state[F2].vpc;
@@ -189,10 +189,8 @@ void FetchUnit::fetch3()
         return;
     }
     memcpy(&m_f3_bpred, &m_f2_pred, sizeof(m_f3_bpred));
-    m_state[F3].vpc = m_state[F2].vpc;
     FetchPacket pkt;
     pkt.valid = true;
-    pkt.base_pc = m_state[F3].vpc;
     pkt.insts.clear();
 
     // 从缓冲头部开始，逐条解析 4 字节定长指令（不支持 2 字节压缩指令）
@@ -201,6 +199,11 @@ void FetchUnit::fetch3()
     for (u8 i = 0; i < m_fetch_width && !m_inst_buffer.empty(); ++i) {
         auto& inst = m_inst_buffer.front();
         m_inst_buffer.pop();
+
+        if (pkt.insts.empty()) {
+            pkt.base_pc = inst.pc;
+            m_state[F3].vpc = inst.pc;
+        }
 
         FetchInst finst;
         finst.valid    = true;

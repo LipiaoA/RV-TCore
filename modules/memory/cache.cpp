@@ -185,7 +185,7 @@ void GCache::install_line(MemResp resp, bool mark_dirty)
         m_meta[set_idx][victim].tag = tag;
         m_meta[set_idx][victim].dirty = mark_dirty;
         m_meta[set_idx][victim].last_access = ++m_tick;
-        memcpy(m_data[set_idx][victim].data(), resp.data, sizeof(m_data[set_idx][victim]));
+        memcpy(m_data[set_idx][victim].data(), resp.data, m_data[set_idx][victim].size());
         // update replacement structures
         if (!used_plru) {
             // if PLRU not available, maintain LRU list

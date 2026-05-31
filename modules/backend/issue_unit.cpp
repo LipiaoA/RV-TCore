@@ -114,7 +114,7 @@ void IssueUnit::issue()
 {
     for (auto &inst : m_select_buffer) {
         bool ret = m_exec.dispatch(inst);
-        LOG_LEVEL1("IssueUnit", "issued:%s pc:0x%lx, %s, v%d-a%d-p%d%s%d", ret ? "true" : "false", inst->pc,
+        LOG_LEVEL1("IssueUnit", "issued:%s pc:0x%lx, %s, v%d-x%d-p%d%s%d", ret ? "true" : "false", inst->pc,
                    inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
                    inst->rd.ptag, inst->rid.idx == 0 ? "++" : "--", inst->rid.idx);
     }
