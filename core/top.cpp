@@ -137,6 +137,7 @@ void Top::build() {
     fetch_deps.bpu = m_bpu;
     fetch_deps.fetch_decode_q = m_comm_queues.fetch_to_decode;
     fetch_deps.flush_event = m_comm_queues.flush_event;
+    fetch_deps.perf_stats = &m_perf_stats;
     m_fetch = new FetchUnit(fetch_conf, fetch_deps);
 
     DecodeDeps decode_deps;
@@ -163,6 +164,7 @@ void Top::build() {
     rename_deps.regfile = m_regfile;
     rename_deps.crat = m_crat;
     rename_deps.checkpoints = m_checkpoints;
+    rename_deps.perf_stats = &m_perf_stats;
     m_rename = new RenameUnit(rename_conf, rename_deps);
 
     CommitDeps commit_deps;
@@ -174,6 +176,7 @@ void Top::build() {
     commit_deps.reg_req_q = m_comm_queues.reg_req_q;
     commit_deps.crat = m_crat;
     commit_deps.checkpoints = m_checkpoints;
+    commit_deps.perf_stats = &m_perf_stats;
     m_commit = new CommitUnit(commit_conf, commit_deps);
 
 
@@ -218,6 +221,7 @@ void Top::build() {
     exec_deps.fpu_deps = &fpu_deps;
     exec_deps.flush_event = m_comm_queues.flush_event;
     exec_deps.lsu = m_lsu;
+    exec_deps.perf_stats = &m_perf_stats;
 
     m_execute = new ExecuteUnit(exec_conf, exec_deps);
 
@@ -228,14 +232,16 @@ void Top::build() {
     issue_deps.flush_event = m_comm_queues.flush_event;
     issue_deps.wakeup_bus = m_comm_queues.wakeup_bus;
     issue_deps.reg_req_q = m_comm_queues.reg_req_q;
+    issue_deps.perf_stats = &m_perf_stats;
     m_issue = new IssueUnit(issue_conf, issue_deps);
     FlushUnitDeps flush_deps;
     flush_deps.flush_event = m_comm_queues.flush_event;
     flush_deps.flush_req_q = m_comm_queues.flush_req_q;
+    flush_deps.perf_stats = &m_perf_stats;
     m_flush = new FlushUnit(flush_conf, flush_deps);
 }
 
-CoreDeps Top::get_core_deps() const {
+CoreDeps Top::get_core_deps() {
     CoreDeps deps;
     deps.fetch   = m_fetch;
     deps.decode  = m_decode;
@@ -248,5 +254,6 @@ CoreDeps Top::get_core_deps() const {
     deps.flush   = m_flush;
     deps.rob     = m_rob;
     deps.flush_event = m_comm_queues.flush_event;
+    deps.perf_stats = &m_perf_stats;
     return deps;
 }

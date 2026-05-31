@@ -1,9 +1,11 @@
 #include "flush_unit.h"
+#include "perf/perf_stats.h"
 
 FlushUnit::FlushUnit(const FlushUnitConfig& conf, const FlushUnitDeps& deps)
     : m_width(conf.width)
     , m_flush_event(*deps.flush_event)
     , m_flush_req_q(*deps.flush_req_q)
+    , m_stats(deps.perf_stats)
 {
 }
 
@@ -35,12 +37,19 @@ void FlushUnit::tick()
         if (!ret || !event.valid) {
             continue;
         }
+        if (m_stats) {
+            ++m_stats->flush.requests;
+        }
         auto it = priority.find(event.type);
         assert (it != priority.end());
         if (pri < it->second) {
             pri = it->second;
             m_flush_event = event;
         }
+    }
+    if (m_flush_event.valid && m_stats) {
+        ++m_stats->flush.events;
+        ++m_stats->flush.by_type[static_cast<size_t>(m_flush_event.type)];
     }
 }
 

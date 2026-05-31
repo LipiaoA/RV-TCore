@@ -20,6 +20,7 @@ private:
     u32                                     m_width;
     FlushEvent&                             m_flush_event;
     ASyncQueue<FlushEvent>&                 m_flush_req_q;
+    PerfStats*                              m_stats { nullptr };
 };
 
 #endif

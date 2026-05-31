@@ -292,6 +292,7 @@ class IssueUnit;
 class ExecuteUnit;
 class RegFileUnit;
 class FlushUnit;
+struct PerfStats;
 
 typedef struct IFetchReq {
     bool valid { false };
@@ -316,6 +317,7 @@ typedef struct {
     BranchPredictor*            bpu { nullptr };
     ASyncQueue<FetchPacket>*    fetch_decode_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } IFetchDeps;
 
 typedef struct {
@@ -332,6 +334,7 @@ typedef struct {
     FlushEvent*                 flush_event { nullptr };
     std::array<int, RV_GPR_SIZE>*   crat { nullptr };
     std::vector<RatCheckpoint>*     checkpoints { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } RenameDeps;
 
 typedef struct {
@@ -353,6 +356,7 @@ typedef struct {
     ASyncQueue<RegReq>*         reg_req_q { nullptr };
     std::array<int, RV_GPR_SIZE>*   crat { nullptr };
     std::vector<RatCheckpoint>*     checkpoints { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } CommitDeps;
 
 typedef struct {
@@ -362,6 +366,7 @@ typedef struct {
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
     ASyncQueue<RegReq>*         reg_req_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } IssueDeps;
 
 typedef struct {
@@ -414,11 +419,13 @@ typedef struct {
     LSUDeps*                    lsu_deps { nullptr };
     FPUDeps*                    fpu_deps { nullptr };
     ROB*                        rob { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } ExecDeps;
 
 typedef struct {
     ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } FlushUnitDeps;
 
 typedef struct {
@@ -433,6 +440,7 @@ typedef struct {
     FlushUnit*                  flush { nullptr };
     ROB*                        rob { nullptr };
     FlushEvent*                 flush_event { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } CoreDeps;
 
 #endif // RV_TCORE_MODULE_COMM_H

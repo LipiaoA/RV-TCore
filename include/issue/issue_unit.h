@@ -36,6 +36,7 @@ private:
     INPUT FlushEvent&                   m_flush_event;
     OUTPUT ASyncQueue<RegReq>&          m_reg_req_q;
     std::vector<MInstPtr>               m_select_buffer;
+    PerfStats*                          m_stats { nullptr };
 
     size_t                              m_int_issue_width  { 4 };
     size_t                              m_ls_issue_width   { 2 };

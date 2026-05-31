@@ -38,6 +38,7 @@ private:
 
     std::array<int, RV_GPR_SIZE>&       m_crat;
     std::vector<RatCheckpoint>&         m_checkpoints;
+    PerfStats*                          m_stats { nullptr };
 };
 
 #endif

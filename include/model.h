@@ -19,6 +19,7 @@ public:
     bool                                build();
     void                                reset();
     void                                run();
+    const PerfStats&                    perf_stats() const;
 
 private:
     u64                                 m_entry;

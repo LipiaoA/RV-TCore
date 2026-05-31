@@ -23,7 +23,7 @@ bool Model::build() {
     m_log->set_level(LogLevel::LEVEL3);
     m_log->add_writer(std::make_shared<ConsoleSink>());
     m_log->add_writer(std::make_shared<FileSink>("system.log"));
-    g_max_cycles = 100;
+    g_max_cycles = 50000;
     return true;
 }
 
@@ -42,6 +42,11 @@ void Model::run() {
         }
     }
     return;
+}
+
+const PerfStats& Model::perf_stats() const
+{
+    return m_top->perf_stats();
 }
 
 bool Model::init(const std::string& path) {

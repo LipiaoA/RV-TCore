@@ -2,6 +2,7 @@
 #include "isa/opcode.h"
 #include <algorithm>
 #include "execute/execute_unit.h"
+#include "perf/perf_stats.h"
 
 IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
     : IIssue("issue_unit"),
@@ -10,6 +11,7 @@ IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
       m_rename_issue_q(*deps.rename_issue_q),
       m_flush_event(*deps.flush_event),
       m_reg_req_q(*deps.reg_req_q),
+      m_stats(deps.perf_stats),
       m_int_issue_width(conf.int_issue_width),
       m_ls_issue_width(conf.ls_issue_width),
       m_fp_issue_width(conf.fp_issue_width),
@@ -84,6 +86,9 @@ void IssueUnit::select()
         }
     }
     if (candidates.empty()) {
+        if (m_stats) {
+            ++m_stats->issue.ready_stall_cycles;
+        }
         return;
     }
 
@@ -96,6 +101,9 @@ void IssueUnit::select()
         auto &inst = candidates[i];
         if (inst->type == InstType::INT || inst->type == InstType::STD || inst->type == InstType::BRANCH) {
             m_select_buffer.emplace_back(inst);
+            if (m_stats) {
+                ++m_stats->issue.selected_insts;
+            }
             EmitSrcRead(inst, inst->rs1, 1);
             EmitSrcRead(inst, inst->rs2, 2);
             ++sel;
@@ -106,6 +114,9 @@ void IssueUnit::select()
         auto &inst = candidates[i];
         if (inst->type == InstType::LOAD || inst->type == InstType::STA) {
             m_select_buffer.emplace_back(inst);
+            if (m_stats) {
+                ++m_stats->issue.selected_insts;
+            }
             EmitSrcRead(inst, inst->rs1, 1);
             EmitSrcRead(inst, inst->rs2, 2);
             ++sel;
@@ -117,6 +128,13 @@ void IssueUnit::issue()
 {
     for (auto &inst : m_select_buffer) {
         bool ret = m_exec.dispatch(inst);
+        if (m_stats) {
+            if (ret) {
+                ++m_stats->issue.issued_insts;
+            } else {
+                ++m_stats->issue.fu_busy_stall_cycles;
+            }
+        }
         LOG_LEVEL1("IssueUnit", "issued:%s pc:0x%lx, %s, v%d-x%d-p%d%s%d", ret ? "true" : "false", inst->pc,
                    inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
                    inst->rd.ptag, inst->rid.idx == 0 ? "++" : "--", inst->rid.idx);
@@ -152,6 +170,9 @@ void IssueUnit::async() {
         else {
             m_int_q.emplace_back(inst);
         }
+        if (m_stats) {
+            ++m_stats->issue.enqueued_insts;
+        }
     }
     return;
 }
@@ -167,6 +188,9 @@ void IssueUnit::flush() {
                 tmp_q.emplace_back(inst);
             } else {
                 inst->valid = false;
+                if (m_stats) {
+                    ++m_stats->issue.flushed_insts;
+                }
             }
         }
         q.swap(tmp_q);
@@ -180,7 +204,11 @@ void IssueUnit::flush() {
         clear_q(m_select_buffer);
         clear_q(m_fp_q);
         m_rename_issue_q.flush_if([&](const MInstPtr& inst) {
-            return m_rob.is_older_than(m_flush_event.rid, inst->rid);
+            bool flushed = m_rob.is_older_than(m_flush_event.rid, inst->rid);
+            if (flushed && m_stats) {
+                ++m_stats->issue.flushed_insts;
+            }
+            return flushed;
         });
     } break;
     case FlushType::EXCEPTION:

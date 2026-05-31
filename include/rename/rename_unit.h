@@ -42,6 +42,7 @@ private:
     std::vector<RatCheckpoint>&         m_checkpoints;
 
     FlushEvent&                         m_flush_event;
+    PerfStats*                          m_stats { nullptr };
 
     std::array<i32, RV_GPR_SIZE>        m_rat;
     std::deque<i32>                     m_free_list;

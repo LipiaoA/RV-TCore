@@ -1,4 +1,5 @@
 #include "execute_unit.h"
+#include "perf/perf_stats.h"
 
 ExecuteUnit::ExecuteUnit(const ExecConfig& conf, const ExecDeps& deps)
     : IExecute(),
@@ -13,7 +14,8 @@ ExecuteUnit::ExecuteUnit(const ExecConfig& conf, const ExecDeps& deps)
      m_lsu_width(conf.agu_num),
      m_inst_commit_q(*deps.inst_commit_q),
      m_flush_event(*deps.flush_event),
-     m_rob(*deps.rob)
+     m_rob(*deps.rob),
+     m_stats(deps.perf_stats)
 {
     ALUDeps *alu_deps = deps.alu_deps;
     FPUDeps *fpu_deps = deps.fpu_deps;
@@ -69,6 +71,9 @@ bool ExecuteUnit::dispatch(MInstPtr inst) {
     for (u32 i = 0; i < m_alu_num; i++) {
         if (m_alus[i].dispatch(inst)) {
             inst->state = InstState::ISSUED;
+            if (m_stats) {
+                ++m_stats->execute.dispatch_accepted;
+            }
             return true;
         }
     } break;
@@ -76,6 +81,9 @@ bool ExecuteUnit::dispatch(MInstPtr inst) {
         for (u32 i = 0; i < m_bru_num; i++) {
             if (m_brus[i].dispatch(inst)) {
                 inst->state = InstState::ISSUED;
+                if (m_stats) {
+                    ++m_stats->execute.dispatch_accepted;
+                }
                 return true;
             }
         } break;
@@ -84,11 +92,17 @@ bool ExecuteUnit::dispatch(MInstPtr inst) {
         for (u32 i = 0; i < m_lsu_width; i++) {
             if (m_lsu.dispatch(inst)) {
                 inst->state = InstState::ISSUED;
+                if (m_stats) {
+                    ++m_stats->execute.dispatch_accepted;
+                }
                 return true;
             }
         } break;
     default:
         assert(0);
+    }
+    if (m_stats) {
+        ++m_stats->execute.dispatch_rejected;
     }
     return false;
 }
@@ -104,6 +118,10 @@ void ExecuteUnit::arbitration() {
         MInstPtr inst = fu.commit_inst();
         if (m_inst_commit_q.write(inst)) {
             fu.commit_ack();
+            if (m_stats) {
+                ++m_stats->execute.completed_insts;
+                ++m_stats->execute.writeback_insts;
+            }
             ++committed;
         }
         return;
@@ -135,7 +153,11 @@ void ExecuteUnit::flush() {
     }
     m_lsu.flush(m_flush_event);
     m_inst_commit_q.flush_if([&](const MInstPtr& inst) {
-        return m_rob.is_older_than(m_flush_event.rid, inst->rid);
+        bool flushed = m_rob.is_older_than(m_flush_event.rid, inst->rid);
+        if (flushed && m_stats) {
+            ++m_stats->execute.flushed_insts;
+        }
+        return flushed;
     });
     return;
 }

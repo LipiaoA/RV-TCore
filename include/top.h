@@ -4,6 +4,7 @@
 #include "intf.h"
 #include "module_comm.h"
 #include "config.h"
+#include "perf/perf_stats.h"
 
 class CycleScheduler;
 class MultiLevelTLB;
@@ -31,8 +32,10 @@ public:
     void build();
 
 public:
-    CoreDeps                              get_core_deps() const;
+    CoreDeps                              get_core_deps();
     Memory*                               get_mem() {return m_mem;}
+    const PerfStats&                      perf_stats() const { return m_perf_stats; }
+    PerfStats&                            perf_stats() { return m_perf_stats; }
 
 private:
     void init();
@@ -60,6 +63,7 @@ private:
     LSU*                                    m_lsu { nullptr };
     RegFileUnit*                            m_regfile { nullptr };
     TCoreConfig                             m_config;
+    PerfStats                               m_perf_stats;
 };
 
 #endif

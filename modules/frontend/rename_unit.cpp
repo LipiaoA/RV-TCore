@@ -2,6 +2,7 @@
 #include "rob/rob.h"
 #include "issue/issue_unit.h"
 #include "isa/opcode.h"
+#include "perf/perf_stats.h"
 #include "regfile_unit.h"
 
 RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
@@ -13,6 +14,7 @@ RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
     , m_crat(*deps.crat)
     , m_checkpoints(*deps.checkpoints)
     , m_flush_event(*deps.flush_event)
+    , m_stats(deps.perf_stats)
     , m_rename_width(conf.width)
     , m_prf_capacity(conf.prf_capacity)
 {
@@ -35,6 +37,9 @@ void RenameUnit::r0() {
     while (n < m_rename_width && m_decode_rename_q.read(inst)) {
         if (!inst->valid)
             continue;
+        if (m_stats) {
+            ++m_stats->rename.input_insts;
+        }
         LOG_LEVEL1("RenameUnit R0", "r0 pc:0x%lx, inst: %s", inst->pc, inst->inst_name.c_str());
         m_r1_buf.push_back(inst);
         ++n;
@@ -61,6 +66,9 @@ void RenameUnit::r1() {
         }
         if (inst->rd.valid) {
             if (m_free_list.empty()) {
+                if (m_stats) {
+                    ++m_stats->rename.free_list_stall_cycles;
+                }
                 m_r1_buf.push_front(inst);
                 break;
             }
@@ -72,6 +80,9 @@ void RenameUnit::r1() {
         }
 
         if (m_rob.full()) {
+            if (m_stats) {
+                ++m_stats->rename.rob_full_stall_cycles;
+            }
             m_r1_buf.push_front(inst);
             break;
         }
@@ -83,6 +94,9 @@ void RenameUnit::r1() {
                    inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val, id_pre.c_str(), inst->rid.idx);
         auto alloc = m_rob.alloc(inst);
         if (!alloc) {
+            if (m_stats) {
+                ++m_stats->rename.rob_full_stall_cycles;
+            }
             m_r1_buf.push_front(inst);
             break;
         }
@@ -98,6 +112,9 @@ void RenameUnit::r1() {
         }
 
         inst->rid = alloc.value();
+        if (m_stats) {
+            ++m_stats->rename.renamed_insts;
+        }
         m_r2_buf.push_back(inst);
         ++n;
     }
@@ -159,14 +176,27 @@ bool RenameUnit::dispatch(MInstPtr inst) {
     LOG_LEVEL1("RenameUnit R2", "pc:0x%lx, inst: %s, rd:v%d-x%d-p%d%s%d", inst->pc,
                inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
                inst->rd.ptag, id_pre.c_str(), inst->rid.idx);
-    m_rename_issue_q.write(inst);
-    return true;
+    if (m_rename_issue_q.write(inst)) {
+        if (m_stats) {
+            ++m_stats->rename.dispatched_insts;
+        }
+        return true;
+    }
+    return false;
 }
 
 
 void RenameUnit::flush() {
     if (!m_flush_event.valid) {
         return;
+    }
+    if (m_stats) {
+        m_stats->rename.flushed_insts += m_r1_buf.size() + m_r2_buf.size();
+        m_rename_issue_q.for_each([&](const MInstPtr& inst) {
+            if (inst && inst->valid) {
+                ++m_stats->rename.flushed_insts;
+            }
+        });
     }
     m_r1_buf.clear();
     m_r2_buf.clear();

@@ -114,6 +114,7 @@ private:
     BranchPredictor&                    m_bpu;
     OUTPUT ASyncQueue<FetchPacket>&     m_fetch_decode_q;
     FlushEvent&                         m_flush_event;
+    PerfStats*                          m_stats { nullptr };
 
     u64                                 m_squash_id;
 

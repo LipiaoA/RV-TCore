@@ -12,6 +12,7 @@
 #include "decode/decode_unit.h"
 #include "icache/dcache.h"
 #include "log.h"
+#include "perf/perf_stats.h"
 #include "util/util.h"
 
 FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
@@ -20,6 +21,7 @@ FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     , m_bpu(*deps.bpu)
     , m_fetch_decode_q(*deps.fetch_decode_q)
     , m_flush_event(*deps.flush_event)
+    , m_stats(deps.perf_stats)
     , m_fetch_width(conf.fetch_width)
     , m_group_size(conf.group_size)
     , m_bank_size(conf.bank_size)
@@ -154,6 +156,9 @@ void FetchUnit::fetch2()
         }
         LOG_LEVEL1("F2 Data Res", "addr:0x%lx", m_state[F2].vpc);
     } else {
+        if (m_stats) {
+            ++m_stats->frontend.icache_wait_cycles;
+        }
         m_redirect_pc[RES_F2].valid = true;
         m_redirect_pc[RES_F2].pc = m_state[F2].vpc;
         m_state[F1].valid = false;
@@ -286,12 +291,25 @@ void FetchUnit::fetch4()
 }
 void FetchUnit::fetch5()
 {
-    if (!m_f4_pkt.valid || !m_state[F5].valid || m_fetch_decode_q.full()) {
+    if (!m_f4_pkt.valid || !m_state[F5].valid) {
+        return;
+    }
+    if (m_fetch_decode_q.full()) {
+        if (m_stats) {
+            ++m_stats->frontend.decode_queue_full_cycles;
+        }
         return;
     }
     m_f5_pkt.valid = true;
     m_f5_pkt.data = m_f4_pkt.data;
-    m_fetch_decode_q.write(m_f5_pkt.data);
+    if (m_fetch_decode_q.write(m_f5_pkt.data) && m_stats) {
+        ++m_stats->frontend.fetch_packets;
+        for (const auto& inst : m_f5_pkt.data.insts) {
+            if (inst.valid) {
+                ++m_stats->frontend.fetch_insts;
+            }
+        }
+    }
     m_run[F5] = true;
 }
 
@@ -346,6 +364,24 @@ void FetchUnit::flush()
         assert(false);
     }
     case FlushType::BRANCH_MISPRED: {
+        if (m_stats) {
+            m_stats->frontend.flushed_insts += m_inst_buffer.size();
+            auto count_pkt = [](const pipe_reg_t<FetchPacket>& pkt) {
+                u64 count = 0;
+                if (!pkt.valid) {
+                    return count;
+                }
+                for (const auto& inst : pkt.data.insts) {
+                    if (inst.valid) {
+                        ++count;
+                    }
+                }
+                return count;
+            };
+            m_stats->frontend.flushed_insts += count_pkt(m_f3_pkt);
+            m_stats->frontend.flushed_insts += count_pkt(m_f4_pkt);
+            m_stats->frontend.flushed_insts += count_pkt(m_f5_pkt);
+        }
         m_redirect_pc[RESET_PC].valid = true;
         m_redirect_pc[RESET_PC].pc = m_flush_event.redirect_pc;
         m_epoch++;
@@ -363,6 +399,9 @@ void FetchUnit::flush()
                 if (!fi.valid)
                     continue;
                 if (fi.fetch_id > m_flush_event.fetch_id) {
+                    if (m_stats) {
+                        ++m_stats->frontend.flushed_insts;
+                    }
                     fi.valid = false;
                     pkt.valid_mask &= ~(1u << i);
                     pkt.br_mask    &= ~(1u << i);

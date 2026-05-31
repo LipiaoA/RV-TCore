@@ -1,4 +1,5 @@
 #include "commit_unit.h"
+#include "perf/perf_stats.h"
 #include "rob/rob.h"
 #include "rename/rename_unit.h"
 
@@ -14,6 +15,7 @@ CommitUnit::CommitUnit(const CommitConfig& conf, const CommitDeps& deps)
     , m_inst_commit_q(*deps.inst_commit_q)
     , m_crat(*deps.crat)
     , m_checkpoints(*deps.checkpoints)
+    , m_stats(deps.perf_stats)
 {}
 
 void CommitUnit::build() {}
@@ -36,6 +38,9 @@ void CommitUnit::inst_reslove() {
         }
         if (inst->state == InstState::ISSUED) {
             inst->state = InstState::EXECUTED;
+            if (m_stats) {
+                ++m_stats->commit.resolved_insts;
+            }
             LOG_LEVEL1("CommitUnit", "pc: 0x%lx, inst: %s resolved", inst->pc, inst->inst_name.c_str());
             write_back(inst);
         }
@@ -44,6 +49,9 @@ void CommitUnit::inst_reslove() {
 
 void CommitUnit::inst_commit() {
     if (m_rob.empty()) {
+        if (m_stats) {
+            ++m_stats->commit.empty_cycles;
+        }
         return;
     }
     for (u32 i = 0; i < m_commit_width; i++) {
@@ -53,8 +61,14 @@ void CommitUnit::inst_commit() {
             if (!m_rob.commit_head()) {
                 break;
             }
+            if (m_stats) {
+                ++m_stats->commit.retired_insts;
+            }
             LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired", entry->inst->pc, entry->inst->inst_name.c_str());
         } else {
+            if (i == 0 && m_stats) {
+                ++m_stats->commit.head_not_ready_cycles;
+            }
             break;
         }
     }
