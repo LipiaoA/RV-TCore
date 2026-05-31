@@ -110,6 +110,9 @@ void Top::build() {
     m_crat              =   new std::array<int, RV_GPR_SIZE>();
     m_checkpoints       =   new std::vector<RatCheckpoint>();
 
+    m_crat->fill(0);
+    (*m_crat)[2] = 1; // x2/sp uses a dedicated initial physical register.
+
     m_l2                =   new DCache(m_sched, l2_conf);
     m_l2->set_name("l2 Cache");
     m_l2->set_mem(m_mem);

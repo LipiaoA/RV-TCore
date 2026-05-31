@@ -6,16 +6,20 @@ PRF::PRF(u32 phys_size)
     reset();
 }
 
-
-
 void PRF::reset()
 {
     m_regs.fill(0);
     m_valid.fill(false);
 
     memset(m_busy, true, m_phys_n * sizeof(bool));
+
+    m_busy[1] = false;
+    m_valid[1] = true;
+    m_regs[1] = STACK_POINTER;
+
     m_busy[0] = false;
     m_valid[0] = true;
+    m_regs[0] = 0;
 }
 
 u64 PRF::read(i32 pidx) const

@@ -21,7 +21,6 @@ void AGU::tick()
 {
     E0();
     R1();
-    R0();
     dump_states();
     shift();
 }
@@ -39,25 +38,11 @@ void AGU::dispatch(MInstPtr inst)
     m_input_latch.valid = true;
 }
 
-void AGU::R0()
-{
-    if (!m_pipe[0].valid || !m_pipe[0].inst)
-        return;
-    RegReq req;
-    MInstPtr inst = m_pipe[0].inst;
-    if (inst->rs1.valid) {
-        req.valid = true;
-        req.ptag = inst->rs1.ptag;
-        req.write = false;
-        m_reg_req_q.write(req);
-    }
-}
-
 void AGU::R1()
 {
-    if (!m_pipe[1].valid || m_reg_resp_q.empty())
+    if (!m_pipe[0].valid || m_reg_resp_q.empty())
         return;
-    MInstPtr inst = m_pipe[1].inst;
+    MInstPtr inst = m_pipe[0].inst;
     if (inst->rs1.valid) {
         bool found = false;
         for (auto& resp : m_reg_bypass_bus) {
@@ -80,9 +65,9 @@ void AGU::R1()
 
 void AGU::E0()
 {
-    if (!m_pipe[3].valid || !m_pipe[3].inst)
+    if (!m_pipe[1].valid || !m_pipe[1].inst)
         return;
-    MInstPtr inst = m_pipe[3].inst;
+    MInstPtr inst = m_pipe[1].inst;
     InstExec::AguExecResult ret = InstExec::exec_agu(inst);
     if (!ret.valid)
         return;
@@ -113,8 +98,6 @@ void AGU::shift()
             m_pipe[i - 1].valid = false;
         }
     }
-    m_pipe[0].valid = false;
-    m_pipe[0].inst  = nullptr;
 }
 
 void AGU::flush(const FlushEvent& event)

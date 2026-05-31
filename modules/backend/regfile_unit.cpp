@@ -85,6 +85,10 @@ void RegFileUnit::set_busy(i32 ptag) {
     m_prf.set_busy(ptag);
 }
 
+void RegFileUnit::init_phys(i32 ptag, u64 val) {
+    m_prf.write(ptag, val);
+}
+
 void RegFileUnit::reset() {
     m_prf.reset();
 }

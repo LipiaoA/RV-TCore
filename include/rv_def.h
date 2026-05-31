@@ -30,5 +30,8 @@ constexpr u32 MAX_FTQ_ENTRIES = 8;
 
 constexpr u32 MAX_FETCH_WIDTH = 8;
 
+constexpr u64  STACK_SIZE = 0x400000; // 4MB
+constexpr pc_t STACK_POINTER = 0x80000000;
+
 
 #endif

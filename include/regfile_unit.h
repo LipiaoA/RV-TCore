@@ -19,6 +19,7 @@ public:
     void                                accept() const;
     bool                                is_ready(i32 ptag) const;
     void                                set_busy(i32 ptag);
+    void                                init_phys(i32 ptag, u64 val);
     void                                reset();
 
 private:

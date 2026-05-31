@@ -31,9 +31,8 @@ public:
     void                                    dump_states() const;
 
 private:
-    virtual void                            R0();
-    virtual void                            R1();
-    virtual void                            E0();
+    void                                    R1();
+    void                                    E0();
 
     void                                    shift();
     void                                    flush(const FlushEvent& event);

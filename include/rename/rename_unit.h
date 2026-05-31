@@ -25,12 +25,14 @@ public:
     void                                build() override;
     bool                                dispatch(MInstPtr inst);
     void                                recycle_phys(int phys);
+    void                                init_rat(const std::array<i32, RV_GPR_SIZE>& rat);
 
 private:
     void                                flush();
     void                                r0();
     void                                r1();
     void                                r2();
+    void                                rebuild_free_list();
 
     INPUT ASyncQueue<MInstPtr>&         m_decode_rename_q;
     OUTPUT ASyncQueue<MInstPtr>&        m_rename_issue_q;

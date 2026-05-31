@@ -16,14 +16,7 @@ RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
     , m_rename_width(conf.width)
     , m_prf_capacity(conf.prf_capacity)
 {
-    for (u32 p = 1; p < m_prf_capacity; ++p) {
-        m_free_list.push_back(static_cast<i32>(p));
-    }
-    // 0 is x0, is zero register
-    m_rat[0] = 0;
-    for (u32 i = 1; i < RV_GPR_SIZE; ++i) {
-        m_rat[i] = 0;
-    }
+    init_rat(m_crat);
     m_checkpoint_id = 1;
 }
 
@@ -127,13 +120,31 @@ void RenameUnit::recycle_phys(i32 phys) {
 }
 
 void RenameUnit::build() {
-    for (u32 i = 0; i < RV_GPR_SIZE; ++i) {
-        m_rat[i] = 0;
-    }
-    for (u32 i = 1; i < m_prf_capacity; ++i) {
-        m_free_list.push_back(i);
-    }
+    init_rat(m_crat);
     return;
+}
+
+void RenameUnit::init_rat(const std::array<i32, RV_GPR_SIZE>& rat) {
+    m_rat = rat;
+    m_rat[0] = 0;
+    rebuild_free_list();
+}
+
+void RenameUnit::rebuild_free_list() {
+    std::vector<bool> used(m_prf_capacity, false);
+    used[0] = true;
+    for (i32 ptag : m_rat) {
+        if (ptag >= 0 && static_cast<u32>(ptag) < m_prf_capacity) {
+            used[static_cast<size_t>(ptag)] = true;
+        }
+    }
+
+    m_free_list.clear();
+    for (u32 p = 1; p < m_prf_capacity; ++p) {
+        if (!used[p]) {
+            m_free_list.push_back(static_cast<i32>(p));
+        }
+    }
 }
 
 void RenameUnit::commit() {
@@ -145,7 +156,7 @@ bool RenameUnit::dispatch(MInstPtr inst) {
         return false;
     }
     std::string id_pre = inst->rid.idx == 0 ? "++" : "--";
-    LOG_LEVEL1("RenameUnit R2", "dispatch inst: %s, v%d-a%d-p%d%s%d",
+    LOG_LEVEL1("RenameUnit R2", "pc:0x%lx, inst: %s, rd:v%d-x%d-p%d%s%d", inst->pc,
                inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
                inst->rd.ptag, id_pre.c_str(), inst->rid.idx);
     m_rename_issue_q.write(inst);

@@ -91,21 +91,24 @@ void IssueUnit::select()
                      [this](const MInstPtr lhs, const MInstPtr rhs) {
                          return m_rob.is_older_than(lhs->rid, rhs->rid);
                      });
-
-    for (size_t i = 0; i < m_int_issue_width && i < candidates.size(); ++i) {
+    u32 sel = 0;
+    for (size_t i = 0; sel < m_int_issue_width && i < candidates.size(); ++i) {
         auto &inst = candidates[i];
         if (inst->type == InstType::INT || inst->type == InstType::STD || inst->type == InstType::BRANCH) {
             m_select_buffer.emplace_back(inst);
             EmitSrcRead(inst, inst->rs1, 1);
             EmitSrcRead(inst, inst->rs2, 2);
+            ++sel;
         }
     }
-    for (size_t i = 0; i < m_ls_issue_width && i < candidates.size(); ++i) {
+    sel = 0;
+    for (size_t i = 0; sel < m_ls_issue_width && i < candidates.size(); ++i) {
         auto &inst = candidates[i];
         if (inst->type == InstType::LOAD || inst->type == InstType::STA) {
             m_select_buffer.emplace_back(inst);
             EmitSrcRead(inst, inst->rs1, 1);
             EmitSrcRead(inst, inst->rs2, 2);
+            ++sel;
         }
     }
 }

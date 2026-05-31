@@ -10,10 +10,15 @@ bool Model::build() {
     m_top = new Top(TCoreConfig::get_instance());
     m_top->build();
     m_mem = m_top->get_mem();
+
+    m_mem->add_segment(STACK_POINTER - STACK_SIZE, STACK_SIZE);
+    m_mem->store64(STACK_POINTER - 8, 0x1);
+
     CoreDeps deps = m_top->get_core_deps();
     m_core = new Core(deps);
     m_core->build();
     m_core->reset();
+
     m_log = &LogSystem::instance();
     m_log->set_level(LogLevel::LEVEL3);
     m_log->add_writer(std::make_shared<ConsoleSink>());
