@@ -16,7 +16,7 @@ public:
 
     virtual void tick() = 0;                    // 组合逻辑评估
     virtual void commit() = 0;                    // 将 next->current 生效（子类覆盖）
-    virtual void reset() {}                     // 复位
+    virtual void reset() = 0;                     // 复位
     virtual void build() = 0;
 
     virtual std::string dev_name() const { return m_name; }

@@ -24,6 +24,7 @@ public:
     void                                    commit_ack();
 
     void                                    flush(const FlushEvent& event);
+    void                                    reset();
 
 private:
     void                                    R1();

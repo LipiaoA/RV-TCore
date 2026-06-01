@@ -23,6 +23,7 @@ public:
     void                                tick() override;
     void                                commit() override;
     void                                build() override;
+    void                                reset() override;
     bool                                dispatch(MInstPtr inst);
     void                                recycle_phys(int phys);
     void                                init_rat(const std::array<i32, RV_GPR_SIZE>& rat);

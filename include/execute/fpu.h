@@ -26,6 +26,7 @@ public:
     void                                    commit() {}
     void                                    build() {}
     void                                    flush(const FlushEvent& event) {}
+    void                                    reset() {}
 
 private:
     i32                                     m_stages { 4 };

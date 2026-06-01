@@ -21,6 +21,7 @@ public:
     void                                tick() override;
     void                                commit() override;
     void                                build() override;
+    void                                reset() override;
 
     bool                                dispatch(MInstPtr inst);
 

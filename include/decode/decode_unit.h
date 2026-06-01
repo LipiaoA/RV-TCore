@@ -20,7 +20,7 @@ public:
     void                                tick() override;
     void                                commit() override;
     void                                build() override {}
-
+    void                                reset() override;
     bool                                has_decoded() const;
     bool                                try_pop_decoded(MicroOp& out);
 

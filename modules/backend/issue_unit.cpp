@@ -263,3 +263,7 @@ void IssueUnit::EmitSrcRead(const MInstPtr inst, const RegType& src, int idx)
     req.fu = fu;
     m_reg_req_q.write(req);
 }
+
+void IssueUnit::reset() {
+    return;
+}

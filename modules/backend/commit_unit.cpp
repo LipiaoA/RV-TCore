@@ -69,7 +69,7 @@ void CommitUnit::inst_commit() {
                 ++m_stats->commit.retired_insts;
             }
             LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired", entry->inst->pc, entry->inst->inst_name.c_str());
-            u64 result = inst->rd.valid ? inst->rd.val : 0;
+            u64 result = entry->inst->rd.valid ? entry->inst->rd.val : 0;
             InstrTrace::instance().record_retire(entry->inst->pc, result);
         } else {
             if (i == 0 && m_stats) {
@@ -104,4 +104,8 @@ void CommitUnit::flush() {
     if (!m_flush_event.valid) {
         return;
     }
+}
+
+void CommitUnit::reset() {
+    return;
 }

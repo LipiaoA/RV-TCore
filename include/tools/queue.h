@@ -153,6 +153,10 @@ public:
         }
         m_write_buffer.clear();
      }
+     void reset() {
+        clear();
+        stalled = false;
+     }
 private:
      template <typename Fn>
      static void for_each_mut_impl(std::deque<T>& buffer, Fn && fn)

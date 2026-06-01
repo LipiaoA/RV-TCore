@@ -118,7 +118,7 @@ int main()
     const auto& first = packets[0];
     const auto& second = packets[1];
     assert(first.base_pc == 0x103d4);
-    assert(first.insts.back().pc == 0x103e0);
+    assert(first.insts.back().pc == 0x103dc);
     assert(second.base_pc == second.insts.front().pc);
     assert(second.base_pc == first.insts.back().pc + first.insts.back().size);
     assert(second.insts.front().pc == first.insts.back().pc + first.insts.back().size);

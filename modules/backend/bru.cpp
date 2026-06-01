@@ -270,3 +270,7 @@ void BRU::commit_ack()
     m_commit_latch.valid = false;
     m_commit_latch.inst = nullptr;
 }
+
+void BRU::reset() {
+    return;
+}

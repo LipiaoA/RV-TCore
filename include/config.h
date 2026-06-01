@@ -60,6 +60,9 @@ typedef struct {
     u32 fetch_width { 4 };
     u32 group_size { 4 };
     u32 bank_size { 4 };
+    u32 bank_count { 4 };
+    u32 group_count { 2 };
+    u32 cache_line_size { 64 };
 } FetchConfig;
 
 typedef struct {
