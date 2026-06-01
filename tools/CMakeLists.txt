@@ -2,6 +2,7 @@
 add_library(tools STATIC
     elf/elf_l.cpp
     log/log.cpp
+    log/instr_trace.cpp
 )
 
 target_include_directories(tools PUBLIC

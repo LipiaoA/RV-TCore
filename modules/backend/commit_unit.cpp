@@ -1,4 +1,5 @@
 #include "commit_unit.h"
+#include "instr_trace.h"
 #include "perf/perf_stats.h"
 #include "rob/rob.h"
 #include "rename/rename_unit.h"
@@ -18,7 +19,10 @@ CommitUnit::CommitUnit(const CommitConfig& conf, const CommitDeps& deps)
     , m_stats(deps.perf_stats)
 {}
 
-void CommitUnit::build() {}
+void CommitUnit::build()
+{
+    InstrTrace::instance().open("instr_trace.log");
+}
 
 void CommitUnit::tick() {
     flush();
@@ -65,6 +69,8 @@ void CommitUnit::inst_commit() {
                 ++m_stats->commit.retired_insts;
             }
             LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired", entry->inst->pc, entry->inst->inst_name.c_str());
+            u64 result = inst->rd.valid ? inst->rd.val : 0;
+            InstrTrace::instance().record_retire(entry->inst->pc, result);
         } else {
             if (i == 0 && m_stats) {
                 ++m_stats->commit.head_not_ready_cycles;
@@ -91,7 +97,7 @@ void CommitUnit::write_back(const MInstPtr inst)
 
 void CommitUnit::commit()
 {
-
+    InstrTrace::instance().flush();
 }
 
 void CommitUnit::flush() {
