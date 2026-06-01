@@ -19,6 +19,7 @@ public:
     void                                wakeup();
     void                                select();
     void                                issue();
+    void                                reset();
 
 private:
     void                                async();

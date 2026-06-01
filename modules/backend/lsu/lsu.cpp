@@ -178,9 +178,11 @@ void LSU::replay(SQEntry& store_entry) {
 }
 
 void LSU::flush(const FlushEvent& event) {
+    return;
 }
 
 void LSU::reset() {
+    return;
 }
 
 int LSU::find_dependent_store(uint32_t ssid) {

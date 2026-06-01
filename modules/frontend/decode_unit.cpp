@@ -274,3 +274,7 @@ void DecodeUnit::flush()
     }
     return;
 }
+
+void DecodeUnit::reset() {
+    return;
+}

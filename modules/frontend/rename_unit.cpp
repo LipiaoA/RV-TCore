@@ -223,3 +223,7 @@ void RenameUnit::flush() {
     m_checkpoints.erase(it, m_checkpoints.end());
     return;
 }
+
+void RenameUnit::reset() {
+    return;
+}

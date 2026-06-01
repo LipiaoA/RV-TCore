@@ -133,6 +133,10 @@ void AGU::commit()
     }
 }
 
+void AGU::reset() {
+    return;
+}
+
 void AGU::dump_states() const
 {
     std::string log_prefix = "AGU" + std::to_string(m_idx) + " ";

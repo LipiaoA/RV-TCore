@@ -29,6 +29,7 @@ public:
     void                                    commit() override;
 
     void                                    dump_states() const;
+    void                                    reset();
 
 private:
     void                                    R1();

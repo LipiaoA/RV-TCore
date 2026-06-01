@@ -199,3 +199,7 @@ void ALU::dump_states() const
         print_inst(log_prefix + "E0 ", m_commit_latch.inst);
     }
 }
+
+void ALU::reset() {
+    return;
+}

@@ -26,6 +26,7 @@ public:
 
 public:
     virtual void                            flush(const FlushEvent& event);
+    void                                    reset();
 
 protected:
     virtual void                            R1();

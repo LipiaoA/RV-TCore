@@ -60,6 +60,9 @@ typedef struct {
     u32 fetch_width { 4 };
     u32 group_size { 4 };
     u32 bank_size { 4 };
+    u32 bank_count { 4 };
+    u32 group_count { 2 };
+    u32 cache_line_size { 64 };
 } FetchConfig;
 
 typedef struct {
@@ -215,6 +218,10 @@ typedef struct {
     u32 icache_install_latency;
     u32 icache_writeback_latency;
     u32 icache_inclusive;       // 0: NonInclusive, 1: Inclusive, 2: Exclusive
+    u32 icache_group_size;
+    u32 icache_bank_size;
+    u32 icache_bank_count;
+    u32 icache_group_count;
 
     // L2 cache related
     u32 l2_size;

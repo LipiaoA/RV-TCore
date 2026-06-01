@@ -3,6 +3,7 @@
 
 #include <deque>
 #include <optional>
+#include <queue>
 
 #include "intf.h"
 #include "branch_predictor.h"
@@ -93,6 +94,7 @@ public:
     void                                commit() override;
     void                                redirct(pc_t new_pc, u64 fetch_id = 0);
     void                                dump_state() const;
+    void                                reset();
 
 private:
     void                                flush();
@@ -146,10 +148,12 @@ private:
     u32                                 m_fetch_width;
     pc_t                                m_pc;
 
-    u32                                 m_group_size;
-    u32                                 m_bank_size {16};
-    u32                                 m_bank_count { 4 };
-    u32                                 m_group_count { 2 };
+    u32                                 m_group_size {32}; // 32 bytes
+    u32                                 m_bank_size {16}; // 16 bytes
+    u32                                 m_bank_count { 4 }; // 4 banks
+    u32                                 m_group_count { 2 }; // 2 groups
+    u32                                 m_cache_line_size { 64 }; // 64 bytes
+
     u32                                 m_epoch;
     u64                                 m_fetch_id { 1 };
 

@@ -17,6 +17,8 @@ public:
     void                                tick() override;
     void                                commit() override;
     void                                build() override;
+    void                                reset() override;
+
 private:
     void                                write_back(const MInstPtr inst);
     void                                inst_commit();

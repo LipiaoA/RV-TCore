@@ -86,6 +86,10 @@ void TCoreConfig::init_config() {
     m_core_config.icache_install_latency  = 1;
     m_core_config.icache_writeback_latency = 8;
     m_core_config.icache_inclusive        = 1;
+    m_core_config.icache_group_size       = 32;
+    m_core_config.icache_bank_size        = 16;
+    m_core_config.icache_bank_count       = 4;
+    m_core_config.icache_group_count      = 2;
 
     // L2 cache configuration
     m_core_config.l2_size             = 512 * 1024;
@@ -213,6 +217,9 @@ FetchConfig TCoreConfig::fetch_config() const {
     conf.fetch_width = m_core_config.fetch_width;
     conf.group_size = m_core_config.fetch_group_size;
     conf.bank_size = m_core_config.fetch_bank_size;
+    conf.cache_line_size = m_core_config.icache_line_size;
+    conf.bank_count = m_core_config.icache_bank_count;
+    conf.group_count = m_core_config.icache_group_count;
     return conf;
 }
 
