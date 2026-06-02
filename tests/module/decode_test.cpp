@@ -15,14 +15,31 @@ static FetchPacket make_packet_addi_x0(pc_t pc, insn_t insn)
 {
     FetchPacket pkt {};
     pkt.valid = true;
-    pkt.fetch_id = 1;
     pkt.base_pc = pc;
     pkt.valid_mask = 1u;
     FetchInst fi {};
     fi.valid = true;
     fi.pc = pc;
     fi.insn = insn;
-    fi.fetch_id = pkt.fetch_id;
+    fi.fetch_id = 1;
+    fi.size = 4;
+    pkt.insts.push_back(fi);
+    return pkt;
+}
+
+static FetchPacket make_packet_branch(pc_t pc, insn_t insn, bool pred_taken)
+{
+    FetchPacket pkt {};
+    pkt.valid = true;
+    pkt.base_pc = pc;
+    pkt.valid_mask = 1u;
+    pkt.br_mask = 1u;
+    pkt.pred_taken = pred_taken;
+    FetchInst fi {};
+    fi.valid = true;
+    fi.pc = pc;
+    fi.insn = insn;
+    fi.fetch_id = 2;
     fi.size = 4;
     pkt.insts.push_back(fi);
     return pkt;
@@ -38,11 +55,13 @@ int main()
 
 
     ASyncQueue<FetchPacket> fetch_decode_q(32);
-    ASyncQueue<MicroOp> decode_rename_q(32);
+    ASyncQueue<MInstPtr> decode_rename_q(32);
+    FlushEvent flush_event {};
 
     DecodeDeps deps {};
     deps.fetch_decode_q = &fetch_decode_q;
     deps.decode_rename_q = &decode_rename_q;
+    deps.flush_event = &flush_event;
 
     DecodeConfig conf {};
     conf.width = 4;
@@ -67,12 +86,76 @@ int main()
     decode_rename_q.tick();
     assert(decode_rename_q.size() == 1);
 
-    MicroOp out {};
+    MInstPtr out { nullptr };
     assert(decode_rename_q.read(out));
-    assert(out.valid);
-    assert(out.opcode == OP_ADDI);
-    assert(out.pc == 0x1000);
-    assert(out.raw_inst == addi_x0_x0_0);
+    assert(out != nullptr);
+    assert(out->valid);
+    assert(out->opcode == OP_ADDI);
+    assert(out->pc == 0x1000);
+    assert(out->raw_inst == addi_x0_x0_0);
+    delete out;
+
+    {
+        ASyncQueue<FetchPacket> blocked_fetch_decode_q(32);
+        ASyncQueue<MInstPtr> blocked_decode_rename_q(1);
+        FlushEvent blocked_flush_event {};
+        DecodeDeps blocked_deps {};
+        blocked_deps.fetch_decode_q = &blocked_fetch_decode_q;
+        blocked_deps.decode_rename_q = &blocked_decode_rename_q;
+        blocked_deps.flush_event = &blocked_flush_event;
+        DecodeUnit blocked_decode(conf, blocked_deps);
+
+        FetchPacket blocked_pkt = make_packet_addi_x0(0x2000, addi_x0_x0_0);
+        assert(blocked_fetch_decode_q.write(blocked_pkt));
+        blocked_fetch_decode_q.tick();
+        blocked_decode.tick();
+
+        MInstPtr blocker = new MicroOp();
+        blocker->valid = true;
+        assert(blocked_decode_rename_q.write(blocker));
+        blocked_decode.tick();
+
+        blocked_decode_rename_q.clear();
+        delete blocker;
+
+        blocked_decode.tick();
+        blocked_decode_rename_q.tick();
+
+        MInstPtr recovered { nullptr };
+        assert(blocked_decode_rename_q.read(recovered));
+        assert(recovered != nullptr);
+        assert(recovered->valid);
+        assert(recovered->opcode == OP_ADDI);
+        assert(recovered->pc == 0x2000);
+        delete recovered;
+    }
+
+    {
+        ASyncQueue<FetchPacket> branch_fetch_decode_q(32);
+        ASyncQueue<MInstPtr> branch_decode_rename_q(32);
+        FlushEvent branch_flush_event {};
+        DecodeDeps branch_deps {};
+        branch_deps.fetch_decode_q = &branch_fetch_decode_q;
+        branch_deps.decode_rename_q = &branch_decode_rename_q;
+        branch_deps.flush_event = &branch_flush_event;
+        DecodeUnit branch_decode(conf, branch_deps);
+
+        const insn_t beq_x0_x0_0 = 0x00000063u;
+        FetchPacket branch_pkt = make_packet_branch(0x3000, beq_x0_x0_0, true);
+        assert(branch_fetch_decode_q.write(branch_pkt));
+        branch_fetch_decode_q.tick();
+        branch_decode.tick();
+        branch_decode.tick();
+        branch_decode_rename_q.tick();
+
+        MInstPtr branch_out { nullptr };
+        assert(branch_decode_rename_q.read(branch_out));
+        assert(branch_out != nullptr);
+        assert(branch_out->valid);
+        assert(branch_out->opcode == OP_BEQ);
+        assert(branch_out->pred_taken);
+        delete branch_out;
+    }
 
     return EXIT_SUCCESS;
 }

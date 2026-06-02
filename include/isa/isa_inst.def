@@ -172,17 +172,17 @@ static const InstPattern rv64i_table[] = {
   .mask = 0xf800707f,
   .match = 0x00001013,
   .opcode = OP_SLLI,
- .format = RV_FMT_S
+ .format = RV_FMT_I
 },{
   .mask = 0xf800707f,
   .match = 0x00005013,
   .opcode = OP_SRLI,
- .format = RV_FMT_S
+ .format = RV_FMT_I
 },{
   .mask = 0xf800707f,
   .match = 0x40005013,
   .opcode = OP_SRAI,
- .format = RV_FMT_S
+ .format = RV_FMT_I
 },{
   .mask = 0xfe00707f,
   .match = 0x00000033,

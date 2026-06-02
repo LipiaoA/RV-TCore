@@ -291,6 +291,8 @@ void FetchUnit::fetch3()
         if (pd.is_branch) {
             pkt.br_mask |= (1u << i);
             m_f3_pred[i] = m_bpu.f3_pred(finst.pc);
+            pkt.pred_taken = m_f3_pred[i].valid ? m_f3_pred[i].final_pred : m_f3_bpred.pred[i].taken;
+            pkt.pred_target = m_f3_bpred.pred[i].target;
             if (m_f3_pred[i].valid) {
                 if (m_f3_pred[i].final_pred != m_f3_bpred.pred[i].taken) {
                     m_redirect_pc[RES_F3].valid = true;

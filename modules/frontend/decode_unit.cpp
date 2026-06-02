@@ -179,6 +179,8 @@ void DecodeUnit::tick()
     if (m_stall)
         return;
     d1();
+    if (!m_d0_pkt.empty())
+        return;
     d0();
 }
 
@@ -199,13 +201,16 @@ void DecodeUnit::d0() {
         LOG_LEVEL1("DecodeUnit d0", "decode pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
         dinst->valid = true;
         dinst->fetch_id = finst.fetch_id;
+        dinst->pred_taken = (pkt.br_mask & (1u << i)) ? pkt.pred_taken : false;
         m_d0_pkt.emplace_back(dinst);
         ++inst_count;
     }
 }
 
 void DecodeUnit::d1() {
-    for (auto& dinst : m_d0_pkt) {
+    std::vector<MInstPtr> retained;
+    for (size_t i = 0; i < m_d0_pkt.size(); ++i) {
+        auto& dinst = m_d0_pkt[i];
         if (!dinst->valid) {
             delete dinst;
             dinst = nullptr;
@@ -218,9 +223,13 @@ void DecodeUnit::d1() {
         else
             dinst->imm = 0;
         LOG_LEVEL1("DecodeUnit d1", "pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
-        m_decode_rename_q.write(dinst);
+        if (!m_decode_rename_q.write(dinst)) {
+            for (size_t j = i; j < m_d0_pkt.size(); ++j)
+                retained.emplace_back(m_d0_pkt[j]);
+            break;
+        }
     }
-    m_d0_pkt.clear();
+    m_d0_pkt = std::move(retained);
 }
 
 void DecodeUnit::commit()
