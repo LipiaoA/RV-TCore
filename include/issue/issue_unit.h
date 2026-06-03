@@ -26,6 +26,9 @@ private:
     void                                flush();
     void                                EmitSrcRead(const MInstPtr inst, const RegType& src, int idx);
     FuType                              GetFuType(const MInstPtr inst);
+    bool                                is_buffered(const MInstPtr& inst) const;
+    size_t                              count_buffered_int_slots() const;
+    size_t                              count_buffered_ls_slots() const;
 
 private:
     std::vector<MInstPtr>               m_int_q;

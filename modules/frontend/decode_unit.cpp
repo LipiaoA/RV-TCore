@@ -78,6 +78,28 @@ i64 DecodeUnit::extract_imm(u64 raw, InstFmt fmt, InstOp op)
     }
 }
 
+u32 DecodeUnit::get_ls_width(InstOp op) {
+    switch (op) {
+    case OP_LB:
+    case OP_LBU:
+    case OP_SB:
+        return 1;
+    case OP_SH:
+    case OP_LH:
+    case OP_LHU:
+        return 2;
+    case OP_SW:
+    case OP_LW:
+    case OP_LWU:
+        return 4;
+    case OP_SD:
+    case OP_LD:
+        return 8;
+    default: break;
+    }
+    return 0;
+}
+
 bool DecodeUnit::decode(u64 raw, MicroOp *out) {
     static const u32 rv64i_inst_size = sizeof(rv64i_table) / sizeof(rv64i_table[0]);
     for (size_t i = 0; i < rv64i_inst_size; i++) {
@@ -89,6 +111,7 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
             out->opcode   = op;
             out->format   = fmt;
             out->type     = get_inst_type(op);
+            out->ls_width = get_ls_width(op);
             out->rd.atag  = static_cast<i32>((raw >> 7) & 0x1f);
             out->rs1.atag = static_cast<i32>((raw >> 15) & 0x1f);
             out->rs2.atag = static_cast<i32>((raw >> 20) & 0x1f);
@@ -132,19 +155,19 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
                 out->rd.valid = true;
                 out->rs1.valid = true;
                 out->rs2.valid = false;
-                break;
+                out->opcode = OP_INVALID;
+                return false;
             case RV_FMT_K:
             case RV_FMT_H:
             case RV_FMT_NONE:
                 out->rd.valid = false;
                 out->rs1.valid = false;
                 out->rs2.valid = false;
-                break;
+                out->opcode = OP_INVALID;
+                return false;
             }
-            return true;
         }
     }
-
     out->opcode = OP_INVALID;
     return false;
 }
@@ -176,17 +199,16 @@ bool DecodeUnit::try_pop_decoded(MicroOp& out)
 void DecodeUnit::tick()
 {
     flush();
-    if (m_stall)
+    if (m_stall) {
         return;
+    }
     d1();
-    if (!m_d0_pkt.empty())
-        return;
     d0();
 }
 
 void DecodeUnit::d0() {
     FetchPacket pkt;
-    if (!m_fetch_decode_q.read(pkt))
+    if (!m_fetch_decode_q.read(pkt) || !m_d0_pkt.empty())
         return;
     size_t inst_count = 0;
     for (size_t i = 0; i < pkt.insts.size() && inst_count < m_decode_width; ++i) {
@@ -202,6 +224,13 @@ void DecodeUnit::d0() {
         dinst->valid = true;
         dinst->fetch_id = finst.fetch_id;
         dinst->pred_taken = (pkt.br_mask & (1u << i)) ? pkt.pred_taken : false;
+        if (is_store(dinst->opcode)) {
+            MInstPtr dinst2 = new MicroOp();
+            dinst2 = *dinst;
+            dinst2->type = InstType::STA;
+            dinst->type = InstType::STD;
+            m_d0_pkt.emplace_back(dinst2);
+        }
         m_d0_pkt.emplace_back(dinst);
         ++inst_count;
     }
@@ -222,12 +251,12 @@ void DecodeUnit::d1() {
             dinst->imm = extract_imm(dinst->raw_inst, dinst->format, dinst->opcode);
         else
             dinst->imm = 0;
-        LOG_LEVEL1("DecodeUnit d1", "pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
         if (!m_decode_rename_q.write(dinst)) {
             for (size_t j = i; j < m_d0_pkt.size(); ++j)
                 retained.emplace_back(m_d0_pkt[j]);
             break;
         }
+        LOG_LEVEL1("DecodeUnit d1", "pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
     }
     m_d0_pkt = std::move(retained);
 }

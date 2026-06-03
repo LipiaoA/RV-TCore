@@ -131,13 +131,53 @@ int main()
     assert(rename_issue_q.empty());
     assert(wakeup_bus.empty());
 
-    reg_req_q.commit();
+    issue.commit();
     RegReq req {};
     assert(reg_req_q.read(req));
     assert(req.valid);
     assert(!req.write);
     assert(req.ptag == inst->rs1.ptag);
     assert(req.fu == FuType::ALU);
+    assert(reg_req_q.empty());
+
+    // FU busy: pending dispatch must not re-issue PRF reads on the next select.
+    IssueConfig busy_conf = conf;
+    busy_conf.int_issue_width = 2;
+    exec_conf.alu_num = 1;
+    ExecuteUnit execute_busy(exec_conf, exec_deps);
+    deps.exec = &execute_busy;
+    IssueUnit issue_busy(busy_conf, deps);
+    issue_busy.build();
+
+    auto make_ready_int = [&](u32 rob_idx, u32 ptag_rs1) {
+        MInstPtr uop = new MicroOp();
+        uop->valid = true;
+        uop->opcode = OP_ADD;
+        uop->type = InstType::INT;
+        uop->rs1.valid = true;
+        uop->rs1.ptag = ptag_rs1;
+        uop->rs1.ready = true;
+        uop->rs2.valid = false;
+        uop->rd.valid = true;
+        uop->rd.ptag = ptag_rs1 + 10;
+        uop->rid = ROBID{rob_idx, 0};
+        return uop;
+    };
+
+    MInstPtr inst_a = make_ready_int(0, 1);
+    MInstPtr inst_b = make_ready_int(1, 2);
+    assert(rename_issue_q.write(inst_a));
+    assert(rename_issue_q.write(inst_b));
+    rename_issue_q.tick();
+
+    issue_busy.tick();
+    issue_busy.commit();
+    assert(reg_req_q.read(req));
+    assert(reg_req_q.read(req));
+    assert(reg_req_q.empty());
+
+    issue_busy.tick();
+    issue_busy.commit();
     assert(reg_req_q.empty());
 
     return EXIT_SUCCESS;

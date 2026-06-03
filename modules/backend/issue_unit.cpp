@@ -34,7 +34,7 @@ void IssueUnit::tick() {
 
 void IssueUnit::commit()
 {
-    return;
+    m_reg_req_q.commit();
 }
 
 void IssueUnit::wakeup() {
@@ -65,10 +65,60 @@ void IssueUnit::wakeup() {
     m_wakeup_bus.clear();
 }
 
+static bool is_int_issue_type(InstType type)
+{
+    return type == InstType::INT || type == InstType::STD || type == InstType::BRANCH;
+}
+
+static bool is_ls_issue_type(InstType type)
+{
+    return type == InstType::LOAD || type == InstType::STA;
+}
+
+bool IssueUnit::is_buffered(const MInstPtr& inst) const
+{
+    for (const auto& pending : m_select_buffer) {
+        if (pending == inst) {
+            return true;
+        }
+    }
+    return false;
+}
+
+size_t IssueUnit::count_buffered_int_slots() const
+{
+    size_t n = 0;
+    for (const auto& inst : m_select_buffer) {
+        if (inst && is_int_issue_type(inst->type)) {
+            ++n;
+        }
+    }
+    return n;
+}
+
+size_t IssueUnit::count_buffered_ls_slots() const
+{
+    size_t n = 0;
+    for (const auto& inst : m_select_buffer) {
+        if (inst && is_ls_issue_type(inst->type)) {
+            ++n;
+        }
+    }
+    return n;
+}
+
 void IssueUnit::select()
 {
-    const size_t select_width = m_int_issue_width + m_ls_issue_width;
-    if (select_width == 0 || (m_int_q.empty() && m_ls_q.empty())) {
+    const size_t int_slots_left =
+        m_int_issue_width > count_buffered_int_slots()
+            ? m_int_issue_width - count_buffered_int_slots()
+            : 0;
+    const size_t ls_slots_left =
+        m_ls_issue_width > count_buffered_ls_slots()
+            ? m_ls_issue_width - count_buffered_ls_slots()
+            : 0;
+    if ((int_slots_left == 0 && ls_slots_left == 0) ||
+        (m_int_q.empty() && m_ls_q.empty())) {
         return;
     }
 
@@ -76,17 +126,17 @@ void IssueUnit::select()
     candidates.reserve(m_int_q.size() + m_ls_q.size());
 
     for (const auto& inst : m_int_q) {
-        if (inst->ready()) {
+        if (inst->ready() && !is_buffered(inst)) {
             candidates.emplace_back(inst);
         }
     }
     for (const auto& inst : m_ls_q) {
-        if (inst->ready()) {
+        if (inst->ready() && !is_buffered(inst)) {
             candidates.emplace_back(inst);
         }
     }
     if (candidates.empty()) {
-        if (m_stats) {
+        if (m_stats && m_select_buffer.empty()) {
             ++m_stats->issue.ready_stall_cycles;
         }
         return;
@@ -96,50 +146,63 @@ void IssueUnit::select()
                      [this](const MInstPtr lhs, const MInstPtr rhs) {
                          return m_rob.is_older_than(lhs->rid, rhs->rid);
                      });
-    u32 sel = 0;
-    for (size_t i = 0; sel < m_int_issue_width && i < candidates.size(); ++i) {
-        auto &inst = candidates[i];
-        if (inst->type == InstType::INT || inst->type == InstType::STD || inst->type == InstType::BRANCH) {
-            m_select_buffer.emplace_back(inst);
-            if (m_stats) {
-                ++m_stats->issue.selected_insts;
-            }
-            EmitSrcRead(inst, inst->rs1, 1);
-            EmitSrcRead(inst, inst->rs2, 2);
-            ++sel;
+    size_t sel = 0;
+    for (size_t i = 0; sel < int_slots_left && i < candidates.size(); ++i) {
+        auto& inst = candidates[i];
+        if (!is_int_issue_type(inst->type)) {
+            continue;
         }
+        m_select_buffer.emplace_back(inst);
+        if (m_stats) {
+            ++m_stats->issue.selected_insts;
+        }
+        EmitSrcRead(inst, inst->rs1, 1);
+        EmitSrcRead(inst, inst->rs2, 2);
+        ++sel;
     }
     sel = 0;
-    for (size_t i = 0; sel < m_ls_issue_width && i < candidates.size(); ++i) {
-        auto &inst = candidates[i];
-        if (inst->type == InstType::LOAD || inst->type == InstType::STA) {
-            m_select_buffer.emplace_back(inst);
-            if (m_stats) {
-                ++m_stats->issue.selected_insts;
-            }
-            EmitSrcRead(inst, inst->rs1, 1);
-            EmitSrcRead(inst, inst->rs2, 2);
-            ++sel;
+    for (size_t i = 0; sel < ls_slots_left && i < candidates.size(); ++i) {
+        auto& inst = candidates[i];
+        if (!is_ls_issue_type(inst->type)) {
+            continue;
         }
+        m_select_buffer.emplace_back(inst);
+        if (m_stats) {
+            ++m_stats->issue.selected_insts;
+        }
+        EmitSrcRead(inst, inst->rs1, 1);
+        EmitSrcRead(inst, inst->rs2, 2);
+        ++sel;
     }
 }
 
 void IssueUnit::issue()
 {
-    for (auto &inst : m_select_buffer) {
+    std::vector<MInstPtr> retry;
+    retry.reserve(m_select_buffer.size());
+    bool fu_busy_cycle = false;
+
+    for (auto& inst : m_select_buffer) {
+        if (!inst || !inst->valid) {
+            continue;
+        }
         bool ret = m_exec.dispatch(inst);
-        if (m_stats) {
-            if (ret) {
-                ++m_stats->issue.issued_insts;
-            } else {
-                ++m_stats->issue.fu_busy_stall_cycles;
-            }
+        if (m_stats && ret) {
+            ++m_stats->issue.issued_insts;
+        }
+        if (!ret) {
+            retry.emplace_back(inst);
+            fu_busy_cycle = true;
         }
         LOG_LEVEL1("IssueUnit", "issued:%s pc:0x%lx, %s, v%d-x%d-p%d%s%d", ret ? "true" : "false", inst->pc,
                    inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
                    inst->rd.ptag, inst->rid.idx == 0 ? "++" : "--", inst->rid.idx);
     }
-    m_select_buffer.clear();
+    m_select_buffer.swap(retry);
+    if (fu_busy_cycle && m_stats) {
+        ++m_stats->issue.fu_busy_stall_cycles;
+    }
+
     for (auto it = m_int_q.begin(); it != m_int_q.end();) {
         if ((*it)->state == InstState::ISSUED) {
             it = m_int_q.erase(it);
@@ -154,7 +217,13 @@ void IssueUnit::issue()
             ++it;
         }
     }
-    return;
+    for (auto it = m_fp_q.begin(); it != m_fp_q.end();) {
+        if ((*it)->state == InstState::ISSUED) {
+            it = m_fp_q.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void IssueUnit::async() {
@@ -167,7 +236,9 @@ void IssueUnit::async() {
         InstOp op = inst->opcode;
         if (is_load_store(op))
             m_ls_q.emplace_back(inst);
-        else {
+        else if (is_fp(op)) {
+            m_fp_q.emplace_back(inst);
+        } else {
             m_int_q.emplace_back(inst);
         }
         if (m_stats) {
@@ -265,5 +336,10 @@ void IssueUnit::EmitSrcRead(const MInstPtr inst, const RegType& src, int idx)
 }
 
 void IssueUnit::reset() {
-    return;
+    m_int_q.clear();
+    m_ls_q.clear();
+    m_fp_q.clear();
+    m_select_buffer.clear();
+    m_wakeup_bus.clear();
+    m_reg_req_q.clear();
 }

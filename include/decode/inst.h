@@ -30,6 +30,7 @@ typedef struct {
     i32 atag;
     i32 ptag;
     bool ready { false };
+    i32 o_ptag { -1 };
 } RegType;
 
 typedef struct {
@@ -101,6 +102,7 @@ typedef struct MicroOp {
     uint64_t store_idx;
     uint64_t load_idx;
     uint64_t load_data;
+    u32 ls_width {0};
     bool executed = false;
     bool replay = false;
     u64 ssid { 0 };
