@@ -2,6 +2,8 @@
 #ifndef RV_TCORE_COMMITUNIT_H
 #define RV_TCORE_COMMITUNIT_H
 
+#include <deque>
+
 #include "intf.h"
 #include "module_comm.h"
 #include "config.h"
@@ -20,10 +22,12 @@ public:
     void                                reset() override;
 
 private:
-    void                                write_back(const MInstPtr inst);
+    bool                                write_back(const MInstPtr inst);
+    void                                retire_inst(const MInstPtr inst);
     void                                inst_commit();
-    void                                inst_reslove();
+    void                                inst_resolve();
     void                                flush();
+    bool                                should_flush(const ROBID& rid) const;
 
 private:
     u32                                 m_commit_width;
@@ -40,6 +44,7 @@ private:
 
     std::array<int, RV_GPR_SIZE>&       m_crat;
     std::vector<RatCheckpoint>&         m_checkpoints;
+    std::deque<MInstPtr>                m_pending_writebacks;
     PerfStats*                          m_stats { nullptr };
 };
 

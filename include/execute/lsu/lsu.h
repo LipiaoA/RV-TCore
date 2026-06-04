@@ -73,6 +73,10 @@ public:
     void                                flush(const FlushEvent& event);
     void                                reset();
 
+    bool                                commit_ready() const;
+    MInstPtr                            commit_inst() const;
+    void                                commit_ack();
+
     int                                 alloc_load_entry();
     int                                 alloc_store_entry();
     void                                replay(LQEntry& load_entry);
@@ -91,6 +95,7 @@ private:
 private:
     std::vector<LQEntry>                m_load_q;
     std::vector<SQEntry>                m_store_q;
+    RingQueue<MInstPtr>                 m_complete_q;
     FixedStorage<AGU, MAX_AGU_NUM>      m_agus;
     StoreSetPredictor                   m_ssp;
     ROB&                                m_rob;

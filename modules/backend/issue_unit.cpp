@@ -72,7 +72,12 @@ static bool is_int_issue_type(InstType type)
 
 static bool is_ls_issue_type(InstType type)
 {
-    return type == InstType::LOAD || type == InstType::STA;
+    return type == InstType::LOAD || type == InstType::STA || type == InstType::STORE;
+}
+
+static bool is_fp_issue_type(InstType type)
+{
+    return type == InstType::FP;
 }
 
 bool IssueUnit::is_buffered(const MInstPtr& inst) const
@@ -117,13 +122,23 @@ void IssueUnit::select()
         m_ls_issue_width > count_buffered_ls_slots()
             ? m_ls_issue_width - count_buffered_ls_slots()
             : 0;
-    if ((int_slots_left == 0 && ls_slots_left == 0) ||
-        (m_int_q.empty() && m_ls_q.empty())) {
+    size_t buffered_fp_slots = 0;
+    for (const auto& inst : m_select_buffer) {
+        if (inst && is_fp_issue_type(inst->type)) {
+            ++buffered_fp_slots;
+        }
+    }
+    const size_t fp_slots_left =
+        m_fp_issue_width > buffered_fp_slots
+            ? m_fp_issue_width - buffered_fp_slots
+            : 0;
+    if ((int_slots_left == 0 && ls_slots_left == 0 && fp_slots_left == 0) ||
+        (m_int_q.empty() && m_ls_q.empty() && m_fp_q.empty())) {
         return;
     }
 
     std::vector<MInstPtr> candidates;
-    candidates.reserve(m_int_q.size() + m_ls_q.size());
+    candidates.reserve(m_int_q.size() + m_ls_q.size() + m_fp_q.size());
 
     for (const auto& inst : m_int_q) {
         if (inst->ready() && !is_buffered(inst)) {
@@ -131,6 +146,11 @@ void IssueUnit::select()
         }
     }
     for (const auto& inst : m_ls_q) {
+        if (inst->ready() && !is_buffered(inst)) {
+            candidates.emplace_back(inst);
+        }
+    }
+    for (const auto& inst : m_fp_q) {
         if (inst->ready() && !is_buffered(inst)) {
             candidates.emplace_back(inst);
         }
@@ -164,6 +184,20 @@ void IssueUnit::select()
     for (size_t i = 0; sel < ls_slots_left && i < candidates.size(); ++i) {
         auto& inst = candidates[i];
         if (!is_ls_issue_type(inst->type)) {
+            continue;
+        }
+        m_select_buffer.emplace_back(inst);
+        if (m_stats) {
+            ++m_stats->issue.selected_insts;
+        }
+        EmitSrcRead(inst, inst->rs1, 1);
+        EmitSrcRead(inst, inst->rs2, 2);
+        ++sel;
+    }
+    sel = 0;
+    for (size_t i = 0; sel < fp_slots_left && i < candidates.size(); ++i) {
+        auto& inst = candidates[i];
+        if (!is_fp_issue_type(inst->type)) {
             continue;
         }
         m_select_buffer.emplace_back(inst);

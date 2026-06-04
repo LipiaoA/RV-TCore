@@ -195,6 +195,7 @@ enum LdStState {
 
 typedef struct {
     bool valid = false;
+    MInstPtr uop { nullptr };
     uint64_t store_id;
     ROBID rob_idx;
     LdStState state {WAIT_ADDR};
@@ -391,6 +392,8 @@ typedef struct {
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q { nullptr };
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
     FlushEvent*                 flush_event { nullptr };
+    ROB*                        rob { nullptr };
+    std::vector<WakeupEvent>*   wakeup_bus { nullptr };
 } FPUDeps;
 
 typedef struct {

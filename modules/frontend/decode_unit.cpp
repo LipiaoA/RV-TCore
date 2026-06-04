@@ -226,7 +226,7 @@ void DecodeUnit::d0() {
         dinst->pred_taken = (pkt.br_mask & (1u << i)) ? pkt.pred_taken : false;
         if (is_store(dinst->opcode)) {
             MInstPtr dinst2 = new MicroOp();
-            dinst2 = *dinst;
+            *dinst2 = *dinst;
             dinst2->type = InstType::STA;
             dinst->type = InstType::STD;
             m_d0_pkt.emplace_back(dinst2);

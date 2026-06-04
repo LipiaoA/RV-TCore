@@ -228,14 +228,14 @@ void RenameUnit::flush() {
     m_r1_buf.clear();
     for (auto& inst : m_r2_buf) {
         if (inst && inst->valid && inst->rd.valid) {
-            m_regfile.set_free(inst->rd.ptag);
+            m_free_list.push_back(inst->rd.ptag);
             inst->valid = false;
         }
     }
     m_r2_buf.clear();
     m_rename_issue_q.for_each([&](const MInstPtr& inst) {
         if (inst && inst->valid && inst->rd.valid) {
-            m_regfile.set_free(inst->rd.ptag);
+            m_free_list.push_back(inst->rd.ptag);
             inst->valid = false;
         }
     });

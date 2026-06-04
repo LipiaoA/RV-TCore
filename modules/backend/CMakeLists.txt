@@ -6,6 +6,7 @@ add_library(backend STATIC
     rob.cpp
     bru.cpp
     alu.cpp
+    fpu.cpp
     inst_exec.cpp
     prf.cpp
     lsu/lsu.cpp

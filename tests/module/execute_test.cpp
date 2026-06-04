@@ -4,6 +4,10 @@
 
 #include "execute/alu.h"
 #include "execute/bru.h"
+#include "execute/execute_unit.h"
+#include "execute/lsu/lsu.h"
+#include "icache/dcache.h"
+#include "memory/tlb.h"
 #include "regfile_unit.h"
 #include "rob/rob.h"
 #include "tools/queue.h"
@@ -105,6 +109,86 @@ int main()
     assert(wakeup_bus[0].valid);
     assert(wakeup_bus[0].type == WAKEUP_WRITEBACK);
     assert(wakeup_bus[0].ptag == write_req.ptag);
+
+    CycleScheduler sched;
+    std::vector<PTWLevelConfig> levels = {{1}};
+    MultiLevelTLB tlb(&sched, 12, levels);
+
+    CacheConfig l2cfg(static_cast<size_t>(512 * 1024), 64, 8, 4);
+    DCache l2(&sched, l2cfg);
+    CacheConfig dcfg(static_cast<size_t>(64 * 1024), 64, 4, 4);
+    DCache dcache(&sched, dcfg);
+    dcache.attach_lower(&l2);
+
+    ASyncQueue<MInstPtr> inst_commit_q(32);
+    LSUDeps lsu_deps {};
+    lsu_deps.rob = &rob;
+    lsu_deps.dcache = &dcache;
+    lsu_deps.dtlb = &tlb;
+    lsu_deps.reg_req_q = &reg_req_q;
+    lsu_deps.reg_resp_q = &lsu_resp_q;
+    lsu_deps.reg_bypass_bus = &bypass_q;
+    lsu_deps.flush_req_q = &flush_req_q;
+    LSUConfig lsu_conf {};
+    lsu_conf.agu_num = 1;
+    lsu_conf.agu_stages = 2;
+    LSU lsu(lsu_conf, lsu_deps);
+
+    ExecDeps exec_deps {};
+    exec_deps.lsu = &lsu;
+    exec_deps.inst_commit_q = &inst_commit_q;
+    exec_deps.flush_event = &flush_event;
+    exec_deps.rob = &rob;
+    exec_deps.alu_deps = &alu_deps;
+    exec_deps.bru_deps = &bru_deps;
+    FPUDeps fpu_deps {};
+    fpu_deps.reg_req_q = &reg_req_q;
+    fpu_deps.reg_resp_q = &fpu_resp_q;
+    fpu_deps.reg_bypass_bus = &bypass_q;
+    fpu_deps.flush_event = &flush_event;
+    fpu_deps.rob = &rob;
+    fpu_deps.wakeup_bus = &wakeup_bus;
+    exec_deps.fpu_deps = &fpu_deps;
+
+    ExecConfig exec_conf {};
+    exec_conf.fpu_num = 1;
+    exec_conf.agu_num = 1;
+    exec_conf.commit_width = 2;
+    exec_conf.fpu_conf.stages = 2;
+    exec_conf.lsu_conf = lsu_conf;
+    ExecuteUnit execute(exec_conf, exec_deps);
+
+    MInstPtr fp_inst = new MicroOp();
+    fp_inst->valid = true;
+    fp_inst->opcode = OP_FADD_S;
+    fp_inst->type = InstType::FP;
+    fp_inst->rid = ROBID{1, 0};
+    assert(execute.dispatch(fp_inst));
+    execute.commit();
+    execute.tick();
+    execute.tick();
+    execute.commit();
+    MInstPtr committed_inst = nullptr;
+    assert(inst_commit_q.read(committed_inst));
+    assert(committed_inst == fp_inst);
+
+    MInstPtr load_inst = new MicroOp();
+    load_inst->valid = true;
+    load_inst->opcode = OP_LD;
+    load_inst->type = InstType::LOAD;
+    load_inst->rs1.valid = false;
+    load_inst->imm = 0x1000;
+    load_inst->rd.valid = true;
+    load_inst->rd.ptag = 21;
+    load_inst->rid = ROBID{2, 0};
+    assert(execute.dispatch(load_inst));
+    execute.commit();
+    execute.tick();
+    execute.tick();
+    execute.commit();
+    committed_inst = nullptr;
+    assert(inst_commit_q.read(committed_inst));
+    assert(committed_inst == load_inst);
 
     return EXIT_SUCCESS;
 }

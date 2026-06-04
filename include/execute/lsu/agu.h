@@ -4,11 +4,13 @@
 #include "module_comm.h"
 #include "tools/intf.h"
 #include "config.h"
+#include "rob/rob.h"
 
 typedef struct {
     ASyncQueue<RegReq>*         reg_req_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
+    ROB*                        rob;
 } AGUDeps;
 
 typedef struct {
@@ -29,6 +31,9 @@ public:
     void                                    commit() override;
 
     void                                    dump_states() const;
+    void                                    bind_queues(std::vector<SQEntry>* store_q,
+                                                        std::vector<LQEntry>* load_q);
+    void                                    flush(const FlushEvent& event);
     void                                    reset();
 
 private:
@@ -36,7 +41,6 @@ private:
     void                                    E0();
 
     void                                    shift();
-    void                                    flush(const FlushEvent& event);
     void                                    broadcast(MInstPtr inst);
     StoreReq                                genStoreReq(MInstPtr inst);
     LoadReq                                 genLoadReq(MInstPtr inst);
@@ -54,6 +58,7 @@ private:
 
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_resp_q;
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_bypass_bus;
+    ROB&                                    m_rob;
     u32                                     m_idx { 0 };
     static u32                              agu_idx;
 };

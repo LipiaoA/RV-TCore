@@ -1,8 +1,19 @@
 #include "commit_unit.h"
+
+#include <algorithm>
+#include <cstddef>
+
 #include "instr_trace.h"
 #include "perf/perf_stats.h"
 #include "rob/rob.h"
 #include "rename/rename_unit.h"
+
+namespace {
+bool same_rob_id(const ROBID& lhs, const ROBID& rhs)
+{
+    return lhs.idx == rhs.idx && lhs.direct == rhs.direct;
+}
+}
 
 CommitUnit::CommitUnit(const CommitConfig& conf, const CommitDeps& deps)
     : ICommit()
@@ -27,26 +38,41 @@ void CommitUnit::build()
 void CommitUnit::tick() {
     flush();
     inst_commit();
-    inst_reslove();
+    inst_resolve();
 }
 
-void CommitUnit::inst_reslove() {
-    if (m_inst_commit_q.empty()) {
-        return;
-    }
+void CommitUnit::inst_resolve() {
     for (u32 i = 0; i < m_resolve_width; i++) {
         MInstPtr inst;
-        bool ret = m_inst_commit_q.read(inst);
-        if (!ret || !inst) {
+
+        if (!m_pending_writebacks.empty()) {
+            inst = m_pending_writebacks.front();
+            m_pending_writebacks.pop_front();
+        } else {
+            bool ret = m_inst_commit_q.read(inst);
+            if (!ret) {
+                break;
+            }
+        }
+
+        if (!inst || !inst->valid || should_flush(inst->rid)) {
             continue;
         }
         if (inst->state == InstState::ISSUED) {
+            RobEntry* entry = m_rob.get(inst->rid);
+            if (!entry || entry->inst != inst) {
+                continue;
+            }
+            if (!write_back(inst)) {
+                m_pending_writebacks.push_front(inst);
+                break;
+            }
             inst->state = InstState::EXECUTED;
+            m_rob.mark_ready(inst->rid, inst->rd.valid ? inst->rd.val : 0);
             if (m_stats) {
                 ++m_stats->commit.resolved_insts;
             }
             LOG_LEVEL1("CommitUnit", "pc: 0x%lx, inst: %s resolved", inst->pc, inst->inst_name.c_str());
-            write_back(inst);
         }
     }
 }
@@ -60,17 +86,21 @@ void CommitUnit::inst_commit() {
     }
     for (u32 i = 0; i < m_commit_width; i++) {
         auto entry = m_rob.head();
-        if (entry && entry->inst->state == InstState::EXECUTED) {
+        if (entry && entry->valid && entry->inst && entry->inst->valid
+            && entry->inst->state == InstState::EXECUTED) {
             entry->inst->state = InstState::RETIRED;
-            if (!m_rob.commit_head()) {
+            auto committed = m_rob.commit_head();
+            if (!committed) {
                 break;
             }
+            retire_inst(committed->inst);
             if (m_stats) {
                 ++m_stats->commit.retired_insts;
             }
-            LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired", entry->inst->pc, entry->inst->inst_name.c_str());
-            u64 result = entry->inst->rd.valid ? entry->inst->rd.val : 0;
-            InstrTrace::instance().record_retire(entry->inst->pc, result);
+            LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired",
+                committed->inst->pc, committed->inst->inst_name.c_str());
+            u64 result = committed->inst->rd.valid ? committed->inst->rd.val : 0;
+            InstrTrace::instance().record_retire(committed->inst->pc, result);
         } else {
             if (i == 0 && m_stats) {
                 ++m_stats->commit.head_not_ready_cycles;
@@ -81,10 +111,10 @@ void CommitUnit::inst_commit() {
     return;
 }
 
-void CommitUnit::write_back(const MInstPtr inst)
+bool CommitUnit::write_back(const MInstPtr inst)
 {
     if (!inst->rd.valid) {
-        return;
+        return true;
     }
     RegReq req;
     req.valid = true;
@@ -92,7 +122,30 @@ void CommitUnit::write_back(const MInstPtr inst)
     req.write = true;
     req.val = inst->rd.val;
     req.rid = inst->rid;
-    m_reg_req_q.write(req);
+    return m_reg_req_q.write(req);
+}
+
+void CommitUnit::retire_inst(const MInstPtr inst)
+{
+    if (!inst || !inst->valid) {
+        return;
+    }
+
+    if (inst->rd.valid && inst->rd.atag > 0
+        && static_cast<std::size_t>(inst->rd.atag) < m_crat.size()) {
+        m_crat[inst->rd.atag] = inst->rd.ptag;
+        if (inst->rd.o_ptag > 0 && inst->rd.o_ptag != inst->rd.ptag) {
+            m_rename.recycle_phys(inst->rd.o_ptag);
+        }
+    }
+
+    m_checkpoints.erase(
+        std::remove_if(m_checkpoints.begin(), m_checkpoints.end(),
+            [&](const RatCheckpoint& cp) {
+                return same_rob_id(cp.rid, inst->rid)
+                    || (inst->c_id != 0 && cp.c_id == inst->c_id);
+            }),
+        m_checkpoints.end());
 }
 
 void CommitUnit::commit()
@@ -104,8 +157,49 @@ void CommitUnit::flush() {
     if (!m_flush_event.valid) {
         return;
     }
+    m_pending_writebacks.erase(
+        std::remove_if(m_pending_writebacks.begin(), m_pending_writebacks.end(),
+            [&](const MInstPtr& inst) {
+                bool flushed = inst && should_flush(inst->rid);
+                if (flushed) {
+                    inst->valid = false;
+                    inst->state = InstState::FLUSHED;
+                }
+                return flushed;
+            }),
+        m_pending_writebacks.end());
+    m_inst_commit_q.flush_if([&](const MInstPtr& inst) {
+        bool flushed = inst && should_flush(inst->rid);
+        if (flushed) {
+            inst->valid = false;
+            inst->state = InstState::FLUSHED;
+        }
+        return flushed;
+    });
+}
+
+bool CommitUnit::should_flush(const ROBID& rid) const
+{
+    if (!m_flush_event.valid) {
+        return false;
+    }
+    switch (m_flush_event.scope) {
+    case FlushScope::ALL:
+        return true;
+    case FlushScope::YOUNGER_THAN:
+        return m_rob.is_older_than(m_flush_event.rid, rid);
+    case FlushScope::FROM_RID:
+        return same_rob_id(m_flush_event.rid, rid)
+            || m_rob.is_older_than(m_flush_event.rid, rid);
+    case FlushScope::NONE:
+        return false;
+    default:
+        return false;
+    }
 }
 
 void CommitUnit::reset() {
-    return;
+    m_pending_writebacks.clear();
+    m_inst_commit_q.clear();
+    m_flush_req_q.clear();
 }

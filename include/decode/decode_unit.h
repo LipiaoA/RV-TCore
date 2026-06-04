@@ -34,6 +34,7 @@ private:
     bool                                decode(insn_t raw, MicroOp *out);
     i64                                 extract_imm(u64 raw, InstFmt fmt, InstOp op);
     InstType                            get_inst_type(InstOp op);
+    u32                                 get_ls_width(InstOp op);
 
 private:
     FetchUnit*                          m_fetch { nullptr };

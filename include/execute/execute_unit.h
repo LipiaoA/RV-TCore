@@ -38,13 +38,14 @@ private:
     ALUConfig                           m_alu_conf;
     FPUConfig                           m_fpu_conf;
     BRUConfig                           m_bru_conf;
-    LSUConfig                           m_lsu_conf;
 
     u32                                 m_alu_num { 0 };
     u32                                 m_fpu_num { 0 };
     u32                                 m_bru_num { 0 };
-    u32                                 m_lsu_width { 0 };
     u32                                 m_commit_width { 4 };
+    u32                                 m_next_alu { 0 };
+    u32                                 m_next_fpu { 0 };
+    u32                                 m_next_bru { 0 };
     ASyncQueue<MInstPtr>&               m_inst_commit_q;
     FlushEvent&                         m_flush_event;
     ROB&                                m_rob;

@@ -28,6 +28,7 @@ typedef struct {
 typedef struct {
     bool valid { false };
     bool unsupported { false };
+    u64 value { 0 };
 } FpuExecResult;
 
 bool exec(MInstPtr inst);

@@ -77,6 +77,10 @@ int main()
     FPUDeps fpu_deps {};
     fpu_deps.reg_req_q = &reg_req_q;
     fpu_deps.reg_resp_q = &fpu_resp_q;
+    fpu_deps.reg_bypass_bus = &bypass_q;
+    fpu_deps.flush_event = &flush_event;
+    fpu_deps.rob = &rob;
+    fpu_deps.wakeup_bus = &wakeup_bus;
     exec_deps.alu_deps = &alu_deps;
     exec_deps.bru_deps = &bru_deps;
     exec_deps.fpu_deps = &fpu_deps;
@@ -178,6 +182,35 @@ int main()
 
     issue_busy.tick();
     issue_busy.commit();
+    assert(reg_req_q.empty());
+
+    IssueConfig fp_conf {};
+    fp_conf.int_issue_width = 0;
+    fp_conf.ls_issue_width = 0;
+    fp_conf.fp_issue_width = 1;
+    deps.exec = &execute;
+    IssueUnit issue_fp(fp_conf, deps);
+    issue_fp.build();
+
+    MInstPtr fp_inst = new MicroOp();
+    fp_inst->valid = true;
+    fp_inst->opcode = OP_FADD_S;
+    fp_inst->type = InstType::FP;
+    fp_inst->rs1.valid = true;
+    fp_inst->rs1.ptag = 31;
+    fp_inst->rs1.ready = true;
+    fp_inst->rs2.valid = false;
+    fp_inst->rid = ROBID{2, 0};
+    assert(rename_issue_q.write(fp_inst));
+    rename_issue_q.tick();
+
+    issue_fp.tick();
+    issue_fp.commit();
+    assert(reg_req_q.read(req));
+    assert(req.valid);
+    assert(!req.write);
+    assert(req.ptag == fp_inst->rs1.ptag);
+    assert(req.fu == FuType::FPU);
     assert(reg_req_q.empty());
 
     return EXIT_SUCCESS;

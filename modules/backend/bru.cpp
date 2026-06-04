@@ -195,24 +195,28 @@ void BRU::send_flush(MInstPtr inst)
 
 void BRU::flush(const FlushEvent& event)
 {
+    auto should_flush = [&](MInstPtr inst) {
+        return inst && (event.scope == FlushScope::ALL ||
+                        m_rob.is_older_than(event.rid, inst->rid));
+    };
     for (i32 i = 0; i < m_stages; ++i) {
         if (!m_pipe[i].valid) {
             continue;
         }
-        if (m_rob.is_older_than(event.rid, m_pipe[i].inst->rid)) {
+        if (should_flush(m_pipe[i].inst)) {
             m_pipe[i].valid = false;
             m_pipe[i].inst->valid = false;
             m_pipe[i].inst->state = InstState::FLUSHED;
             m_pipe[i].inst  = nullptr;
         }
     }
-    if (m_commit_latch.valid && m_rob.is_older_than(event.rid, m_commit_latch.inst->rid)) {
+    if (m_commit_latch.valid && should_flush(m_commit_latch.inst)) {
         m_commit_latch.valid = false;
         m_commit_latch.inst->state = InstState::FLUSHED;
         m_commit_latch.inst->valid = false;
         m_commit_latch.inst = nullptr;
     }
-    if (m_input_latch.valid && m_rob.is_older_than(event.rid, m_input_latch.inst->rid)) {
+    if (m_input_latch.valid && should_flush(m_input_latch.inst)) {
         m_input_latch.valid = false;
         m_input_latch.inst->state = InstState::FLUSHED;
         m_input_latch.inst->valid = false;
@@ -272,5 +276,12 @@ void BRU::commit_ack()
 }
 
 void BRU::reset() {
-    return;
+    m_input_latch.valid = false;
+    m_input_latch.inst = nullptr;
+    m_commit_latch.valid = false;
+    m_commit_latch.inst = nullptr;
+    for (i32 i = 0; i < m_stages; ++i) {
+        m_pipe[i].valid = false;
+        m_pipe[i].inst = nullptr;
+    }
 }

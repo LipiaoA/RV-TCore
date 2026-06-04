@@ -215,6 +215,10 @@ void Top::build() {
     FPUDeps fpu_deps;
     fpu_deps.reg_req_q = m_comm_queues.reg_req_q;
     fpu_deps.reg_resp_q = m_comm_queues.fpu_resp_q;
+    fpu_deps.reg_bypass_bus = m_comm_queues.reg_bypass_bus;
+    fpu_deps.flush_event = m_comm_queues.flush_event;
+    fpu_deps.rob = m_rob;
+    fpu_deps.wakeup_bus = m_comm_queues.wakeup_bus;
     exec_deps.alu_deps = &alu_deps;
     exec_deps.bru_deps = &bru_deps;
     exec_deps.lsu_deps = &lsu_deps;

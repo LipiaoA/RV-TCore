@@ -280,14 +280,15 @@ BruExecResult exec_bru(MInstPtr inst) {
 
 AguExecResult exec_agu(MInstPtr inst) {
     AguExecResult result;
-    result.valid = false;
+    result.valid = true;
     result.addr = inst->rs1.val + static_cast<u64>(inst->imm);
     return result;
 }
 
 FpuExecResult exec_fpu(MInstPtr inst) {
     FpuExecResult result;
-    result.valid = false;
+    (void)inst;
+    result.valid = true;
     result.unsupported = true;
     return result;
 }

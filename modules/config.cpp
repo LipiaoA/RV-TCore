@@ -243,6 +243,7 @@ ExecConfig TCoreConfig::execute_config() const {
     alu_conf.stages = m_core_config.alu_stages;
     fpu_conf.stages = m_core_config.fpu_stages;
     bru_conf.stages = m_core_config.bru_stages;
+    lsu_conf.agu_num = m_core_config.agu_num;
     lsu_conf.issue_width = m_core_config.lsu_issue_width;
     conf.alu_conf = alu_conf;
     conf.fpu_conf = fpu_conf;
