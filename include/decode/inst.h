@@ -110,6 +110,11 @@ typedef struct MicroOp {
     u64 c_id { 0 };
     u64 epoch { 0 };
 
+    bool fetch_fault { false };
+    bool has_exception { false };
+    u64 exception_cause { 0 };
+    pc_t exception_tval { 0 };
+
     bool ready() const {
         bool ready = true;
         if (rs1.valid) {

@@ -88,19 +88,39 @@ void CommitUnit::inst_commit() {
         auto entry = m_rob.head();
         if (entry && entry->valid && entry->inst && entry->inst->valid
             && entry->inst->state == InstState::EXECUTED) {
+            if (entry->inst->fetch_fault) {
+                FlushEvent event;
+                event.valid = true;
+                event.type = FlushType::EXCEPTION;
+                event.source = FlushSource::IFETCH;
+                event.scope = FlushScope::ALL;
+                event.has_exception = true;
+                event.exception_cause = entry->inst->exception_cause;
+                event.exception_tval = entry->inst->exception_tval;
+                event.inst_pc = entry->inst->pc;
+                event.fetch_id = entry->inst->fetch_id;
+                event.redirect_pc = entry->inst->pc;
+                m_flush_req_q.write(event);
+                LOG_LEVEL1("CommitUnit", "fetch fault exception pc:0x%lx cause:%lu tval:0x%lx",
+                           entry->inst->pc, entry->inst->exception_cause, entry->inst->exception_tval);
+            }
             entry->inst->state = InstState::RETIRED;
             auto committed = m_rob.commit_head();
             if (!committed) {
                 break;
             }
-            retire_inst(committed->inst);
+            if (!committed->inst->fetch_fault) {
+                retire_inst(committed->inst);
+            }
             if (m_stats) {
                 ++m_stats->commit.retired_insts;
             }
-            LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired",
-                committed->inst->pc, committed->inst->inst_name.c_str());
-            u64 result = committed->inst->rd.valid ? committed->inst->rd.val : 0;
-            InstrTrace::instance().record_retire(committed->inst->pc, result);
+            if (!committed->inst->fetch_fault) {
+                LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired",
+                    committed->inst->pc, committed->inst->inst_name.c_str());
+                u64 result = committed->inst->rd.valid ? committed->inst->rd.val : 0;
+                InstrTrace::instance().record_retire(committed->inst->pc, result);
+            }
         } else {
             if (i == 0 && m_stats) {
                 ++m_stats->commit.head_not_ready_cycles;

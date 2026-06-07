@@ -23,7 +23,7 @@ bool Model::build() {
     m_log->set_level(LogLevel::LEVEL3);
     m_log->add_writer(std::make_shared<ConsoleSink>());
     m_log->add_writer(std::make_shared<FileSink>("system.log"));
-    g_max_cycles = 50000;
+    g_max_cycles = 200;
     return true;
 }
 

@@ -34,19 +34,22 @@ struct pipe_reg_t {
     }
 };
 
-typedef struct {
+typedef struct FetchBundle {
     pc_t vpc { 0 };
-    u32 group_idx { 0 };
-    u32 bank_idx { 0 };
+    pc_t line_addr { 0 };
+    u64 epoch { 0 };
+    bool icache_sent { false };
     bool valid { false };
+
     void clear()
     {
         valid = false;
         vpc = 0;
-        group_idx = 0;
-        bank_idx = 0;
+        line_addr = 0;
+        epoch = 0;
+        icache_sent = false;
     }
-} FetchState;
+} FetchBundle;
 
 class FetchUnit : public IFetch {
     constexpr static u32 MAX_STATES = 8;
@@ -62,16 +65,17 @@ class FetchUnit : public IFetch {
     };
     enum {RES_F1 = 0, RES_F2 = 1, RES_F3 = 2, RES_F4 = 3, RES_F5 = 4, RES_F6 = 5, RES_F7 = 6, RESET_PC = 7};
     typedef struct {
-        /* 4 banks*/
         bool valid { false };
         u32 bmask;
         pc_t line_addr { 0 };
+        u64 epoch { 0 };
         u8 data[64];
         void clear()
         {
             valid = false;
             bmask = 0;
             line_addr = 0;
+            epoch = 0;
             memset(data, 0, sizeof(data));
         }
     } LineBuffer;
@@ -110,6 +114,20 @@ private:
     u32                                 align_bank(pc_t pc) const;
     u32                                 bank_idx(pc_t pc) const;
     u32                                 group_idx(pc_t pc) const;
+    bool                                has_redirect() const;
+    bool                                fetch_stalled() const;
+    void                                clear_inflight();
+
+    u64                                 fault_cause(const IFetchResp& resp) const;
+    void                                emit_fault_packet();
+private:
+    typedef struct {
+        bool valid { false };
+        pc_t fault_pc { 0 };
+        u64 fetch_id { 0 };
+        u64 cause { 0 };
+        pc_t tval { 0 };
+    } PendingFetchFault;
 private:
     CycleScheduler&                     m_sched;
     ICache&                             m_icache;
@@ -128,9 +146,6 @@ private:
     STATE_F3 branch_pred                m_f3_bpred;
     STATE_F3 TagePred                   m_f3_pred[MAX_FETCH_WIDTH];
 
-    STATE_F1 IFetchReq                  m_ifetch_req;
-
-
     STATE_F2 pipe_reg_t<bytes_t>        m_f2_line;
     STATE_F3 pipe_reg_t<FetchPacket>    m_f3_pkt;
     STATE_F4 pipe_reg_t<FetchPacket>    m_f4_pkt;
@@ -139,14 +154,17 @@ private:
     RedirectPC                          m_redirect_pc[8];
 
 
-    FetchState                          m_state[MAX_STATES];
+    FetchBundle                         m_state[MAX_STATES];
     bool                                m_run[MAX_STATES];
     size_t                              m_fetch_decode_cap {8};
 
-    bool                                m_icache_req_pending { false };
-    pc_t                                m_pending_line_addr { 0 };
+    FetchBundle                         m_inflight;
+    bool                                m_inflight_valid { false };
+    PendingFetchFault                   m_pending_fetch_fault;
+
     u32                                 m_fetch_width;
     pc_t                                m_pc;
+    pc_t                                m_next_fetch_pc { 0 };  // F2 组读结束 PC，供 fetch0 算 fall-through
 
     u32                                 m_group_size {32}; // 32 bytes
     u32                                 m_bank_size {16}; // 16 bytes

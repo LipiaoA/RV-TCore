@@ -14,7 +14,7 @@
 #include "log.h"
 #include "perf/perf_stats.h"
 #include "util/util.h"
-
+extern u64 g_cycles;
 FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     : m_sched(*deps.sched)
     , m_icache(*deps.icache)
@@ -38,14 +38,16 @@ FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     m_pc          = 0;
     m_squash_id   = 0;
     memset(m_run, 0, sizeof(m_run));
-    for (auto& state : m_state) {
-        state.clear();
+    for (auto& bundle : m_state) {
+        bundle.clear();
     }
     for (auto& redirect : m_redirect_pc) {
         redirect.valid = false;
         redirect.pc = 0;
     }
-    m_ifetch_req.valid = false;
+    m_inflight_valid = false;
+    m_inflight.clear();
+    m_pending_fetch_fault.valid = false;
 }
 
 void FetchUnit::build() {
@@ -76,6 +78,9 @@ void FetchUnit::redirct(pc_t new_pc, u64 fetch_id)
     m_redirect_pc[RESET_PC].valid = true;
     m_redirect_pc[RESET_PC].pc = new_pc;
     m_pc = new_pc;
+    clear_inflight();
+    m_pending_fetch_fault.valid = false;
+    m_line_buffer.clear();
     m_state[F0].valid = true;
 }
 
@@ -84,50 +89,109 @@ void FetchUnit::preprocess()
     memset(m_run, 0, sizeof(m_run));
 }
 
+bool FetchUnit::has_redirect() const
+{
+    for (const auto& redirect : m_redirect_pc) {
+        if (redirect.valid) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool FetchUnit::fetch_stalled() const
+{
+    return m_inflight_valid;
+}
+
+void FetchUnit::clear_inflight()
+{
+    m_inflight_valid = false;
+    m_inflight.clear();
+}
+
+u64 FetchUnit::fault_cause(const IFetchResp& resp) const
+{
+    if (resp.page_fault) {
+        return EXC_INSTR_PAGE_FAULT;
+    }
+    if (resp.access_fault) {
+        return EXC_INSTR_ACCESS_FAULT;
+    }
+    return 0;
+}
+
+void FetchUnit::emit_fault_packet()
+{
+    FetchPacket pkt;
+    pkt.valid = true;
+    pkt.fetch_fault = true;
+    pkt.fault_pc = m_pending_fetch_fault.fault_pc;
+    pkt.fault_fetch_id = m_pending_fetch_fault.fetch_id;
+    pkt.exception_cause = m_pending_fetch_fault.cause;
+    pkt.exception_tval = m_pending_fetch_fault.tval;
+    pkt.base_pc = m_pending_fetch_fault.fault_pc;
+    m_state[F3].vpc = m_pending_fetch_fault.fault_pc;
+    m_f3_pkt.valid = true;
+    m_f3_pkt.data = std::move(pkt);
+    m_pending_fetch_fault.valid = false;
+    m_state[F4].valid = true;
+    m_run[F3] = true;
+}
+
 void FetchUnit::fetch0()
 {
     if (!m_state[F0].valid) {
         return;
     }
 
-    bool has_redirect = false;
-    for (const auto& redirect : m_redirect_pc) {
-        if (redirect.valid) {
-            has_redirect = true;
-            break;
-        }
+    // I$ 未返回前禁止 PC 漂移：不推进 F0/F1，不发新请求
+    if (fetch_stalled() && !has_redirect()) {
+        m_run[F0] = true;
+        return;
     }
-    if (m_icache_req_pending && m_ifetch_req.valid && !has_redirect) {
-        // 有未完成的 I$ 请求时保持原请求 PC，避免等待期间顺序 PC 漂移导致漏取。
-        m_state[F0].vpc = m_ifetch_req.pc;
+
+    if (has_redirect()) {
+        clear_inflight();
+    }
+
+    FetchBundle bundle {};
+    bundle.valid = true;
+    bundle.vpc = next_pc();
+    bundle.line_addr = m_icache.align_line(bundle.vpc);
+    bundle.epoch = m_epoch;
+    bundle.icache_sent = false;
+
+    const bool line_cached = m_line_buffer.valid
+        && m_line_buffer.line_addr == bundle.line_addr
+        && m_line_buffer.epoch == bundle.epoch;
+
+    if (line_cached) {
+        m_state[F0] = bundle;
         m_state[F1].valid = true;
         m_run[F0] = true;
         return;
     }
 
-    m_state[F0].vpc = next_pc();
-    pc_t line_addr = m_icache.align_line(m_state[F0].vpc);
+    IFetchReq ireq {};
+    ireq.valid = true;
+    ireq.pc = bundle.vpc;
+    ireq.line_addr = bundle.line_addr;
+    ireq.epoch = bundle.epoch;
 
-    if ((m_line_buffer.valid && m_line_buffer.line_addr == line_addr) ||
-        (m_ifetch_req.valid && m_pending_line_addr == line_addr)) {
-        // 当前 cache line 已在本地缓冲或已有请求在路上，继续推进到后续阶段等待/复用。
-        m_state[F1].valid = true;
+    m_line_buffer.clear();
+    bool accepted = m_icache.request(ireq);
+    LOG_LEVEL1("F0 Send Request", "req vpc:0x%lx, line_addr:0x%lx, epoch:%d, accepted:%d",
+                bundle.vpc, bundle.line_addr, bundle.epoch, accepted);
+    if (!accepted) {
         m_run[F0] = true;
         return;
-    } else {
-        m_line_buffer.clear();
-        m_ifetch_req.valid = true;
-        m_ifetch_req.pc = m_state[F0].vpc;
-        m_ifetch_req.line_addr = line_addr;
-        m_ifetch_req.epoch = m_epoch;
-        bool accepted = m_icache.request(m_ifetch_req);
-        LOG_LEVEL1("F0 Send Request", "req vpc:0x%lx, line_addr:0x%lx, epoch:%d, accepted:%d",
-                    m_state[F0].vpc, line_addr, m_epoch, accepted);
-        if (accepted) {
-            m_icache_req_pending = true;
-            m_pending_line_addr = line_addr;
-        }
     }
+
+    bundle.icache_sent = true;
+    m_inflight = bundle;
+    m_inflight_valid = true;
+    m_state[F0] = bundle;
     m_state[F1].valid = true;
     m_run[F0] = true;
 }
@@ -139,26 +203,24 @@ void FetchUnit::fetch1()
         return;
     }
 
-    m_state[F1].vpc = m_state[F0].vpc;
+    m_state[F1] = m_state[F0];
     m_f1_pred = m_bpu.f1_pred(m_state[F1].vpc);
-    pc_t fall_addr = (m_state[F1].vpc / m_bank_size) * m_bank_size + m_bank_size;
-    bool pred_taken = false;
     for (u32 i = 0; i < m_fetch_width; ++i) {
-        if (m_f1_pred.pred[i].valid) {
-            pred_taken = true;
+        if (!m_f1_pred.pred[i].valid)
+            continue;
+        const bool unconditional = m_f1_pred.pred[i].target != static_cast<pc_t>(-1ull);
+        if (m_f1_pred.pred[i].taken || unconditional) {
             m_redirect_pc[RES_F1].valid = true;
             m_redirect_pc[RES_F1].pc = m_f1_pred.pred[i].target;
             break;
         }
     }
-    m_redirect_pc[RES_F1].pc = pred_taken ? m_redirect_pc[RES_F1].pc : fall_addr;
+    // TODO: itlb request
 
-    // TODO: request itlb
-
+    m_state[F2] = m_state[F1];
     m_state[F2].valid = true;
     m_state[F1].valid = false;
     m_run[F1] = true;
-    return;
 }
 
 void FetchUnit::fetch2()
@@ -169,32 +231,55 @@ void FetchUnit::fetch2()
     if (m_inst_buffer.size() + m_fetch_width > MAX_INST_COUNT) {
         return;
     }
-    m_state[F2].vpc = m_state[F1].vpc;
-    m_f2_pred = m_bpu.f2_pred(m_state[F2].vpc);
-    pc_t line_addr = m_icache.align_line(m_state[F2].vpc);
-    bool use_line_buffer = m_line_buffer.valid && m_line_buffer.line_addr == line_addr;
-    if (use_line_buffer || m_icache.line_ready(m_state[F2].vpc)) {
-        if (!use_line_buffer) {
-            IFetchResp resp = m_icache.read_line(m_state[F2].vpc);
-            if (!resp.valid || resp.epoch != m_epoch) {
-                // flush 后可能收到旧 epoch 的 I$ 响应，丢弃并重新从当前 PC 取指。
-                m_redirect_pc[RES_F2].valid = true;
-                m_redirect_pc[RES_F2].pc = m_state[F2].vpc;
-                m_state[F1].valid = false;
-                m_state[F2].valid = false;
+
+    const FetchBundle &b = m_state[F2];
+    m_f2_pred = m_bpu.f2_pred(b.vpc);
+
+    const bool line_match = m_line_buffer.valid
+        && m_line_buffer.line_addr == b.line_addr
+        && m_line_buffer.epoch == b.epoch;
+
+    if (line_match || m_icache.line_ready(b.vpc)) {
+        IFetchResp resp {};
+        if (!line_match) {
+            resp = m_icache.read_line(b.vpc);
+            if (!resp.valid || resp.epoch != b.epoch) {
+                if (m_stats) {
+                    ++m_stats->frontend.icache_wait_cycles;
+                }
                 return;
             }
+        }
+
+        if (!line_match && (resp.page_fault || resp.access_fault)) {
+            m_pending_fetch_fault.valid = true;
+            m_pending_fetch_fault.fault_pc = b.vpc;
+            m_pending_fetch_fault.fetch_id = m_fetch_id++;
+            m_pending_fetch_fault.cause = fault_cause(resp);
+            m_pending_fetch_fault.tval = b.vpc;
+            LOG_LEVEL1("Fetch2", "I$ fault vpc:0x%lx, cause:%lu, fetch_id:%lu",
+                       b.vpc, m_pending_fetch_fault.cause, m_pending_fetch_fault.fetch_id);
+            if (m_inflight_valid
+                && m_inflight.line_addr == b.line_addr
+                && m_inflight.epoch == b.epoch) {
+                clear_inflight();
+            }
+            m_state[F2].valid = false;
+            m_state[F3].valid = true;
+            m_run[F2] = true;
+            return;
+        }
+
+        if (!line_match) {
             memcpy(m_line_buffer.data, resp.data, sizeof(m_line_buffer.data));
             m_line_buffer.valid = true;
             m_line_buffer.line_addr = resp.line_addr;
+            m_line_buffer.epoch = b.epoch;
             m_line_buffer.bmask = 0;
-            m_icache_req_pending = false;
-            m_pending_line_addr = 0;
-            m_ifetch_req.valid = false;
         }
 
         auto &line = m_line_buffer.data;
-        pc_t cur_pc = m_state[F2].vpc;
+        pc_t cur_pc = b.vpc;
         u32 gstart_offset = align_group(cur_pc) % m_cache_line_size;
         u32 start_offset = cur_pc % m_cache_line_size;
         u32 end_offset = gstart_offset + m_group_size;
@@ -211,24 +296,27 @@ void FetchUnit::fetch2()
             cur_pc += 4;
             oft += 4;
         }
-        LOG_LEVEL1("F2 Data Res", "addr:0x%lx", m_state[F2].vpc);
+        m_line_buffer.clear();
+
+        if (m_inflight_valid
+            && m_inflight.line_addr == b.line_addr
+            && m_inflight.epoch == b.epoch) {
+            clear_inflight();
+        }
+        m_state[F2].valid = false;
     } else {
         if (m_stats) {
             ++m_stats->frontend.icache_wait_cycles;
         }
-        m_redirect_pc[RES_F2].valid = true;
-        m_redirect_pc[RES_F2].pc = m_state[F2].vpc;
-        m_state[F1].valid = false;
+        return;
     }
+
     for (u32 i = 0; i < m_fetch_width; ++i) {
         m_f2_pred.pred[i].target = m_f1_pred.pred[i].target;
         if (m_f2_pred.pred[i].valid) {
             if (m_f2_pred.pred[i].taken) {
                 m_redirect_pc[RES_F2].valid = true;
                 m_redirect_pc[RES_F2].pc = m_f2_pred.pred[i].target;
-            } else {
-                m_redirect_pc[RES_F2].valid = true;
-                m_redirect_pc[RES_F2].pc = m_state[F2].vpc + 4;
             }
             if (m_f2_pred.pred[i].taken != m_f1_pred.pred[i].taken) {
                 m_state[F2].valid = false;
@@ -236,6 +324,10 @@ void FetchUnit::fetch2()
             }
             break;
         }
+    }
+    if (m_redirect_pc[RES_F2].valid) {
+        m_state[F1].valid = false;
+        m_state[F2].valid = false;
     }
     m_state[F3].valid = true;
     m_run[F2] = true;
@@ -248,6 +340,11 @@ void FetchUnit::fetch3()
 
     if (m_f3_pkt.valid && m_state[F4].valid) {
         // F4 尚未消费当前包，不能覆盖。
+        return;
+    }
+
+    if (m_pending_fetch_fault.valid) {
+        emit_fault_packet();
         return;
     }
 
@@ -295,16 +392,19 @@ void FetchUnit::fetch3()
             pkt.pred_target = m_f3_bpred.pred[i].target;
             if (m_f3_pred[i].valid) {
                 if (m_f3_pred[i].final_pred != m_f3_bpred.pred[i].taken) {
-                    m_redirect_pc[RES_F3].valid = true;
-                    /* 预测结果与 f2 不符，应该先清除 f2 并重新取指*/
-                    m_state[F2].valid = false;
+                    m_redirect_pc[RES_F3].valid = m_f3_pred[i].final_pred;
+                    m_redirect_pc[RES_F3].pc = m_f3_bpred.pred[i].target;
+                    m_inst_buffer = std::queue<F2Inst>();
                     m_epoch++;
                 }
                 if (m_f3_pred[i].final_pred) {
+                    m_redirect_pc[RES_F3].valid = true;
                     m_redirect_pc[RES_F3].pc = m_f3_bpred.pred[i].target;
-                } else if (m_redirect_pc[RES_F3].valid) {
-                    m_redirect_pc[RES_F3].pc = finst.pc + finst.size;
+                    m_state[F2].valid = false;
+                    m_inst_buffer = std::queue<F2Inst>();
+                    m_state[F1].valid = false;
                 }
+                // not-taken fall-through：不写 redirect，由 fetch0/next_pc() 处理
             }
             LOG_LEVEL1("F3 Predict", "branch mask:0x%x", pkt.br_mask);
             break;
@@ -320,11 +420,6 @@ void FetchUnit::fetch3()
     m_f3_pkt.valid = true;
     m_f3_pkt.data  = std::move(pkt);
 
-    const auto &last = m_f3_pkt.data.insts.back();
-    if (!m_redirect_pc[RES_F3].valid) {
-        m_redirect_pc[RES_F3].valid = true;
-        m_redirect_pc[RES_F3].pc = last.pc + last.size;
-    }
     m_state[F4].valid = true;
     m_run[F3] = true;
 }
@@ -394,14 +489,20 @@ FetchUnit::~FetchUnit() { }
 
 pc_t FetchUnit::next_pc()
 {
-    m_pc = align_bank(m_pc) + m_bank_size;
-    for (int i = 0; i <= RESET_PC; ++i) {
-        if (m_redirect_pc[i].valid) {
-            m_pc = m_redirect_pc[i].pc;
-            m_redirect_pc[i].valid = false;
-        }
+    // 控制流 redirect（taken / mispred / flush）：优先级 RESET_PC > F4 > … > F1
+    m_next_fetch_pc = align_group(m_pc) + m_group_size;
+
+    for (int i = RESET_PC; i >= RES_F1; --i) {
+        if (!m_redirect_pc[i].valid)
+            continue;
+        m_pc = m_redirect_pc[i].pc;
+        m_redirect_pc[i].valid = false;
         m_redirect_pc[i].pc = 0;
+        m_next_fetch_pc = m_pc;
+        return m_pc;
     }
+
+    m_pc = m_next_fetch_pc;
     return m_pc;
 }
 
@@ -459,10 +560,12 @@ void FetchUnit::flush()
         m_redirect_pc[RESET_PC].valid = true;
         m_redirect_pc[RESET_PC].pc = m_flush_event.redirect_pc;
         m_epoch++;
-        m_icache_req_pending = false;
-        m_pending_line_addr = 0;
-        m_ifetch_req.valid = false;
+        clear_inflight();
         m_line_buffer.clear();
+        if (m_pending_fetch_fault.valid
+            && m_pending_fetch_fault.fetch_id > m_flush_event.fetch_id) {
+            m_pending_fetch_fault.valid = false;
+        }
         for (auto& redirect : m_redirect_pc) {
             redirect.valid = false;
             redirect.pc = 0;
@@ -474,10 +577,21 @@ void FetchUnit::flush()
         }
         m_state[F0].valid = true;
         m_inst_buffer = std::queue<F2Inst>();
+        m_pending_fetch_fault.valid = false;
         m_f3_pkt.clear();
         m_f4_pkt.clear();
         m_f5_pkt.clear();
         m_fetch_decode_q.for_each_mut([&](FetchPacket& pkt) {
+            if (pkt.fetch_fault) {
+                if (pkt.fault_fetch_id > m_flush_event.fetch_id) {
+                    if (m_stats) {
+                        ++m_stats->frontend.flushed_insts;
+                    }
+                    pkt.fetch_fault = false;
+                    return false;
+                }
+                return true;
+            }
             for (size_t i = 0; i < pkt.insts.size(); ++i) {
                 auto& fi = pkt.insts[i];
                 if (!fi.valid)
@@ -492,7 +606,7 @@ void FetchUnit::flush()
                 }
             }
             // 返回 false => 从队列删掉空包
-            return pkt.valid_mask != 0;
+            return pkt.fetch_fault || pkt.valid_mask != 0;
         });
     } break;
     default:
@@ -506,9 +620,8 @@ void FetchUnit::reset()
     m_squash_id = 0;
     m_fetch_id = 1;
     m_epoch = 0;
-    m_icache_req_pending = false;
-    m_pending_line_addr = 0;
-    m_ifetch_req.valid = false;
+    clear_inflight();
+    m_pending_fetch_fault.valid = false;
 
     m_line_buffer.clear();
     m_inst_buffer = std::queue<F2Inst>();
@@ -520,8 +633,8 @@ void FetchUnit::reset()
 
     memset(m_run, 0, sizeof(m_run));
 
-    for (auto& state : m_state) {
-        state.clear();
+    for (auto& bundle : m_state) {
+        bundle.clear();
     }
     for (auto& redirect : m_redirect_pc) {
         redirect.valid = false;
@@ -558,23 +671,25 @@ void FetchUnit::dump_state() const
         pc_t buffer_addr = m_line_buffer.line_addr;
         bool line_valid = m_line_buffer.valid;
         pc_t vpc = m_state[F0].vpc;
-        LOG_LEVEL1("Fetch0", "vpc:0x%lx,line vld:%d, buffer addr:0x%lx, req line:0x%lx",
-            vpc, line_valid, buffer_addr, line_addr);
+        LOG_LEVEL1("Fetch0", "vpc:0x%lx,line vld:%d, buffer addr:0x%lx, req line:0x%lx, inflight:%d",
+            vpc, line_valid, buffer_addr, line_addr, m_inflight_valid);
     }
     if (m_run[F1]) {
         auto &pred = m_f1_pred.pred;
-        LOG_LEVEL1("Fetch1", "vpc:0x%lx,ghr:0x%lx, redirect:(%d-%lx),"
+        LOG_LEVEL1("Fetch1", "vpc:0x%lx,line:0x%lx,epoch:%d, redirect:(%d-%lx),"
                     "pred:[v%d-t%d-0x%lx | v%d-t%d-0x%lx | v%d-t%d-0x%lx | v%d-t%d-0x%lx]",
-                    m_state[F1].vpc, m_f1_pred.ghr_snapshot, m_redirect_pc[RES_F1].valid, m_redirect_pc[RES_F1].pc,
+                    m_state[F1].vpc, m_state[F1].line_addr, m_state[F1].epoch,
+                    m_redirect_pc[RES_F1].valid, m_redirect_pc[RES_F1].pc,
                     pred[0].valid, pred[0].taken, pred[0].target, pred[1].valid, pred[1].taken, pred[1].target,
                     pred[2].valid, pred[2].taken, pred[2].target, pred[3].valid, pred[3].taken, pred[3].target);
     }
 
     if (m_run[F2]) {
         auto &pred = m_f2_pred.pred;
-        LOG_LEVEL1("Fetch2", "vpc:0x%lx,ghr:0x%lx,redirect:(%d-%lx), "
+        LOG_LEVEL1("Fetch2", "vpc:0x%lx,line:0x%lx,epoch:%d,ghr:0x%lx,redirect:(%d-%lx), "
                     "pred:[v%d-t%d-0x%lx | v%d-t%d-0x%lx | v%d-t%d-0x%lx | v%d-t%d-0x%lx]",
-                    m_state[F2].vpc, m_f2_pred.ghr_snapshot, m_redirect_pc[RES_F2].valid, m_redirect_pc[RES_F2].pc,
+                    m_state[F2].vpc, m_state[F2].line_addr, m_state[F2].epoch,
+                    m_f2_pred.ghr_snapshot, m_redirect_pc[RES_F2].valid, m_redirect_pc[RES_F2].pc,
                     pred[0].valid, pred[0].taken, pred[0].target, pred[1].valid, pred[1].taken, pred[1].target,
                     pred[2].valid, pred[2].taken, pred[2].target, pred[3].valid, pred[3].taken, pred[3].target);
     }

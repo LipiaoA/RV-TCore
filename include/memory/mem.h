@@ -47,6 +47,7 @@ public:
     inline void                                 store64(u64 addr, u64 v) { store(addr, v, 8); }
 
     std::vector<u8>                             load_cache_line(u64 addr, u32 size) const;
+    bool                                        contains(u64 addr, u64 len) const;
 
 public:
     u8*                                         raw_ptr(u64 addr);

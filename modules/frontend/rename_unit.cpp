@@ -57,6 +57,29 @@ void RenameUnit::r1() {
         MInstPtr inst = m_r1_buf.front();
         m_r1_buf.pop_front();
 
+        if (inst->fetch_fault) {
+            if (m_rob.full()) {
+                if (m_stats) {
+                    ++m_stats->rename.rob_full_stall_cycles;
+                }
+                m_r1_buf.push_front(inst);
+                break;
+            }
+            auto alloc = m_rob.alloc(inst);
+            if (!alloc) {
+                m_r1_buf.push_front(inst);
+                break;
+            }
+            inst->rid = alloc.value();
+            inst->state = InstState::EXECUTED;
+            m_rob.mark_ready(inst->rid, 0);
+            if (m_stats) {
+                ++m_stats->rename.renamed_insts;
+            }
+            ++n;
+            continue;
+        }
+
         if (m_rob.full()) {
             if (m_stats) {
                 ++m_stats->rename.rob_full_stall_cycles;
@@ -81,6 +104,14 @@ void RenameUnit::r1() {
             break;
         }
         inst->rid = alloc.value();
+        if (inst->rs1.valid) {
+            inst->rs1.ptag = m_rat[inst->rs1.atag];
+            inst->rs1.ready = m_regfile.is_ready(inst->rs1.ptag);
+        }
+        if (inst->rs2.valid) {
+            inst->rs2.ptag = m_rat[inst->rs2.atag];
+            inst->rs2.ready = m_regfile.is_ready(inst->rs2.ptag);
+        }
         if (inst->rd.valid) {
             int ptag = -1;
             if (inst->rd.atag != 0) {
@@ -94,14 +125,6 @@ void RenameUnit::r1() {
                 inst->rd.ptag = 0;
                 m_rat[0] = 0;
             }
-        }
-        if (inst->rs1.valid) {
-            inst->rs1.ptag = m_rat[inst->rs1.atag];
-            inst->rs1.ready = m_regfile.is_ready(inst->rs1.ptag);
-        }
-        if (inst->rs2.valid) {
-            inst->rs2.ptag = m_rat[inst->rs2.atag];
-            inst->rs2.ready = m_regfile.is_ready(inst->rs2.ptag);
         }
 
         std::string id_pre = inst->rid.idx == 0 ? "++" : "--";
@@ -189,9 +212,11 @@ void RenameUnit::commit() {
 bool RenameUnit::dispatch(MInstPtr inst)
 {
     std::string id_pre = inst->rid.idx == 0 ? "++" : "--";
-    LOG_LEVEL1("RenameUnit R2", "pc:0x%lx, inst: %s, rd:v%d-x%d-p%d%s%d", inst->pc,
-               inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
-               inst->rd.ptag, id_pre.c_str(), inst->rid.idx);
+    LOG_LEVEL1("RenameUnit R2", "pc:0x%lx, inst: %s, rs1:v%d-x%d-p%d-0x%lx, rs2:v%d-x%d-p%d-0x%lx, rd:v%d-x%d-p%d%s%d", inst->pc,
+               inst->inst_name.c_str(),
+               inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
+               inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
+               inst->rd.valid, inst->rd.atag, inst->rd.ptag, id_pre.c_str(), inst->rid.idx);
     if (m_rename_issue_q.write(inst)) {
         if (m_stats) {
             ++m_stats->rename.dispatched_insts;
@@ -214,10 +239,12 @@ void RenameUnit::flush() {
         });
     }
     if (m_flush_event.scope == FlushScope::ALL) {
-        m_rat = m_crat;
+        m_r1_buf.clear();
+        m_r2_buf.clear();
+        m_rename_issue_q.clear();
         m_checkpoints.clear();
-        /* TODO:rebuild free list from committed state */
-        assert(0);
+        m_rat = m_crat;
+        rebuild_free_list();
         return;
     }
     if (!m_flush_event.recover_c_id) {

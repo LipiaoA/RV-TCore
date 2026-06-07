@@ -152,8 +152,9 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
                 out->rs2.valid = true;
                 break;
             case RV_FMT_C:
-                out->rd.valid = true;
-                out->rs1.valid = true;
+                /* compressed instr is not supported */
+                out->rd.valid = false;
+                out->rs1.valid = false;
                 out->rs2.valid = false;
                 out->opcode = OP_INVALID;
                 return false;
@@ -166,6 +167,7 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
                 out->opcode = OP_INVALID;
                 return false;
             }
+            return true;
         }
     }
     out->opcode = OP_INVALID;
@@ -210,6 +212,24 @@ void DecodeUnit::d0() {
     FetchPacket pkt;
     if (!m_fetch_decode_q.read(pkt) || !m_d0_pkt.empty())
         return;
+
+    if (pkt.fetch_fault) {
+        MInstPtr dinst = new MicroOp();
+        dinst->valid = true;
+        dinst->pc = pkt.fault_pc;
+        dinst->fetch_id = pkt.fault_fetch_id;
+        dinst->fetch_fault = true;
+        dinst->has_exception = true;
+        dinst->exception_cause = pkt.exception_cause;
+        dinst->exception_tval = pkt.exception_tval;
+        dinst->inst_name = "fetch_fault";
+        dinst->type = InstType::NONE;
+        LOG_LEVEL1("DecodeUnit d0", "fetch fault pc:0x%lx fetch_id:%lu cause:%lu",
+                   dinst->pc, dinst->fetch_id, dinst->exception_cause);
+        m_d0_pkt.emplace_back(dinst);
+        return;
+    }
+
     size_t inst_count = 0;
     for (size_t i = 0; i < pkt.insts.size() && inst_count < m_decode_width; ++i) {
         const auto& finst = pkt.insts[i];
@@ -296,7 +316,7 @@ void DecodeUnit::flush()
             }
         }
         m_decode_rename_q.for_each_mut([&](MInstPtr& dinst) {
-            if (dinst->fetch_id > m_flush_event.fetch_id) {
+            if (dinst && dinst->valid && dinst->fetch_id > m_flush_event.fetch_id) {
                 dinst->valid = false;
             }
         });

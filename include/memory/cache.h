@@ -17,7 +17,7 @@ typedef struct MemReq {
     bool write { false };
     pc_t line_addr { 0 };
     u8 data[64];
-    u64 epoch;
+    u64 epoch { 0 };
 } MemReq;
 
 typedef struct MemResp {
@@ -26,11 +26,17 @@ typedef struct MemResp {
     u8 data[64];
     bool page_fault { false };
     bool access_fault { false };
-    u64 epoch;
+    u64 epoch { 0 };
 } MemResp;
 
 class GCache {
-    struct MSHREntry { u64 line_addr; std::vector<SimpleFuture<MemResp>> promises; };
+    struct MSHREntry {
+        u64 line_addr { 0 };
+        u64 epoch { 0 };
+        u64 seq { 0 };
+        bool lower_in_flight { false };
+        std::vector<SimpleFuture<MemResp>> promises;
+    };
     typedef struct Stats { u64 accesses=0, hits=0, misses=0, total_latency=0; } Stats;
 
 public:
@@ -68,7 +74,16 @@ protected:
 
     void                                fulfill_mshr(MemResp resp, u64 start_cycle);
 
-protected:
+    void                                drop_mshr(u64 line_addr);
+
+    bool                                mshr_fulfillable(u64 line_addr, u64 seq) const;
+
+    bool                                try_read_hit(u64 line_addr, u64 epoch, MemResp& out) const;
+
+    void                                complete_miss(u64 line_addr, MemResp resp, u64 start_cycle, u64 miss_seq);
+
+    void                                send_lower_for_miss(MemReq req, u64 start_cycle, u64 miss_seq);
+
     CycleScheduler*                                                 m_sched;
     CacheConfig                                                     m_cfg;
     InclusionPolicy                                                 m_policy;
@@ -84,6 +99,7 @@ protected:
     std::mutex                                                      m_up_mtx;
 
     std::unordered_map<u64, MSHREntry>                              m_mshr;
+    u64                                                             m_mshr_seq { 0 };
     mutable std::mutex                                              m_mtx;
 
     u64                                                             m_tick = 1;

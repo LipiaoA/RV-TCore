@@ -50,19 +50,18 @@ SimpleFuture<MemResp> GCache::fetch_line_async(MemReq req)
     SimpleFuture<MemResp> fut;
     auto start_cycle = m_sched->cycle();
     auto [set_idx, tag] = decode(req.line_addr);
+    u64 miss_seq = 0;
+    bool schedule_lower = false;
 
     {
         std::lock_guard<std::mutex> lk(m_mtx);
-        // search for hit
         for (size_t w = 0; w < m_cfg.ways; ++w) {
             if (m_meta[set_idx][w].valid && m_meta[set_idx][w].tag == tag) {
                 LOG_LEVEL1(m_name, " Hit addr:0x%x, set_idx:%d, way:%d, tag:0x%x\n", req.line_addr, set_idx, w, tag);
                 m_stats.hits++;
                 m_meta[set_idx][w].last_access = ++m_tick;
-                // update replacement structures
                 m_plru[set_idx].touch(w);
                 update_lru_list_on_access(set_idx, w);
-                // schedule ready after hit latency
                 auto data = m_data[set_idx][w];
                 MemResp resp;
                 resp.valid = true;
@@ -80,52 +79,135 @@ SimpleFuture<MemResp> GCache::fetch_line_async(MemReq req)
         }
         LOG_LEVEL1(m_name, "Miss addr:0x%lx, set_idx:%d, tag:0x%x, epoch:%d", req.line_addr, set_idx, tag, req.epoch);
 
-        // miss
         m_stats.misses++;
         auto it = m_mshr.find(req.line_addr);
         if (it != m_mshr.end()) {
+            if (it->second.epoch == req.epoch) {
+                it->second.promises.push_back(fut);
+                return fut;
+            }
+            // 同 line 不同 epoch：supersede waiter，保留 lower_in_flight 状态
+            it->second.epoch = req.epoch;
+            it->second.seq = ++m_mshr_seq;
+            it->second.promises.clear();
             it->second.promises.push_back(fut);
-            return fut;
-        }
-        MSHREntry me;
-        me.line_addr = req.line_addr;
-        me.promises.push_back(fut);
-        m_mshr.emplace(req.line_addr, std::move(me));
-    }
-    // schedule lower request after miss_penalty
-    m_sched->schedule_after(m_cfg.miss_penalty, [this, req, start_cycle]() {
-        if (m_lower) {
-            auto lf = m_lower->fetch_line_async(req);
-
-            LOG_LEVEL1(m_name, "send req addr:0x%lx", req.line_addr);
-
-            lf.then([this, req, start_cycle](const MemResp& resp) {
-                // install after install_latency
-                LOG_LEVEL1(m_name, "response line:0x%lx, epoch:%d", resp.line_addr, resp.epoch);
-                m_sched->schedule_after(m_cfg.install_latency, [this, req, resp, start_cycle]() {
-                    this->install_line(resp, false);
-                    this->fulfill_mshr(resp, start_cycle);
-                });
-            });
+            miss_seq = it->second.seq;
+            schedule_lower = !it->second.lower_in_flight;
         } else {
-            // main memory
-            LOG_LEVEL1(m_name, "send req addr:0x%lx to main memory, epoch:%d", req.line_addr, req.epoch);
+            MSHREntry me;
+            me.line_addr = req.line_addr;
+            me.epoch = req.epoch;
+            me.seq = ++m_mshr_seq;
+            me.promises.push_back(fut);
+            miss_seq = me.seq;
+            m_mshr.emplace(req.line_addr, std::move(me));
+            schedule_lower = true;
+        }
+    }
+
+    if (schedule_lower) {
+        m_sched->schedule_after(m_cfg.miss_penalty, [this, req, start_cycle, miss_seq]() {
+            this->send_lower_for_miss(req, start_cycle, miss_seq);
+        });
+    }
+    return fut;
+}
+
+void GCache::send_lower_for_miss(MemReq req, u64 start_cycle, u64 miss_seq)
+{
+    {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        auto it = m_mshr.find(req.line_addr);
+        if (it == m_mshr.end() || it->second.seq != miss_seq) {
+            return;
+        }
+        if (it->second.lower_in_flight) {
+            return;
+        }
+        it->second.lower_in_flight = true;
+    }
+
+    if (m_lower) {
+        auto lf = m_lower->fetch_line_async(req);
+        LOG_LEVEL1(m_name, "send req addr:0x%lx, epoch:%d", req.line_addr, req.epoch);
+        lf.then([this, req, start_cycle, miss_seq](const MemResp& lower_resp) {
+            MemResp resp = lower_resp;
+            resp.epoch = req.epoch;
+            LOG_LEVEL1(m_name, "response line:0x%lx, epoch:%d", resp.line_addr, resp.epoch);
+            m_sched->schedule_after(m_cfg.install_latency, [this, resp, start_cycle, miss_seq]() {
+                this->complete_miss(resp.line_addr, resp, start_cycle, miss_seq);
+            });
+        });
+    } else {
+        LOG_LEVEL1(m_name, "send req addr:0x%lx to main memory, epoch:%d", req.line_addr, req.epoch);
+        MemResp resp;
+        resp.valid = true;
+        resp.line_addr = req.line_addr;
+        resp.epoch = req.epoch;
+        if (m_mem && !m_mem->contains(req.line_addr, m_cfg.line_size)) {
+            resp.page_fault = true;
+            resp.access_fault = false;
+            memset(resp.data, 0, sizeof(resp.data));
+            LOG_LEVEL1(m_name, "page fault addr:0x%lx", req.line_addr);
+        } else {
             auto data = this->on_lower_fetch(req.line_addr);
-            MemResp resp;
-            resp.valid = true;
-            resp.line_addr = req.line_addr;
             memcpy(resp.data, data.data(), sizeof(resp.data));
             resp.page_fault = false;
             resp.access_fault = false;
-            resp.epoch = req.epoch;
-            m_sched->schedule_after(m_cfg.install_latency, [this, req, resp, start_cycle]() {
-                LOG_LEVEL1(m_name, "response addr:0x%lx, epoch:%d", resp.line_addr, resp.epoch);
-                this->install_line(resp, false);
-                this->fulfill_mshr(resp, start_cycle);
-            });
         }
-    });
-    return fut;
+        m_sched->schedule_after(m_cfg.install_latency, [this, resp, start_cycle, miss_seq]() {
+            LOG_LEVEL1(m_name, "response addr:0x%lx, epoch:%d, pf:%d", resp.line_addr, resp.epoch, resp.page_fault);
+            this->complete_miss(resp.line_addr, resp, start_cycle, miss_seq);
+        });
+    }
+}
+
+bool GCache::try_read_hit(u64 line_addr, u64 epoch, MemResp& out) const
+{
+    auto [set_idx, tag] = decode(line_addr);
+    std::lock_guard<std::mutex> lk(m_mtx);
+    for (size_t w = 0; w < m_cfg.ways; ++w) {
+        if (!m_meta[set_idx][w].valid || m_meta[set_idx][w].tag != tag) {
+            continue;
+        }
+        out.valid = true;
+        out.line_addr = line_addr;
+        memcpy(out.data, m_data[set_idx][w].data(), sizeof(out.data));
+        out.page_fault = false;
+        out.access_fault = false;
+        out.epoch = epoch;
+        return true;
+    }
+    return false;
+}
+
+void GCache::complete_miss(u64 line_addr, MemResp resp, u64 start_cycle, u64 miss_seq)
+{
+    install_line(resp, false);
+
+    bool fulfill_now = false;
+    u64 current_epoch = 0;
+    {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        auto it = m_mshr.find(line_addr);
+        if (it == m_mshr.end()) {
+            return;
+        }
+        it->second.lower_in_flight = false;
+        current_epoch = it->second.epoch;
+        fulfill_now = (it->second.seq == miss_seq);
+    }
+
+    if (fulfill_now) {
+        resp.epoch = current_epoch;
+        fulfill_mshr(resp, start_cycle);
+        return;
+    }
+
+    MemResp hit_resp;
+    if (try_read_hit(line_addr, current_epoch, hit_resp)) {
+        fulfill_mshr(hit_resp, start_cycle);
+    }
 }
 
 
@@ -202,8 +284,9 @@ void GCache::fulfill_mshr(MemResp resp, u64 start_cycle)
     {
         std::lock_guard<std::mutex> lk(m_mtx);
         auto it = m_mshr.find(resp.line_addr);
-        if (it!=m_mshr.end()) {
+        if (it != m_mshr.end()) {
             prom = move(it->second.promises);
+            resp.epoch = it->second.epoch;
             m_mshr.erase(it);
         }
     }
@@ -211,6 +294,19 @@ void GCache::fulfill_mshr(MemResp resp, u64 start_cycle)
         m_stats.total_latency += (m_sched->cycle() - start_cycle);
         f.set_value(resp);
     }
+}
+
+void GCache::drop_mshr(u64 line_addr)
+{
+    std::lock_guard<std::mutex> lk(m_mtx);
+    m_mshr.erase(line_addr);
+}
+
+bool GCache::mshr_fulfillable(u64 line_addr, u64 seq) const
+{
+    std::lock_guard<std::mutex> lk(m_mtx);
+    auto it = m_mshr.find(line_addr);
+    return it != m_mshr.end() && it->second.seq == seq;
 }
 
 // default lower fetch

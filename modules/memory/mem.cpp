@@ -35,6 +35,16 @@ std::vector<u8> Memory::load_cache_line(u64 addr, u32 size) const
     return res;
 }
 
+bool Memory::contains(u64 addr, u64 len) const
+{
+    for (const auto& seg : m_segments) {
+        if (seg.contains(addr) && seg.contains(addr + len - 1)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 void Memory::store(u64 addr, u64 value, int size) {
     auto seg = find_segment(addr, size);
     u64 off = seg->offset(addr);

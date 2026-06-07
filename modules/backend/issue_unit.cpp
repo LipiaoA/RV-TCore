@@ -322,7 +322,11 @@ void IssueUnit::flush() {
     case FlushType::MEMORY_ORDER:
     case FlushType::LOAD_REPLAY:
     case FlushType::FENCE: {
-        assert(0);
+        m_int_q.clear();
+        m_ls_q.clear();
+        m_fp_q.clear();
+        m_select_buffer.clear();
+        m_rename_issue_q.clear();
     } break;
     default:
         assert(0);

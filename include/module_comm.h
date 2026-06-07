@@ -30,6 +30,9 @@ struct FetchInst {
 };
 
 
+constexpr u64 EXC_INSTR_ACCESS_FAULT = 1;
+constexpr u64 EXC_INSTR_PAGE_FAULT   = 12;
+
 struct FetchPacket {
     std::vector<FetchInst> insts;
     bool valid { false };
@@ -38,6 +41,13 @@ struct FetchPacket {
     pc_t pred_target { 0 };
     uint8_t  valid_mask { 0 };
     uint8_t  br_mask    { 0 };
+
+    // I$ 访问失败：标记 fault 取指 PC，由分支 flush 丢弃或在 commit 抛异常
+    bool fetch_fault { false };
+    pc_t fault_pc { 0 };
+    u64  fault_fetch_id { 0 };
+    u64  exception_cause { 0 };
+    pc_t exception_tval { 0 };
 
     PredecodeInfo  predecode[MAX_FETCH_WIDTH];
 };

@@ -23,7 +23,14 @@ public:
     pc_t                                                        align_line(pc_t pc) const;
 
 private:
-    std::unordered_map<pc_t, SimpleFuture<MemResp>>             m_pending_futures;
+    struct PendingLineFetch {
+        u64                         epoch { 0 };
+        SimpleFuture<MemResp>       fut;
+    };
+
+    void                            drop_ready_line(pc_t line_addr);
+
+    std::unordered_map<pc_t, PendingLineFetch>                  m_pending_futures;
     std::vector<IFetchResp>                                     m_ready;
     MultiLevelTLB*                                              m_tlb;
 };
