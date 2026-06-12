@@ -106,7 +106,7 @@ public:
 
     inline bool full() const
     {
-        return m_read_buffer.size() >= m_capacity;
+        return m_write_buffer.size() >= m_capacity;
     }
 
     // 在周期边界调用，将write缓冲区切换到read缓冲区
@@ -127,6 +127,11 @@ public:
     inline size_t size() const
     {
         return m_read_buffer.size();
+    }
+
+    inline size_t wsize() const
+    {
+        return m_write_buffer.size();
     }
 
     inline void stall()

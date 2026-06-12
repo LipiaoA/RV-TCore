@@ -54,4 +54,8 @@ inline bool is_branch(InstOp op) {
     return ucond_jmp(op) || cond_jump(op);
 }
 
+inline bool is_vector(InstOp op) {
+    return op >= OP_VLE8_V && op < OP_AMOCAS_W;
+}
+
 #endif

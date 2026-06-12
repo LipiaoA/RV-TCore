@@ -25,9 +25,14 @@ int main()
     CacheConfig dcfg(static_cast<size_t>(64 * 1024), 64, 4, 4);
     DCache dcache(&sched, dcfg);
     dcache.attach_lower(&l2);
+    Memory mem;
+    mem.add_segment(0x1000, 0x2000);
+    l2.set_mem(&mem);
 
     ASyncQueue<MInstPtr> rename_issue_q(32);
     ASyncQueue<RegReq> reg_req_q(32);
+    ASyncQueue<VecRegReq> vec_reg_req_q(32);
+    ASyncQueue<TileRegReq> tile_reg_req_q(32);
     ASyncQueue<MInstPtr> inst_commit_q(32);
     ASyncQueue<FlushEvent> flush_req_q(32);
     FlushEvent flush_event {};
@@ -36,6 +41,8 @@ int main()
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> bru_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> fpu_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> bypass_q;
+    std::vector<LQEntry> load_q;
+    std::vector<SQEntry> store_q;
     std::vector<WakeupEvent> wakeup_bus;
 
     ROBDeps rob_deps {};
@@ -48,12 +55,16 @@ int main()
     lsu_deps.rob = &rob;
     lsu_deps.dcache = &dcache;
     lsu_deps.dtlb = &tlb;
+    lsu_deps.mem = &mem;
+    lsu_deps.sched = &sched;
     lsu_deps.reg_req_q = &reg_req_q;
     lsu_deps.reg_resp_q = &lsu_resp_q;
     lsu_deps.reg_bypass_bus = &bypass_q;
     lsu_deps.flush_req_q = &flush_req_q;
+    lsu_deps.wakeup_bus = &wakeup_bus;
+    lsu_deps.lsu_ld_q = &load_q;
+    lsu_deps.lsu_st_q = &store_q;
     LSUConfig lsu_conf {};
-    lsu_conf.agu_num = 0;
     LSU lsu(lsu_conf, lsu_deps);
 
     ExecDeps exec_deps {};
@@ -97,6 +108,8 @@ int main()
     deps.rob = &rob;
     deps.rename_issue_q = &rename_issue_q;
     deps.reg_req_q = &reg_req_q;
+    deps.vec_reg_req_q = &vec_reg_req_q;
+    deps.tile_reg_req_q = &tile_reg_req_q;
     deps.wakeup_bus = &wakeup_bus;
     deps.flush_event = &flush_event;
 
@@ -148,6 +161,7 @@ int main()
     IssueConfig busy_conf = conf;
     busy_conf.int_issue_width = 2;
     exec_conf.alu_num = 1;
+    exec_conf.alu_conf.stages = 2;
     ExecuteUnit execute_busy(exec_conf, exec_deps);
     deps.exec = &execute_busy;
     IssueUnit issue_busy(busy_conf, deps);

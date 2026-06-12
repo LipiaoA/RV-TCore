@@ -1,4 +1,5 @@
 #include "config.h"
+#include "rv_def.h"
 
 #include <cstdio>
 
@@ -29,6 +30,8 @@ void TCoreConfig::init_config() {
 
     m_core_config.prf_width = 4;
     m_core_config.prf_capacity = 192;
+    m_core_config.vprf_capacity = 64;
+    m_core_config.tprf_capacity = 16;
 
     // queues / structures
     m_core_config.rob_entries = 128;
@@ -40,6 +43,7 @@ void TCoreConfig::init_config() {
     m_core_config.load_q_size       = 128;
     m_core_config.store_q_size      = 128;
     m_core_config.agu_num          = 4;
+    m_core_config.std_num          = 2;
     m_core_config.mshr_buffer_size  = 128;
     m_core_config.lsu_issue_width   = 2;
 
@@ -51,8 +55,12 @@ void TCoreConfig::init_config() {
     m_core_config.int_issue_width = 4;
     m_core_config.ls_issue_width  = 2;
     m_core_config.fp_issue_width  = 2;
+    m_core_config.vec_issue_width = 1;
+    m_core_config.tile_issue_width = 1;
     m_core_config.alu_num         = 6;
     m_core_config.fpu_num         = 2;
+    m_core_config.vpu_num         = 1;
+    m_core_config.tpu_num         = 1;
     m_core_config.bru_num         = 1;
 
     // i-TLB configuration
@@ -172,9 +180,12 @@ LSUConfig TCoreConfig::lsu_config() const {
     LSUConfig conf;
     conf.load_q_size            = m_core_config.load_q_size;
     conf.store_q_size           = m_core_config.store_q_size;
-    conf.agu_num               = m_core_config.agu_num;
     conf.mshr_buffer_size       = m_core_config.mshr_buffer_size;
     conf.issue_width            = m_core_config.lsu_issue_width;
+    conf.dtlb_hit_latency       = m_core_config.dtlb_hit_latency;
+    conf.dtlb_miss_penalty      = m_core_config.dtlb_miss_penalty;
+    conf.dcache_line_size       = m_core_config.dcache_line_size;
+    conf.dcache_hit_latency     = m_core_config.dcache_hit_latency;
     return conf;
 }
 
@@ -183,6 +194,8 @@ IssueConfig TCoreConfig::issue_config() const {
     conf.int_issue_width = m_core_config.int_issue_width;
     conf.ls_issue_width  = m_core_config.ls_issue_width;
     conf.fp_issue_width  = m_core_config.fp_issue_width;
+    conf.vec_issue_width = m_core_config.vec_issue_width;
+    conf.tile_issue_width = m_core_config.tile_issue_width;
     return conf;
 }
 
@@ -196,6 +209,8 @@ RenameConfig TCoreConfig::rename_config() const {
     RenameConfig conf;
     conf.width = m_core_config.rename_width;
     conf.prf_capacity = m_core_config.prf_capacity;
+    conf.vprf_capacity = m_core_config.vprf_capacity;
+    conf.tprf_capacity = m_core_config.tprf_capacity;
     return conf;
 }
 
@@ -203,6 +218,24 @@ RegFileConfig TCoreConfig::regfile_config() const {
     RegFileConfig conf;
     conf.width = m_core_config.prf_width;
     conf.capacity = m_core_config.prf_capacity;
+    return conf;
+}
+
+VRegFileConfig TCoreConfig::vregfile_config() const {
+    VRegFileConfig conf;
+    conf.width = 2;
+    conf.capacity = m_core_config.vprf_capacity;
+    conf.vlmax_bytes = VLEN_BYTES;
+    return conf;
+}
+
+TRegFileConfig TCoreConfig::tregfile_config() const {
+    TRegFileConfig conf;
+    conf.width = 1;
+    conf.capacity = m_core_config.tprf_capacity;
+    conf.tile_rows = TILE_ROWS;
+    conf.tile_cols = TILE_COLS;
+    conf.elem_bits = TILE_ELEM_BITS;
     return conf;
 }
 
@@ -233,22 +266,38 @@ ExecConfig TCoreConfig::execute_config() const {
     ExecConfig conf;
     conf.alu_num = m_core_config.alu_num;
     conf.fpu_num = m_core_config.fpu_num;
+    conf.vpu_num = m_core_config.vpu_num;
+    conf.tpu_num = m_core_config.tpu_num;
     conf.bru_num = m_core_config.bru_num;
     conf.agu_num = m_core_config.agu_num;
+    conf.std_num = m_core_config.std_num;
     conf.commit_width = m_core_config.exec_commit_width;
     ALUConfig alu_conf;
     FPUConfig fpu_conf;
     BRUConfig bru_conf;
+    AGUConfig agu_conf;
+    STDConfig std_conf;
     LSUConfig lsu_conf;
     alu_conf.stages = m_core_config.alu_stages;
     fpu_conf.stages = m_core_config.fpu_stages;
     bru_conf.stages = m_core_config.bru_stages;
-    lsu_conf.agu_num = m_core_config.agu_num;
+    agu_conf.stages = 2;
+    std_conf.stages = 2;
     lsu_conf.issue_width = m_core_config.lsu_issue_width;
+    lsu_conf.dtlb_hit_latency = m_core_config.dtlb_hit_latency;
+    lsu_conf.dtlb_miss_penalty = m_core_config.dtlb_miss_penalty;
+    lsu_conf.dcache_line_size = m_core_config.dcache_line_size;
+    lsu_conf.dcache_hit_latency = m_core_config.dcache_hit_latency;
     conf.alu_conf = alu_conf;
     conf.fpu_conf = fpu_conf;
     conf.bru_conf = bru_conf;
+    conf.agu_conf = agu_conf;
+    conf.std_conf = std_conf;
     conf.lsu_conf = lsu_conf;
+    conf.vector_conf.stages = 4;
+    conf.vector_conf.issue_width = m_core_config.vec_issue_width;
+    conf.tile_conf.stages = 4;
+    conf.tile_conf.issue_width = m_core_config.tile_issue_width;
     return conf;
 }
 

@@ -10,6 +10,7 @@
 
 class ROB;
 class RenameUnit;
+class LSU;
 
 class CommitUnit : public ICommit {
 public:
@@ -38,13 +39,18 @@ private:
     RenameUnit&                         m_rename;
 
     OUTPUT ASyncQueue<RegReq>&          m_reg_req_q;
+    OUTPUT ASyncQueue<VecRegReq>&       m_vec_reg_req_q;
+    OUTPUT ASyncQueue<TileRegReq>&      m_tile_reg_req_q;
     OUTPUT ASyncQueue<FlushEvent>&      m_flush_req_q;
     INPUT FlushEvent&                   m_flush_event;
     INPUT ASyncQueue<MInstPtr>&         m_inst_commit_q;
 
     std::array<int, RV_GPR_SIZE>&       m_crat;
+    std::array<int, RV_VREG_SIZE>&      m_vcrat;
+    std::array<int, RV_TILE_SIZE>&      m_tcrat;
     std::vector<RatCheckpoint>&         m_checkpoints;
     std::deque<MInstPtr>                m_pending_writebacks;
+    LSU*                                m_lsu { nullptr };
     PerfStats*                          m_stats { nullptr };
 };
 

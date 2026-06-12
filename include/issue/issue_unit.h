@@ -24,7 +24,9 @@ public:
 private:
     void                                async();
     void                                flush();
-    void                                EmitSrcRead(const MInstPtr inst, const RegType& src, int idx);
+    void                                EmitSrcRead(const MInstPtr inst, const Operand& src, int idx);
+    void                                EmitVecSrcRead(const MInstPtr inst, const Operand& src, int idx);
+    void                                EmitTileSrcRead(const MInstPtr inst, const Operand& src, int idx);
     FuType                              GetFuType(const MInstPtr inst);
     bool                                is_buffered(const MInstPtr& inst) const;
     size_t                              count_buffered_int_slots() const;
@@ -34,17 +36,23 @@ private:
     std::vector<MInstPtr>               m_int_q;
     std::vector<MInstPtr>               m_ls_q;
     std::vector<MInstPtr>               m_fp_q;
+    std::vector<MInstPtr>               m_vec_q;
+    std::vector<MInstPtr>               m_tile_q;
     ROB&                                m_rob;
     ExecuteUnit&                        m_exec;
     INPUT ASyncQueue<MInstPtr>&         m_rename_issue_q;
     INPUT FlushEvent&                   m_flush_event;
     OUTPUT ASyncQueue<RegReq>&          m_reg_req_q;
+    OUTPUT ASyncQueue<VecRegReq>&       m_vec_reg_req_q;
+    OUTPUT ASyncQueue<TileRegReq>&      m_tile_reg_req_q;
     std::vector<MInstPtr>               m_select_buffer;
     PerfStats*                          m_stats { nullptr };
 
     size_t                              m_int_issue_width  { 4 };
     size_t                              m_ls_issue_width   { 2 };
     size_t                              m_fp_issue_width   { 2 };
+    size_t                              m_vec_issue_width  { 1 };
+    size_t                              m_tile_issue_width { 1 };
     INPUT std::vector<WakeupEvent>&     m_wakeup_bus;
 };
 

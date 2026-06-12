@@ -68,12 +68,38 @@ typedef struct {
 typedef struct {
     u32 width { 4 };
     u32 prf_capacity { 192 };
+    u32 vprf_capacity { 64 };
+    u32 tprf_capacity { 16 };
 } RenameConfig;
 
 typedef struct {
     u32 width { 4 };
     u32 capacity { 192 };
 } RegFileConfig;
+
+typedef struct {
+    u32 width { 2 };
+    u32 capacity { 64 };
+    u32 vlmax_bytes { 32 };
+} VRegFileConfig;
+
+typedef struct {
+    u32 width { 1 };
+    u32 capacity { 16 };
+    u32 tile_rows { 16 };
+    u32 tile_cols { 16 };
+    u32 elem_bits { 32 };
+} TRegFileConfig;
+
+typedef struct {
+    u32 stages { 4 };
+    u32 issue_width { 1 };
+} VectorConfig;
+
+typedef struct {
+    u32 stages { 4 };
+    u32 issue_width { 1 };
+} TileConfig;
 
 struct ALUConfig {
     u32 stages {3};
@@ -89,10 +115,12 @@ typedef struct {
 typedef struct {
     u32 load_q_size { 128 };
     u32 store_q_size { 128 };
-    u32 agu_num { 4 };
     u32 mshr_buffer_size { 128 };
     u32 issue_width { 2 };
-    u32 agu_stages { 4 };
+    u32 dtlb_hit_latency { 1 };
+    u32 dtlb_miss_penalty { 10 };
+    u32 dcache_line_size { 64 };
+    u32 dcache_hit_latency { 1 };
 } LSUConfig;
 
 typedef struct {
@@ -106,14 +134,29 @@ typedef struct {
 } BRUConfig;
 
 typedef struct {
+    u32 stages { 2 };
+} AGUConfig;
+
+typedef struct {
+    u32 stages { 2 };
+} STDConfig;
+
+typedef struct {
     u32 alu_num { 0 };
     u32 fpu_num { 0 };
+    u32 vpu_num { 0 };
+    u32 tpu_num { 0 };
     u32 bru_num { 0 };
     u32 agu_num { 0 };
+    u32 std_num { 0 };
     u32 commit_width { 4 };
+    VectorConfig vector_conf;
+    TileConfig tile_conf;
     ALUConfig alu_conf;
     FPUConfig fpu_conf;
     BRUConfig bru_conf;
+    AGUConfig agu_conf;
+    STDConfig std_conf;
     LSUConfig lsu_conf;
 } ExecConfig;
 
@@ -126,6 +169,8 @@ typedef struct {
     u32 int_issue_width { 4 };
     u32 ls_issue_width { 2 };
     u32 fp_issue_width { 2 };
+    u32 vec_issue_width { 1 };
+    u32 tile_issue_width { 1 };
 } IssueConfig;
 
 typedef struct {
@@ -162,6 +207,12 @@ typedef struct {
 
     u32 prf_width;
     u32 prf_capacity;           // physical register file size
+    u32 vprf_capacity;
+    u32 tprf_capacity;
+    u32 vec_issue_width;
+    u32 tile_issue_width;
+    u32 vpu_num;
+    u32 tpu_num;
 
     // queues / structures
     u32 rob_entries;
@@ -173,6 +224,7 @@ typedef struct {
     u32 load_q_size;
     u32 store_q_size;
     u32 agu_num;
+    u32 std_num;
     u32 mshr_buffer_size;
     u32 lsu_issue_width;
     u32 alu_stages;
@@ -285,6 +337,8 @@ public:
     BTBConfig                               btb_config() const;
     BPConfig                                bp_config() const;
     RegFileConfig                           regfile_config() const;
+    VRegFileConfig                          vregfile_config() const;
+    TRegFileConfig                          tregfile_config() const;
     FlushUnitConfig                         flush_config() const;
 private:
     void                                    init_config();

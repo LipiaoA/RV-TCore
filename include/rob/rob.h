@@ -32,6 +32,7 @@ public:
     void                                mark_ready(ROBID id, u64 result_val);
     std::optional<RobEntry>             commit_head();
     bool                                full() const;
+    bool                                has_space(u32 count = 1) const;
     bool                                empty() const;
     std::optional<RobEntry>             head();
     size_t                              size() const { return m_size; }

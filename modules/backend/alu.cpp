@@ -61,7 +61,7 @@ void ALU::R1()
     if (!m_pipe[0].valid || !m_pipe[0].inst)
         return;
     MInstPtr inst = m_pipe[0].inst;
-    auto read_reg = [&](RegType &src) -> bool {
+    auto read_reg = [&](Operand &src) -> bool {
         for (auto& resp : m_reg_bypass_bus) {
             if (resp.valid && resp.ptag == src.ptag) {
                 src.val = resp.val;
@@ -125,6 +125,7 @@ void ALU::wakeup(MInstPtr inst)
     event.type  = WAKEUP_BYPASS;
     event.ptag   = inst->rd.ptag;
     event.rid    = inst->rid;
+    event.rtyp = RegType::GPR;
     m_wakeup_bus.push_back(event);
 }
 

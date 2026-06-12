@@ -7,6 +7,7 @@
 #include "perf/perf_stats.h"
 #include "rob/rob.h"
 #include "rename/rename_unit.h"
+#include "execute/lsu/lsu.h"
 
 namespace {
 bool same_rob_id(const ROBID& lhs, const ROBID& rhs)
@@ -22,11 +23,16 @@ CommitUnit::CommitUnit(const CommitConfig& conf, const CommitDeps& deps)
     , m_rob(*deps.rob)
     , m_rename(*deps.rename)
     , m_reg_req_q(*deps.reg_req_q)
+    , m_vec_reg_req_q(*deps.vec_reg_req_q)
+    , m_tile_reg_req_q(*deps.tile_reg_req_q)
     , m_flush_req_q(*deps.flush_req_q)
     , m_flush_event(*deps.flush_event)
     , m_inst_commit_q(*deps.inst_commit_q)
     , m_crat(*deps.crat)
+    , m_vcrat(*deps.vcrat)
+    , m_tcrat(*deps.tcrat)
     , m_checkpoints(*deps.checkpoints)
+    , m_lsu(deps.lsu)
     , m_stats(deps.perf_stats)
 {}
 
@@ -88,6 +94,13 @@ void CommitUnit::inst_commit() {
         auto entry = m_rob.head();
         if (entry && entry->valid && entry->inst && entry->inst->valid
             && entry->inst->state == InstState::EXECUTED) {
+            if (entry->inst->type == InstType::STA && m_lsu
+                && !m_lsu->store_commit_ready(entry->inst->rid)) {
+                if (i == 0 && m_stats) {
+                    ++m_stats->commit.head_not_ready_cycles;
+                }
+                break;
+            }
             if (entry->inst->fetch_fault) {
                 FlushEvent event;
                 event.valid = true;
@@ -133,6 +146,28 @@ void CommitUnit::inst_commit() {
 
 bool CommitUnit::write_back(const MInstPtr inst)
 {
+    if (inst->type == InstType::VECTOR && inst->vd.valid) {
+        VecRegReq req;
+        req.valid = true;
+        req.write = true;
+        req.ptag = inst->vd.ptag;
+        req.atag = inst->vd.atag;
+        req.val = inst->vd_payload;
+        req.rid = inst->rid;
+        req.fu = FuType::VPU;
+        return m_vec_reg_req_q.write(req);
+    }
+    if (inst->type == InstType::TILE && inst->td.valid) {
+        TileRegReq req;
+        req.valid = true;
+        req.write = true;
+        req.ptag = inst->td.ptag;
+        req.atag = inst->td.atag;
+        req.val = inst->td_payload;
+        req.rid = inst->rid;
+        req.fu = FuType::TPU;
+        return m_tile_reg_req_q.write(req);
+    }
     if (!inst->rd.valid) {
         return true;
     }
@@ -142,6 +177,7 @@ bool CommitUnit::write_back(const MInstPtr inst)
     req.write = true;
     req.val = inst->rd.val;
     req.rid = inst->rid;
+    req.rtyp = RegType::GPR;
     return m_reg_req_q.write(req);
 }
 
@@ -151,11 +187,32 @@ void CommitUnit::retire_inst(const MInstPtr inst)
         return;
     }
 
-    if (inst->rd.valid && inst->rd.atag > 0
+    if ((inst->type == InstType::STA || inst->type == InstType::STORE) && m_lsu) {
+        m_lsu->commit_store(inst->rid);
+    }
+    if (inst->type == InstType::LOAD && m_lsu) {
+        m_lsu->retire_load(inst->rid);
+    }
+
+    if (inst->rd.valid && inst->rd.rtyp == RegType::GPR && inst->rd.atag > 0
         && static_cast<std::size_t>(inst->rd.atag) < m_crat.size()) {
         m_crat[inst->rd.atag] = inst->rd.ptag;
         if (inst->rd.o_ptag > 0 && inst->rd.o_ptag != inst->rd.ptag) {
             m_rename.recycle_phys(inst->rd.o_ptag);
+        }
+    }
+    if (inst->type == InstType::VECTOR && inst->vd.valid
+        && static_cast<std::size_t>(inst->vd.atag) < m_vcrat.size()) {
+        m_vcrat[inst->vd.atag] = inst->vd.ptag;
+        if (inst->vd.o_ptag >= 0 && inst->vd.o_ptag != inst->vd.ptag) {
+            m_rename.recycle_vec_phys(inst->vd.o_ptag, inst->vd.rgrp);
+        }
+    }
+    if (inst->type == InstType::TILE && inst->td.valid
+        && static_cast<std::size_t>(inst->td.atag) < m_tcrat.size()) {
+        m_tcrat[inst->td.atag] = inst->td.ptag;
+        if (inst->td.o_ptag >= 0 && inst->td.o_ptag != inst->td.ptag) {
+            m_rename.recycle_tile_phys(inst->td.o_ptag);
         }
     }
 

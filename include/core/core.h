@@ -14,6 +14,9 @@
 #include "rob/rob.h"
 #include "fetch_unit.h"
 
+class VRegFileUnit;
+class TRegFileUnit;
+
 class Core {
 public:
     explicit Core(const CoreDeps & deps);
@@ -33,6 +36,8 @@ private:
     RenameUnit&                             m_rename;
     IssueUnit&                              m_issue;
     RegFileUnit&                            m_regfile;
+    VRegFileUnit&                           m_vregfile;
+    TRegFileUnit&                           m_tregfile;
     ExecuteUnit&                            m_execute;
     CommitUnit&                             m_commit;
     CycleScheduler&                         m_sched;

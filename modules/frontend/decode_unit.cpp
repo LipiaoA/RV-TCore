@@ -100,6 +100,41 @@ u32 DecodeUnit::get_ls_width(InstOp op) {
     return 0;
 }
 
+namespace {
+void map_vector_operands(MicroOp* out)
+{
+    out->vd.valid = out->rd.valid;
+    out->vd.atag = out->rd.atag;
+    out->vd.rtyp = RegType::VEC;
+    out->rd.valid = false;
+
+    const u32 funct3 = static_cast<u32>((out->raw_inst >> 12) & 0x7);
+    if (funct3 == 4) {
+        out->vs2.valid = out->rs2.valid;
+        out->vs2.atag = out->rs2.atag;
+        out->vs2.rtyp = RegType::VEC;
+        out->rs2.valid = false;
+        out->rs1.rtyp = RegType::GPR;
+        return;
+    }
+    if (funct3 == 3) {
+        out->vs2.valid = out->rs2.valid;
+        out->vs2.atag = out->rs2.atag;
+        out->vs2.rtyp = RegType::VEC;
+        out->rs2.valid = false;
+        return;
+    }
+    out->vs1.valid = out->rs1.valid;
+    out->vs1.atag = out->rs1.atag;
+    out->vs1.rtyp = RegType::VEC;
+    out->vs2.valid = out->rs2.valid;
+    out->vs2.atag = out->rs2.atag;
+    out->vs2.rtyp = RegType::VEC;
+    out->rs1.valid = false;
+    out->rs2.valid = false;
+}
+}
+
 bool DecodeUnit::decode(u64 raw, MicroOp *out) {
     static const u32 rv64i_inst_size = sizeof(rv64i_table) / sizeof(rv64i_table[0]);
     for (size_t i = 0; i < rv64i_inst_size; i++) {
@@ -166,6 +201,9 @@ bool DecodeUnit::decode(u64 raw, MicroOp *out) {
                 out->rs2.valid = false;
                 out->opcode = OP_INVALID;
                 return false;
+            }
+            if (is_vector(op)) {
+                map_vector_operands(out);
             }
             return true;
         }
@@ -245,11 +283,7 @@ void DecodeUnit::d0() {
         dinst->fetch_id = finst.fetch_id;
         dinst->pred_taken = (pkt.br_mask & (1u << i)) ? pkt.pred_taken : false;
         if (is_store(dinst->opcode)) {
-            MInstPtr dinst2 = new MicroOp();
-            *dinst2 = *dinst;
-            dinst2->type = InstType::STA;
-            dinst->type = InstType::STD;
-            m_d0_pkt.emplace_back(dinst2);
+            dinst->type = InstType::STORE;
         }
         m_d0_pkt.emplace_back(dinst);
         ++inst_count;
@@ -297,6 +331,8 @@ InstType DecodeUnit::get_inst_type(InstOp op) {
         type = InstType::STORE;
     } else if (is_fp(op)) {
         type = InstType::FP;
+    } else if (is_vector(op)) {
+        type = InstType::VECTOR;
     } else if (is_int(op)) {
         type = InstType::INT;
     }
