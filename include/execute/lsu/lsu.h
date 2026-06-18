@@ -7,6 +7,7 @@
 #include <cstring>
 #include <deque>
 #include <unordered_map>
+#include <array>
 
 #include "rv_def.h"
 #include "module_comm.h"
@@ -19,6 +20,7 @@
 
 static const int SSIT_SIZE = 1024;
 static const int LFST_SIZE = 1024;
+static const size_t LSQ_MASK_WORDS = 2; // up to 128 STQ entries
 
 struct StoreSetPredictor {
     uint32_t SSIT[SSIT_SIZE];
@@ -105,6 +107,33 @@ enum LSUStallType {
     STORE_BUFFER_FULL = 5
 };
 
+struct LSUS1Slot {
+    bool valid { false };
+    size_t ldq_idx { 0 };
+    u64 vaddr { 0 };
+    u64 paddr { 0 };
+    u8 byte_mask { 0 };
+    bool tlb_miss { false };
+    bool killed { false };
+    bool forward_val { false };
+    size_t forward_stq_idx { 0 };
+    bool mem_issued { false };
+};
+
+struct LSUWBSlot {
+    bool valid { false };
+    uint64_t load_id { 0 };
+    u64 data { 0 };
+    u32 cycles_left { 0 };
+};
+
+struct PendingMemResp {
+    uint64_t load_id { 0 };
+    u64 byte_addr { 0 };
+    u32 width { 0 };
+    MemResp resp {};
+};
+
 class LSU {
 public:
     LSU(const LSUConfig& conf, const LSUDeps& deps);
@@ -130,11 +159,13 @@ public:
     void                                commit_store(ROBID rid);
     void                                retire_load(ROBID rid);
 
+    LSUStallType                        stall_type() const { return m_stall; }
+
     int                                 alloc_load_entry();
     int                                 alloc_store_entry();
     void                                replay(LQEntry& load_entry);
     void                                replay(SQEntry& store_entry);
-    bool                                checkViolation(uint64_t addr, ROBID rob_idx);
+    bool                                checkViolation(uint64_t addr, ROBID rob_idx, u8 byte_mask) const;
 
     SQEntry*                            find_sq_for_std(MInstPtr inst);
     SQEntry*                            find_store_by_id(uint64_t store_id);
@@ -142,32 +173,69 @@ public:
     void                                on_store_operands_updated(SQEntry& st);
 
 private:
-    void                                schedule();
+    static size_t                       wrap_inc(size_t idx, size_t cap);
+    static bool                         st_dep_test(const LQEntry& e, size_t stq_idx);
+    static void                         st_dep_set(uint64_t mask[2], size_t stq_idx);
+    static void                         st_dep_clear(uint64_t mask[2], size_t stq_idx);
+    static u8                           gen_byte_mask(u64 addr, u32 width);
+    static bool                         dword_addr_match(u64 a, u64 b);
+    static bool                         mask_overlap(u8 a, u8 b);
+    static bool                         mask_contains(u8 container, u8 sub);
+    static u64                          apply_load_gen(u64 store_data, u64 addr, u32 width);
+
+    bool                                ldq_full() const;
+    bool                                stq_full() const;
+    void                                update_live_store_mask();
+
     void                                drain_writebacks();
-    void                                issue_load(LQEntry& load_entry);
-    void                                start_tlb_lookup(LQEntry& load_entry);
-    void                                start_cache_access(LQEntry& load_entry, u64 pa);
-    void                                complete_load(uint64_t load_id, uint64_t data);
+    void                                w1();
+    void                                w0();
+    void                                s1();
+    void                                process_store_tlb();
+    void                                schedule_operations();
+    void                                try_store_commit();
+    void                                dequeue_succeeded_stores();
     void                                try_complete_sta(SQEntry& st);
+
+    void                                fire_s0_load(size_t ldq_idx);
+    void                                do_s1_tlb_and_lcam(LSUS1Slot& slot);
+    void                                issue_mem_access(LQEntry& entry, u64 pa, u8 byte_mask);
+    void                                complete_load(uint64_t load_id, uint64_t data);
+    void                                enqueue_wb(uint64_t load_id, u64 data, u32 delay);
+
     SQEntry*                            find_store_by_rid(ROBID rid);
     LQEntry*                            find_load_by_rid(ROBID rid);
+    LQEntry*                            find_load_by_ldq_idx(size_t idx);
+    SQEntry*                            find_store_by_stq_idx(size_t idx);
 
-    std::optional<uint64_t>             forward(uint64_t addr, ROBID rob_idx);
-    bool                                has_unknown_older_store(uint64_t addr, ROBID rob_idx) const;
+    std::optional<std::pair<size_t, u64>> try_forward(u64 addr, u8 load_mask,
+                                                      const LQEntry& load, bool can_forward) const;
+    size_t                              pick_forwarding_stq(u64 addr, u8 load_mask,
+                                                            const LQEntry& load) const;
+    bool                                has_stq_conflict(u64 addr, u8 load_mask, const LQEntry& load) const;
+    bool                                has_unknown_older_store(u64 addr, u8 byte_mask, ROBID rob_idx) const;
+    bool                                is_load_blocked(size_t ldq_idx) const;
+    void                                mark_load_blocked(size_t ldq_idx);
     bool                                should_wait_for_store_set(LQEntry& load_entry);
     int64_t                             find_dependent_store(uint32_t ssid);
 
-    void                                detect_violation(LQEntry& load_entry);
     void                                detect_store_violations(SQEntry& st);
     void                                send_memory_order_flush(LQEntry& load_entry, SQEntry& store_entry);
-    void                                wakeup_load(MInstPtr inst);
+    void                                wakeup_load(MInstPtr inst, bool speculative);
     void                                write_memory(u64 addr, u64 data, u32 width);
     void                                update_cache_line(u64 addr);
     static u64                          extract_load_data(const MemResp& resp, u64 addr, u32 width, u32 line_size);
 
+    bool                                try_arbitrate_mem_port();
+    void                                release_mem_port();
+
 private:
     RingQueue<MInstPtr>                 m_complete_q;
     std::deque<MInstPtr>                m_wb_pending;
+    std::deque<PendingMemResp>          m_pending_mem_resps;
+    std::deque<LSUWBSlot>               m_wb_pipe;
+    std::vector<LSUS1Slot>              m_s1_slots;
+    std::deque<size_t>                  m_pending_sta_tlb;
     std::unordered_map<uint64_t, size_t> m_store_token_map;
     StoreSetPredictor                   m_ssp;
     ROB&                                m_rob;
@@ -190,6 +258,17 @@ private:
     uint64_t                            m_ld_id { 0 };
     uint64_t                            m_st_id { 0 };
 
+    size_t                              m_ldq_head { 0 };
+    size_t                              m_ldq_tail { 0 };
+    size_t                              m_stq_head { 0 };
+    size_t                              m_stq_tail { 0 };
+    size_t                              m_stq_commit_head { 0 };
+    size_t                              m_stq_execute_head { 0 };
+    uint64_t                            m_live_store_mask[2] { 0, 0 };
+    std::vector<bool>                   m_block_load_mask;
+    std::vector<bool>                   m_p1_block_load_mask;
+    bool                                m_mem_port_busy { false };
+    bool                                m_tlb_port_busy { false };
 };
 
 #endif

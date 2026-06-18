@@ -256,18 +256,22 @@ typedef struct {
     MInstPtr uop { nullptr };
     uint64_t store_id { 0 };
     uint64_t store_token { 0 };
+    size_t   stq_idx { 0 };
     ROBID rob_idx;
     LdStState state {WAIT_ADDR};
 
     bool addr_ready = false;
     bool data_ready = false;
+    bool addr_is_virtual = false;
 
     uint64_t addr;
+    uint64_t pa { 0 };
     uint64_t data;
     u32 ls_width { 0 };
 
     bool sta_completed = false;
     bool committed = false;
+    bool succeeded = false;
     bool violation_checked = false;
 } SQEntry;
 
@@ -275,20 +279,29 @@ typedef struct {
     bool valid = false;
     MInstPtr uop { nullptr };
     uint64_t load_id { 0 };
+    size_t   ldq_idx { 0 };
     LdStState state {WAIT_ADDR};
     ROBID rob_idx;
 
     bool addr_ready = false;
     uint64_t addr;
     u64 pa { 0 };
+    bool addr_is_virtual = false;
+
+    uint64_t st_dep_mask[2] { 0, 0 };
+    size_t youngest_stq_idx { 0 };
 
     bool executed = false;
     bool in_flight = false;
     bool waiting_on_store = false;
     bool value_ready = false;
+    bool succeeded = false;
     bool retired = false;
     bool speculative = false;
     bool violation_reported = false;
+    bool order_fail = false;
+    bool forward_std_val = false;
+    size_t forward_stq_idx { 0 };
     uint64_t data { 0 };
 
     uint64_t wait_store_id = static_cast<uint64_t>(-1);
