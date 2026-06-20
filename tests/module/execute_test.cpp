@@ -119,20 +119,42 @@ int main()
     CacheConfig dcfg(static_cast<size_t>(64 * 1024), 64, 4, 4);
     DCache dcache(&sched, dcfg);
     dcache.attach_lower(&l2);
+    Memory mem;
+    mem.add_segment(0x1000, 0x2000);
+    l2.set_mem(&mem);
+    std::vector<LQEntry> load_q;
+    std::vector<SQEntry> store_q;
 
     ASyncQueue<MInstPtr> inst_commit_q(32);
     LSUDeps lsu_deps {};
     lsu_deps.rob = &rob;
     lsu_deps.dcache = &dcache;
     lsu_deps.dtlb = &tlb;
+    lsu_deps.mem = &mem;
+    lsu_deps.sched = &sched;
     lsu_deps.reg_req_q = &reg_req_q;
     lsu_deps.reg_resp_q = &lsu_resp_q;
     lsu_deps.reg_bypass_bus = &bypass_q;
     lsu_deps.flush_req_q = &flush_req_q;
+    lsu_deps.wakeup_bus = &wakeup_bus;
+    lsu_deps.lsu_ld_q = &load_q;
+    lsu_deps.lsu_st_q = &store_q;
     LSUConfig lsu_conf {};
-    lsu_conf.agu_num = 1;
-    lsu_conf.agu_stages = 2;
+    lsu_conf.dtlb_hit_latency = 1;
+    lsu_conf.dcache_line_size = 64;
     LSU lsu(lsu_conf, lsu_deps);
+    lsu.build();
+
+    AGUDeps agu_deps {};
+    agu_deps.rob = &rob;
+    agu_deps.reg_req_q = &reg_req_q;
+    agu_deps.reg_resp_q = &lsu_resp_q;
+    agu_deps.reg_bypass_bus = &bypass_q;
+    STDDeps std_deps {};
+    std_deps.rob = &rob;
+    std_deps.reg_req_q = &reg_req_q;
+    std_deps.reg_resp_q = &lsu_resp_q;
+    std_deps.reg_bypass_bus = &bypass_q;
 
     ExecDeps exec_deps {};
     exec_deps.lsu = &lsu;
@@ -141,6 +163,8 @@ int main()
     exec_deps.rob = &rob;
     exec_deps.alu_deps = &alu_deps;
     exec_deps.bru_deps = &bru_deps;
+    exec_deps.agu_deps = &agu_deps;
+    exec_deps.std_deps = &std_deps;
     FPUDeps fpu_deps {};
     fpu_deps.reg_req_q = &reg_req_q;
     fpu_deps.reg_resp_q = &fpu_resp_q;
@@ -153,10 +177,14 @@ int main()
     ExecConfig exec_conf {};
     exec_conf.fpu_num = 1;
     exec_conf.agu_num = 1;
+    exec_conf.std_num = 1;
     exec_conf.commit_width = 2;
     exec_conf.fpu_conf.stages = 2;
+    exec_conf.agu_conf.stages = 2;
+    exec_conf.std_conf.stages = 2;
     exec_conf.lsu_conf = lsu_conf;
     ExecuteUnit execute(exec_conf, exec_deps);
+    execute.build();
 
     MInstPtr fp_inst = new MicroOp();
     fp_inst->valid = true;
@@ -181,14 +209,18 @@ int main()
     load_inst->rd.valid = true;
     load_inst->rd.ptag = 21;
     load_inst->rid = ROBID{2, 0};
+    assert(lsu.allocate(load_inst));
     assert(execute.dispatch(load_inst));
-    execute.commit();
-    execute.tick();
-    execute.tick();
+    for (int i = 0; i < 32; ++i) {
+        execute.commit();
+        execute.tick();
+        sched.tick();
+    }
     execute.commit();
     committed_inst = nullptr;
     assert(inst_commit_q.read(committed_inst));
     assert(committed_inst == load_inst);
+    assert(wakeup_bus.size() >= 1);
 
     return EXIT_SUCCESS;
 }

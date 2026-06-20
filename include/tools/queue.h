@@ -106,7 +106,22 @@ public:
 
     inline bool full() const
     {
-        return m_read_buffer.size() >= m_capacity;
+        return m_write_buffer.size() >= m_capacity;
+    }
+
+    inline size_t capacity() const
+    {
+        return m_capacity;
+    }
+
+    inline size_t rsize() const
+    {
+        return m_read_buffer.size();
+    }
+
+    inline size_t wsize() const
+    {
+        return m_write_buffer.size();
     }
 
     // 在周期边界调用，将write缓冲区切换到read缓冲区
@@ -122,12 +137,6 @@ public:
     }
 
     void build() override {}
-
-    // 获取当前读缓冲区可用元素数量
-    inline size_t size() const
-    {
-        return m_read_buffer.size();
-    }
 
     inline void stall()
     {

@@ -53,6 +53,7 @@ void RegFileUnit::r0() {
                 event.type = WAKEUP_WRITEBACK;
                 event.ptag = req.ptag;
                 event.rid = req.rid;
+                event.rtyp = RegType::GPR;
                 m_wakeup_bus.push_back(event);
             }
         } else {
@@ -66,7 +67,7 @@ void RegFileUnit::r0() {
                 m_alu_resp_q.push_back(resp);
             } else if (req.fu == FuType::BRU) {
                 m_bru_resp_q.push_back(resp);
-            } else if (req.fu == FuType::LSU) {
+            } else if (req.fu == FuType::LSU || req.fu == FuType::AGU || req.fu == FuType::STD) {
                 m_lsu_resp_q.push_back(resp);
             } else if (req.fu == FuType::FPU) {
                 m_fpu_resp_q.push_back(resp);

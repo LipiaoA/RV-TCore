@@ -6,16 +6,7 @@
 #include "config.h"
 #include "rob/rob.h"
 
-typedef struct {
-    ASyncQueue<RegReq>*         reg_req_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
-    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
-    ROB*                        rob;
-} AGUDeps;
-
-typedef struct {
-    u32 stages { 4 };
-} AGUConfig;
+class LSU;
 
 class AGU : public DevIntf {
     constexpr static u32 MAX_STAGES = 8;
@@ -24,41 +15,35 @@ public:
     ~AGU() override = default;
 
     void                                    build() override {}
-    void                                    dispatch(MInstPtr inst);
+    bool                                    dispatch(MInstPtr inst);
     bool                                    accept() const;
 
     void                                    tick() override;
     void                                    commit() override;
 
     void                                    dump_states() const;
-    void                                    bind_queues(std::vector<SQEntry>* store_q,
-                                                        std::vector<LQEntry>* load_q);
     void                                    flush(const FlushEvent& event);
     void                                    reset();
 
 private:
-    void                                    R1();
+    bool                                    R1();
     void                                    E0();
 
-    void                                    shift();
-    void                                    broadcast(MInstPtr inst);
-    StoreReq                                genStoreReq(MInstPtr inst);
-    LoadReq                                 genLoadReq(MInstPtr inst);
+    void                                    shift(bool r1_ready);
+    bool                                    read_reg(Operand& src);
 
 private:
     FUStage                                 m_input_latch;
     i32                                     m_stages { 4 };
     FUStage                                 m_pipe[MAX_STAGES];
-    std::vector<SQEntry>*                   lsu_st_q { nullptr };
-    std::vector<LQEntry>*                   lsu_ld_q { nullptr };
+    std::vector<SQEntry>&                   lsu_st_q;
+    std::vector<LQEntry>&                   lsu_ld_q;
     OUTPUT ASyncQueue<RegReq>&              m_reg_req_q;
-
-    OUTPUT std::vector<StoreReq>*           m_store_req_q { nullptr };
-    OUTPUT std::vector<LoadReq>*            m_load_req_q { nullptr };
 
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_resp_q;
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_bypass_bus;
     ROB&                                    m_rob;
+    LSU&                                    m_lsu;
     u32                                     m_idx { 0 };
     static u32                              agu_idx;
 };

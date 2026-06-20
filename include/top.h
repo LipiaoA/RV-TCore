@@ -22,6 +22,8 @@ class LSU;
 class ROB;
 class Memory;
 class FlushUnit;
+class VRegFileUnit;
+class TRegFileUnit;
 
 class Top {
 public:
@@ -58,10 +60,14 @@ private:
     CommitUnit*                             m_commit { nullptr };
     FlushUnit*                              m_flush { nullptr };
     std::array<int, RV_GPR_SIZE>*           m_crat { nullptr };
+    std::array<int, RV_VREG_SIZE>*          m_vcrat { nullptr };
+    std::array<int, RV_TILE_SIZE>*          m_tcrat { nullptr };
     std::vector<RatCheckpoint>*             m_checkpoints { nullptr };
     ROB*                                    m_rob { nullptr };
     LSU*                                    m_lsu { nullptr };
     RegFileUnit*                            m_regfile { nullptr };
+    VRegFileUnit*                           m_vregfile { nullptr };
+    TRegFileUnit*                           m_tregfile { nullptr };
     TCoreConfig                             m_config;
     PerfStats                               m_perf_stats;
 };

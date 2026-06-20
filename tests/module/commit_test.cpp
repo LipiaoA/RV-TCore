@@ -4,6 +4,8 @@
 #include "commit/commit_unit.h"
 #include "rename/rename_unit.h"
 #include "regfile_unit.h"
+#include "vregfile_unit.h"
+#include "tregfile_unit.h"
 #include "rob/rob.h"
 #include "module_comm.h"
 #include "tools/queue.h"
@@ -19,6 +21,8 @@ int main()
     ASyncQueue<MInstPtr> rename_issue_q(16);
     ASyncQueue<MInstPtr> inst_commit_q(16);
     ASyncQueue<RegReq> reg_req_q(16);
+    ASyncQueue<VecRegReq> vec_reg_req_q(16);
+    ASyncQueue<TileRegReq> tile_reg_req_q(16);
     ASyncQueue<FlushEvent> flush_req_q(16);
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> alu_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> bru_resp_q;
@@ -45,9 +49,36 @@ int main()
     regfile_conf.capacity = 16;
     RegFileUnit regfile(regfile_conf, regfile_deps);
 
+    FixedArray<VecRegResp, MAX_REGISTER_REQ_CAPACITY> vpu_resp_q;
+    FixedArray<TileRegResp, MAX_REGISTER_REQ_CAPACITY> tpu_resp_q;
+    VRegFileDeps vregfile_deps {};
+    vregfile_deps.vec_reg_req_q = &vec_reg_req_q;
+    vregfile_deps.vpu_resp_q = &vpu_resp_q;
+    vregfile_deps.wakeup_bus = &wakeup_bus;
+    vregfile_deps.flush_event = &flush_event;
+    VRegFileConfig vregfile_conf {};
+    vregfile_conf.capacity = 16;
+    VRegFileUnit vregfile(vregfile_conf, vregfile_deps);
+    TRegFileDeps tregfile_deps {};
+    tregfile_deps.tile_reg_req_q = &tile_reg_req_q;
+    tregfile_deps.tpu_resp_q = &tpu_resp_q;
+    tregfile_deps.wakeup_bus = &wakeup_bus;
+    tregfile_deps.flush_event = &flush_event;
+    TRegFileConfig tregfile_conf {};
+    tregfile_conf.capacity = 8;
+    TRegFileUnit tregfile(tregfile_conf, tregfile_deps);
+
     std::array<int, RV_GPR_SIZE> crat {};
     crat.fill(0);
     crat[1] = 1;
+    std::array<int, RV_VREG_SIZE> vcrat {};
+    for (u32 i = 0; i < RV_VREG_SIZE; ++i) {
+        vcrat[i] = static_cast<int>(i);
+    }
+    std::array<int, RV_TILE_SIZE> tcrat {};
+    for (u32 i = 0; i < RV_TILE_SIZE; ++i) {
+        tcrat[i] = static_cast<int>(i);
+    }
     std::vector<RatCheckpoint> checkpoints;
 
     RenameDeps rename_deps {};
@@ -55,12 +86,18 @@ int main()
     rename_deps.rob = &rob;
     rename_deps.rename_issue_q = &rename_issue_q;
     rename_deps.regfile = &regfile;
+    rename_deps.vregfile = &vregfile;
+    rename_deps.tregfile = &tregfile;
     rename_deps.flush_event = &flush_event;
     rename_deps.crat = &crat;
+    rename_deps.vcrat = &vcrat;
+    rename_deps.tcrat = &tcrat;
     rename_deps.checkpoints = &checkpoints;
     RenameConfig rename_conf {};
     rename_conf.width = 1;
     rename_conf.prf_capacity = 16;
+    rename_conf.vprf_capacity = 16;
+    rename_conf.tprf_capacity = 8;
     RenameUnit rename(rename_conf, rename_deps);
     rename.build();
 
@@ -71,7 +108,11 @@ int main()
     commit_deps.flush_event = &flush_event;
     commit_deps.flush_req_q = &flush_req_q;
     commit_deps.reg_req_q = &reg_req_q;
+    commit_deps.vec_reg_req_q = &vec_reg_req_q;
+    commit_deps.tile_reg_req_q = &tile_reg_req_q;
     commit_deps.crat = &crat;
+    commit_deps.vcrat = &vcrat;
+    commit_deps.tcrat = &tcrat;
     commit_deps.checkpoints = &checkpoints;
     CommitConfig commit_conf {};
     commit_conf.commit_width = 1;

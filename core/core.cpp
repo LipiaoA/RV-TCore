@@ -8,6 +8,8 @@
 #include "issue_unit.h"
 #include "rename_unit.h"
 #include "regfile_unit.h"
+#include "vregfile_unit.h"
+#include "tregfile_unit.h"
 #include "branch_predictor.h"
 #include "log.h"
 #include "flush_unit.h"
@@ -19,6 +21,8 @@ Core::Core(const CoreDeps &deps)
    m_rename(*deps.rename),
    m_issue(*deps.issue),
    m_regfile(*deps.regfile),
+   m_vregfile(*deps.vregfile),
+   m_tregfile(*deps.tregfile),
    m_execute(*deps.execute),
    m_commit(*deps.commit),
    m_sched(*deps.sched),
@@ -43,6 +47,8 @@ void Core::tick() {
     m_decode.tick();
     m_rename.tick();
     m_regfile.tick();
+    m_vregfile.tick();
+    m_tregfile.tick();
     m_execute.tick();
     m_issue.tick();
     m_commit.tick();
@@ -56,6 +62,8 @@ void Core::build()
     m_rename.build();
     m_issue.build();
     m_regfile.build();
+    m_vregfile.build();
+    m_tregfile.build();
     m_execute.build();
     m_commit.build();
     m_flush.build();
@@ -73,6 +81,8 @@ void Core::reset()
     m_rename.reset();
     m_issue.reset();
     m_regfile.reset();
+    m_vregfile.reset();
+    m_tregfile.reset();
     m_execute.reset();
     m_commit.reset();
     m_flush.reset();
@@ -91,6 +101,8 @@ void Core::commit()
     m_rename.commit();
     m_issue.commit();
     m_regfile.commit();
+    m_vregfile.commit();
+    m_tregfile.commit();
     m_execute.commit();
     m_commit.commit();
     m_flush.commit();

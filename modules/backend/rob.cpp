@@ -98,6 +98,10 @@ bool ROB::full() const {
     return m_size >= m_capacity;
 }
 
+bool ROB::has_space(u32 count) const {
+    return m_size + count <= m_capacity;
+}
+
 bool ROB::empty() const {
     return m_size == 0;
 }

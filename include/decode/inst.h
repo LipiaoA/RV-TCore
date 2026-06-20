@@ -6,6 +6,8 @@
 
 #include "isa/opcode.h"
 #include "rv_def.h"
+#include "rename/vec_reg.h"
+#include "rename/tile_reg.h"
 
 struct PredecodeInfo {
     bool     valid    { false };
@@ -24,6 +26,12 @@ typedef struct {
     InstFmt format;
 } InstPattern;
 
+enum class RegType {
+    GPR,
+    VEC,
+    TILE,
+};
+
 typedef struct {
     u64 val { 0 };
     bool valid { false };
@@ -31,7 +39,9 @@ typedef struct {
     i32 ptag;
     bool ready { false };
     i32 o_ptag { -1 };
-} RegType;
+    RegType rtyp { RegType::GPR };
+    u32 rgrp { 1 };
+} Operand;
 
 typedef struct {
     u32 idx;
@@ -44,9 +54,9 @@ typedef struct {
     u64 pc;
     bool valid { false };
     InstFmt format;
-    RegType rs1;
-    RegType rs2;
-    RegType rd;
+    Operand rs1;
+    Operand rs2;
+    Operand rd;
     i64 imm;
     u64 fetch_id { 0 };
     ROBID rid {};
@@ -61,6 +71,9 @@ enum class InstType {
     BRANCH,
     INT,
     FP,
+    VECTOR,
+    TENSOR,
+    TILE = TENSOR,
     NONE,
 };
 
@@ -86,9 +99,19 @@ typedef struct MicroOp {
     bool valid { false };
     bool pred_taken { false };
     InstFmt format;
-    RegType rs1;
-    RegType rs2;
-    RegType rd;
+    Operand rs1;
+    Operand rs2;
+    Operand rd;
+    Operand vs1;
+    Operand vs2;
+    Operand vd;
+    Operand ts1;
+    Operand ts2;
+    Operand td;
+    VecReg vd_payload;
+    TileReg td_payload;
+    u32 lmul { 1 };
+    bool vm { true };
     i64 imm;
     u64 fetch_id { 0 };
     ROBID rid {};
@@ -117,11 +140,27 @@ typedef struct MicroOp {
 
     bool ready() const {
         bool ready = true;
-        if (rs1.valid) {
+        if (rs1.valid && rs1.rtyp == RegType::GPR) {
             ready &= rs1.ready;
         }
-        if (rs2.valid) {
+        if (rs2.valid && rs2.rtyp == RegType::GPR) {
             ready &= rs2.ready;
+        }
+        if (type == InstType::VECTOR) {
+            if (vs1.valid) {
+                ready &= vs1.ready;
+            }
+            if (vs2.valid) {
+                ready &= vs2.ready;
+            }
+        }
+        if (type == InstType::TILE) {
+            if (ts1.valid) {
+                ready &= ts1.ready;
+            }
+            if (ts2.valid) {
+                ready &= ts2.ready;
+            }
         }
         return ready;
     }
