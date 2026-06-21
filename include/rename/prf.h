@@ -12,17 +12,18 @@ public:
     PRF(u32 phys_size = 192);
     ~PRF() = default;
 
-    void                                reset();
-    u64                                 read(i32 pidx) const;
-    bool                                write(i32 pidx, u64 val);
-    bool                                is_ready(i32 pidx) const;
-    void                                set_busy(i32 pidx);
+    void                                    reset();
+    u64                                     read(i32 pidx) const;
+    bool                                    write(i32 pidx, u64 val);
+    bool                                    is_ready(i32 pidx) const;
+    void                                    set_busy(i32 pidx);
 
 private:
-    void                                mark_valid(i32 pidx);
-    bool                                is_valid(i32 pidx) const;
+    void                                    mark_valid(i32 pidx);
+    bool                                    is_valid(i32 pidx) const;
 
 private:
+    std::unordered_map<u32, u64>            m_sys {};
     FixedArray<u64, MAX_PHY_REG_SIZE>       m_regs {};
     FixedArray<bool, MAX_PHY_REG_SIZE>      m_valid {};
     u32                                     m_phys_n { 192 };

@@ -50,7 +50,7 @@ private:
     std::array<int, RV_TILE_SIZE>&      m_tcrat;
     std::vector<RatCheckpoint>&         m_checkpoints;
     std::deque<MInstPtr>                m_pending_writebacks;
-    LSU*                                m_lsu { nullptr };
+    LSU&                                m_lsu;
     PerfStats*                          m_stats { nullptr };
 };
 

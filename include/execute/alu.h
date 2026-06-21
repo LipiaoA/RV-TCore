@@ -6,8 +6,11 @@
 #include "config.h"
 #include "rob/rob.h"
 
+class ExecuteUnit;
+
 // Integer ALU: 1-cycle logical latency, 3-stage pipe (E0/E1/E2)
 class ALU : public DevIntf {
+    friend class ExecuteUnit;
     constexpr static u32 MAX_STAGES = 8;
 public:
     explicit ALU(const ALUConfig& conf, const ALUDeps& deps);
@@ -39,6 +42,8 @@ protected:
     void                                    broadcast(MInstPtr inst);
 
 private:
+    void                                    fwd_bypass();
+
     FUStage                                 m_input_latch;
     FUStage                                 m_commit_latch;
     i32                                     m_stages { 3 };

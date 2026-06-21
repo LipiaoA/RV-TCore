@@ -184,6 +184,7 @@ bool GCache::try_read_hit(u64 line_addr, u64 epoch, MemResp& out) const
 void GCache::complete_miss(u64 line_addr, MemResp resp, u64 start_cycle, u64 miss_seq)
 {
     install_line(resp, false);
+    apply_pending_store_merges(line_addr);
 
     bool fulfill_now = false;
     u64 current_epoch = 0;
@@ -199,8 +200,13 @@ void GCache::complete_miss(u64 line_addr, MemResp resp, u64 start_cycle, u64 mis
     }
 
     if (fulfill_now) {
-        resp.epoch = current_epoch;
-        fulfill_mshr(resp, start_cycle);
+        MemResp hit_resp;
+        if (try_read_hit(line_addr, current_epoch, hit_resp)) {
+            fulfill_mshr(hit_resp, start_cycle);
+        } else {
+            resp.epoch = current_epoch;
+            fulfill_mshr(resp, start_cycle);
+        }
         return;
     }
 
@@ -342,6 +348,128 @@ SimpleFuture<bool> GCache::write_line_async(MemResp resp)
         });
     });
     return out;
+}
+
+void GCache::merge_store_data(std::vector<u8>& line, u64 byte_addr, u64 line_addr, u64 data, u32 width)
+{
+    const size_t off = static_cast<size_t>(byte_addr - line_addr);
+    for (u32 i = 0; i < width; ++i) {
+        if (off + i < line.size()) {
+            line[off + i] = static_cast<u8>((data >> (8 * i)) & 0xFFu);
+        }
+    }
+}
+
+void GCache::apply_pending_store_merges(u64 line_addr)
+{
+    std::vector<PendingStore> pending;
+    {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        auto it = m_mshr.find(line_addr);
+        if (it == m_mshr.end() || it->second.pending_stores.empty()) {
+            return;
+        }
+        pending = std::move(it->second.pending_stores);
+        it->second.pending_stores.clear();
+    }
+
+    const auto [set_idx, tag] = decode(line_addr);
+    {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        for (size_t w = 0; w < m_cfg.ways; ++w) {
+            if (!m_meta[set_idx][w].valid || m_meta[set_idx][w].tag != tag) {
+                continue;
+            }
+            for (const auto& ps : pending) {
+                merge_store_data(m_data[set_idx][w], ps.req.addr, line_addr,
+                                 ps.req.data, ps.req.width);
+            }
+            m_meta[set_idx][w].dirty = true;
+            m_meta[set_idx][w].last_access = ++m_tick;
+            m_plru[set_idx].touch(w);
+            update_lru_list_on_access(set_idx, w);
+            break;
+        }
+    }
+
+    for (auto& ps : pending) {
+        const u64 start_cycle = ps.start_cycle;
+        m_sched->schedule_after(m_cfg.hit_latency, [this, ps, start_cycle]() mutable {
+            m_stats.total_latency += (m_sched->cycle() - start_cycle);
+            ps.fut.set_value(true);
+        });
+    }
+}
+
+SimpleFuture<bool> GCache::store_merge_async(StoreReq req)
+{
+    m_stats.accesses++;
+    SimpleFuture<bool> fut;
+    const u64 start_cycle = m_sched->cycle();
+    const u64 line_addr = req.addr & ~(static_cast<u64>(m_cfg.line_size) - 1ULL);
+    const auto [set_idx, tag] = decode(line_addr);
+    u64 miss_seq = 0;
+    bool schedule_lower = false;
+    MemReq miss_req {};
+    miss_req.valid = true;
+    miss_req.line_addr = line_addr;
+    miss_req.epoch = req.epoch;
+
+    {
+        std::lock_guard<std::mutex> lk(m_mtx);
+        for (size_t w = 0; w < m_cfg.ways; ++w) {
+            if (!m_meta[set_idx][w].valid || m_meta[set_idx][w].tag != tag) {
+                continue;
+            }
+            LOG_LEVEL1(m_name, "Store hit addr:0x%lx line:0x%lx way:%zu", req.addr, line_addr, w);
+            m_stats.hits++;
+            merge_store_data(m_data[set_idx][w], req.addr, line_addr, req.data, req.width);
+            m_meta[set_idx][w].dirty = true;
+            m_meta[set_idx][w].last_access = ++m_tick;
+            m_plru[set_idx].touch(w);
+            update_lru_list_on_access(set_idx, w);
+            m_sched->schedule_after(m_cfg.hit_latency, [this, fut, start_cycle]() mutable {
+                m_stats.total_latency += (m_sched->cycle() - start_cycle);
+                fut.set_value(true);
+            });
+            return fut;
+        }
+
+        LOG_LEVEL1(m_name, "Store miss addr:0x%lx line:0x%lx epoch:%lu", req.addr, line_addr, req.epoch);
+        m_stats.misses++;
+        PendingStore ps;
+        ps.req = req;
+        ps.fut = fut;
+        ps.start_cycle = start_cycle;
+
+        auto it = m_mshr.find(line_addr);
+        if (it != m_mshr.end()) {
+            it->second.pending_stores.push_back(std::move(ps));
+            if (it->second.epoch != req.epoch) {
+                it->second.epoch = req.epoch;
+                it->second.seq = ++m_mshr_seq;
+                miss_seq = it->second.seq;
+                schedule_lower = !it->second.lower_in_flight;
+            }
+            return fut;
+        }
+
+        MSHREntry me;
+        me.line_addr = line_addr;
+        me.epoch = req.epoch;
+        me.seq = ++m_mshr_seq;
+        me.pending_stores.push_back(std::move(ps));
+        miss_seq = me.seq;
+        m_mshr.emplace(line_addr, std::move(me));
+        schedule_lower = true;
+    }
+
+    if (schedule_lower) {
+        m_sched->schedule_after(m_cfg.miss_penalty, [this, miss_req, start_cycle, miss_seq]() {
+            this->send_lower_for_miss(miss_req, start_cycle, miss_seq);
+        });
+    }
+    return fut;
 }
 
 // expose invalidate used by inclusive policy

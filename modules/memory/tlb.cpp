@@ -26,6 +26,7 @@ pair<bool, u64> MultiLevelTLB::lookup(u64 va) {
 }
 
 pair<bool, u64> MultiLevelTLB::lookup_a(u64 va) {
+    // TODO: adjust to real translate process.
     return {true, va};
 }
 

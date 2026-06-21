@@ -391,9 +391,9 @@ uop {
 #### 5.5 Pipe Line
 
 ```
-R0  RAT read
-R1  freelist allocate
-R2  dispatch to IQ
+R0  从 decode 取指
+R1  RAT lookup / rd 重命名 / freelist 分配
+R2  ROB 分配 / LQ·SQ 分配 / dispatch to IQ
 ```
 
 #### 5.6 Rename0
@@ -697,12 +697,19 @@ Mul 通常 3-4 个 cycle ，Div 通常 10-30 个 cycle
 
 #### 8.8 Load/Store
 
+执行单元层级与 ALU/BRU 并列：
+
+- **AGU**：处理 LOAD / STA 地址生成，结果写入 LQ/SQ
+- **STD**：独立流水线，处理 store data uop，将数据写入 SQ
+- **LSU**：保留 LQ/SQ、TLB/Cache 访问、forwarding、memory order
+
 ```
-L0 issue
-L1 address generation
-L2 TLB lookup
-L3 cache access
-L4 data return
+AGU/STD issue
+L1 operand read
+L2 address / store-data execute
+L3 TLB lookup (load)
+L4 cache access (load)
+L5 data return (load)
 ```
 
 #### 8.9 FPU

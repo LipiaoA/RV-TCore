@@ -134,11 +134,20 @@ static inline u64 xor_fold(u64 x, int out_bits) {
     return res & ((1ull<<out_bits)-1);
 }
 
-static inline int64_t sign_extend(uint64_t value, int bits) {
+static inline int64_t sextend64(i64 value, i32 bits) {
     if (bits < 64) {
-        return static_cast<int64_t>((value << (64 - bits)) >> (64 - bits));
+        i32 shift = 64 - bits;
+        return (value << shift) >> shift;
     }
-    return static_cast<int64_t>(value);
+    return value;
+}
+
+static inline i32 sextend32(i32 value, i32 bits) {
+    if (bits < 32) {
+        i32 shift = 32 - bits;
+        return (value << shift) >> shift;
+    }
+    return value;
 }
 
 template<typename T, size_t MaxN>

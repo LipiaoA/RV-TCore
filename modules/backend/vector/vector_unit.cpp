@@ -96,15 +96,15 @@ void VectorUnit::exec_vector(MInstPtr inst)
         const VecReg lhs = read_vec(inst->vs1);
         const VecReg rhs = read_vec(inst->vs2);
         const u32 nbytes = std::min({result.vlen, lhs.vlen, rhs.vlen,
-                                     static_cast<u32>(lhs.data.size()),
-                                     static_cast<u32>(rhs.data.size())});
+                                     static_cast<u32>(lhs.size()),
+                                     static_cast<u32>(rhs.size())});
         for (u32 i = 0; i < nbytes; ++i) {
             result.data[i] = static_cast<u8>(lhs.data[i] + rhs.data[i]);
         }
         result.valid = true;
     } else if (inst->rs1.valid) {
         const u64 scalar = inst->rs1.val;
-        for (u32 i = 0; i < result.data.size(); ++i) {
+        for (u32 i = 0; i < result.size(); ++i) {
             result.data[i] = static_cast<u8>((scalar >> ((i % 8) * 8)) & 0xff);
         }
         result.valid = true;

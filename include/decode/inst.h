@@ -38,6 +38,8 @@ typedef struct {
     i32 atag;
     i32 ptag;
     bool ready { false };
+    bool bypass_hint { false };
+    bool bypass_ready { false };
     i32 o_ptag { -1 };
     RegType rtyp { RegType::GPR };
     u32 rgrp { 1 };
@@ -122,7 +124,7 @@ typedef struct MicroOp {
     bool     addr_ready { false };
     uint64_t data;
     bool     data_ready { false };
-    uint64_t store_idx;
+    uint64_t store_id;
     uint64_t load_idx;
     uint64_t load_data;
     u32 ls_width {0};
@@ -169,4 +171,9 @@ typedef struct MicroOp {
 
 using DynInst = MicroOp;
 
+const std::string gpr_name[32] = {
+    "zero", "ra", "sp", "gp", "tp", "t0", "t1", "t2", "s0", "s1", "a0", "a1",
+    "a2", "a3", "a4", "a5", "a6", "a7", "s2", "s3", "s4", "s5", "s6", "s7",
+    "s8", "s9", "s10", "s11", "t3", "t4", "t5", "t6"
+};
 #endif

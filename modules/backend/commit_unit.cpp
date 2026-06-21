@@ -32,7 +32,7 @@ CommitUnit::CommitUnit(const CommitConfig& conf, const CommitDeps& deps)
     , m_vcrat(*deps.vcrat)
     , m_tcrat(*deps.tcrat)
     , m_checkpoints(*deps.checkpoints)
-    , m_lsu(deps.lsu)
+    , m_lsu(*deps.lsu)
     , m_stats(deps.perf_stats)
 {}
 
@@ -94,8 +94,8 @@ void CommitUnit::inst_commit() {
         auto entry = m_rob.head();
         if (entry && entry->valid && entry->inst && entry->inst->valid
             && entry->inst->state == InstState::EXECUTED) {
-            if (entry->inst->type == InstType::STA && m_lsu
-                && !m_lsu->store_commit_ready(entry->inst->rid)) {
+            if (entry->inst->type == InstType::STA &&
+                !m_lsu.store_commit_ready(entry->inst->rid)) {
                 if (i == 0 && m_stats) {
                     ++m_stats->commit.head_not_ready_cycles;
                 }
@@ -124,6 +124,9 @@ void CommitUnit::inst_commit() {
             }
             if (!committed->inst->fetch_fault) {
                 retire_inst(committed->inst);
+            } else {
+                // gererate exception response
+                assert(false);
             }
             if (m_stats) {
                 ++m_stats->commit.retired_insts;
@@ -187,11 +190,11 @@ void CommitUnit::retire_inst(const MInstPtr inst)
         return;
     }
 
-    if ((inst->type == InstType::STA || inst->type == InstType::STORE) && m_lsu) {
-        m_lsu->commit_store(inst->rid);
+    if ((inst->type == InstType::STA || inst->type == InstType::STD || inst->type == InstType::STORE)) {
+        m_lsu.commit_store(inst->rid);
     }
-    if (inst->type == InstType::LOAD && m_lsu) {
-        m_lsu->retire_load(inst->rid);
+    if (inst->type == InstType::LOAD) {
+        m_lsu.retire_load(inst->rid);
     }
 
     if (inst->rd.valid && inst->rd.rtyp == RegType::GPR && inst->rd.atag > 0

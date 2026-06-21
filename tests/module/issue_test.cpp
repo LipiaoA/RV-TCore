@@ -137,6 +137,7 @@ int main()
     event.valid = true;
     event.type = WAKEUP_BYPASS;
     event.ptag = inst->rs1.ptag;
+    event.bypassable = true;
     wakeup_bus.push_back(event);
 
     assert(rename_issue_q.write(inst));
@@ -150,11 +151,6 @@ int main()
 
     issue.commit();
     RegReq req {};
-    assert(reg_req_q.read(req));
-    assert(req.valid);
-    assert(!req.write);
-    assert(req.ptag == inst->rs1.ptag);
-    assert(req.fu == FuType::ALU);
     assert(reg_req_q.empty());
 
     // FU busy: pending dispatch must not re-issue PRF reads on the next select.

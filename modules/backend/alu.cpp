@@ -1,5 +1,4 @@
 #include "alu.h"
-#include "rename/prf.h"
 #include "inst_exec.h"
 
 u32 ALU::alu_idx = 0;
@@ -24,16 +23,37 @@ ALU::ALU(const ALUConfig& conf, const ALUDeps& deps)
     m_idx = ALU::alu_idx++;
 }
 
+void ALU::fwd_bypass()
+{
+    if (!m_pipe[0].valid || !m_pipe[0].inst) {
+        return;
+    }
+    MInstPtr inst = m_pipe[0].inst;
+    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+        if (!src->valid || !src->bypass_hint) {
+            continue;
+        }
+        for (const auto& resp : m_reg_bypass_bus) {
+            if (resp.valid && resp.ptag == src->ptag) {
+                src->val = resp.val;
+                src->bypass_ready = true;
+                break;
+            }
+        }
+    }
+    return;
+}
+
 void ALU::tick()
 {
     E0();
     R1();
     dump_states();
-    shift();
 }
 
 void ALU::commit()
 {
+    shift();
     if (m_input_latch.valid && !m_pipe[0].valid) {
         m_pipe[0].inst = m_input_latch.inst;
         m_pipe[0].valid = true;
@@ -53,37 +73,28 @@ bool ALU::dispatch(const MInstPtr inst)
         return false;
     m_input_latch.inst = inst;
     m_input_latch.valid = true;
+    if (inst->rd.valid) {
+        wakeup(inst);
+    }
     return true;
 }
 
 void ALU::R1()
 {
-    if (!m_pipe[0].valid || !m_pipe[0].inst)
+    if (!m_pipe[0].valid || !m_pipe[0].inst) {
         return;
+    }
     MInstPtr inst = m_pipe[0].inst;
-    auto read_reg = [&](Operand &src) -> bool {
-        for (auto& resp : m_reg_bypass_bus) {
-            if (resp.valid && resp.ptag == src.ptag) {
-                src.val = resp.val;
-                return true;
+    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+        if (!src->valid || src->bypass_hint) {
+            continue;
+        }
+        for (const auto& resp : m_reg_resp_q) {
+            if (resp.valid && resp.ptag == src->ptag) {
+                src->val = resp.val;
+                break;
             }
         }
-        for (auto& resp : m_reg_resp_q) {
-            if (resp.valid && resp.ptag == src.ptag) {
-                src.val = resp.val;
-                return true;
-            }
-        }
-        return false;
-    };
-    if (inst->rs1.valid && !read_reg(inst->rs1)) {
-        return;
-    }
-    if (inst->rs2.valid && !read_reg(inst->rs2)) {
-        return;
-    }
-    if (inst->rd.valid) {
-        wakeup(inst);
     }
 }
 
@@ -95,9 +106,9 @@ void ALU::E0()
     MInstPtr inst = m_pipe[1].inst;
     InstExec::AluExecResult ret = InstExec::exec_alu(inst);
     (void)ret;
-    broadcast(inst);
     if (inst->rd.valid) {
         inst->rd.val = ret.value;
+        broadcast(inst);
     }
     m_pipe[1].valid = false;
     m_pipe[1].inst = nullptr;
@@ -126,6 +137,11 @@ void ALU::wakeup(MInstPtr inst)
     event.ptag   = inst->rd.ptag;
     event.rid    = inst->rid;
     event.rtyp = RegType::GPR;
+    event.bypassable = true;
+    event.speculative = true;
+    event.speculative_mask = 1u << m_idx;
+    event.producer_fu = FuType::ALU;
+    event.producer_fu_id = static_cast<int>(m_idx);
     m_wakeup_bus.push_back(event);
 }
 
@@ -133,6 +149,19 @@ void ALU::broadcast(MInstPtr inst)
 {
     if (!inst || !inst->rd.valid) {
         return;
+    }
+    RegResp resp {};
+    resp.valid = true;
+    resp.ptag = inst->rd.ptag;
+    resp.val = inst->rd.val;
+    resp.rid = inst->rid;
+    resp.fu = FuType::ALU;
+    resp.fu_id = static_cast<int>(m_idx);
+    resp.rtyp = RegType::GPR;
+    if (!m_reg_bypass_bus.full()) {
+        m_reg_bypass_bus.push_back(resp);
+    } else {
+        assert(false);
     }
 }
 

@@ -27,12 +27,31 @@ AGU::AGU(const AGUConfig& conf, const AGUDeps& deps)
     m_idx = AGU::agu_idx++;
 }
 
+void AGU::fwd_bypass()
+{
+    if (!m_pipe[0].valid || !m_pipe[0].inst) {
+        return;
+    }
+    MInstPtr inst = m_pipe[0].inst;
+    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+        if (!src->valid || !src->bypass_hint) {
+            continue;
+        }
+        for (const auto& resp : m_reg_bypass_bus) {
+            if (resp.valid && resp.ptag == src->ptag) {
+                src->val = resp.val;
+                src->bypass_ready = true;
+                break;
+            }
+        }
+    }
+}
+
 void AGU::tick()
 {
     E0();
-    bool r1_ready = R1();
+    R1();
     dump_states();
-    shift(r1_ready);
 }
 
 bool AGU::accept() const
@@ -50,34 +69,23 @@ bool AGU::dispatch(MInstPtr inst)
     return true;
 }
 
-bool AGU::read_reg(Operand& src)
+void AGU::R1()
 {
-    for (auto& resp : m_reg_bypass_bus) {
-        if (resp.valid && resp.ptag == src.ptag) {
-            src.val = resp.val;
-            return true;
-        }
-    }
-    for (auto& resp : m_reg_resp_q) {
-        if (resp.valid && resp.ptag == src.ptag) {
-            src.val = resp.val;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool AGU::R1()
-{
-    if (!m_pipe[0].valid || !m_pipe[0].inst) {
-        return true;
-    }
     MInstPtr inst = m_pipe[0].inst;
-
-    if (inst->rs1.valid && !read_reg(inst->rs1)) {
-        return false;
+    if (!m_pipe[0].valid || !inst || !inst->rs1.valid) {
+        return;
     }
-    return true;
+    auto& src = inst->rs1;
+    if (src.bypass_hint) {
+        return;
+    }
+    // read from reg prf
+    for (const auto& resp : m_reg_resp_q) {
+        if (resp.valid && resp.ptag == src.ptag) {
+            src.val = resp.val;
+            break;
+        }
+    }
 }
 
 void AGU::E0()
@@ -93,7 +101,7 @@ void AGU::E0()
     }
 
     if (inst->type == InstType::STA) {
-        SQEntry* st = m_lsu.find_store_by_id(inst->store_idx);
+        SQEntry* st = m_lsu.find_store_by_id(inst->store_id);
         if (!st) {
             return;
         }
@@ -116,12 +124,9 @@ void AGU::E0()
     m_pipe[1].inst = nullptr;
 }
 
-void AGU::shift(bool r1_ready)
+void AGU::shift()
 {
     for (i32 i = m_stages - 1; i > 0; --i) {
-        if (i == 1 && !r1_ready) {
-            continue;
-        }
         if (!m_pipe[i].valid) {
             m_pipe[i] = m_pipe[i - 1];
             m_pipe[i - 1].valid = false;
@@ -154,6 +159,7 @@ void AGU::flush(const FlushEvent& event)
 
 void AGU::commit()
 {
+    shift();
     if (m_input_latch.valid && !m_pipe[0].valid) {
         m_pipe[0].inst = m_input_latch.inst;
         m_pipe[0].valid = true;
@@ -176,13 +182,21 @@ void AGU::dump_states() const
     std::string log_prefix = "AGU" + std::to_string(m_idx) + " ";
     if (m_pipe[0].valid) {
         auto inst = m_pipe[0].inst;
-        LOG_LEVEL1(log_prefix + "R0", "rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
+        std::string typ = inst->type == InstType::STA ? "STA" :
+            inst->type == InstType::STD ? "STD" :
+            inst->type == InstType::LOAD ? "LOAD" : "OTHER";
+        LOG_LEVEL1(log_prefix + "R1", "pc: 0x%lx, inst: %s, type: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v%d-a%d-p%d-0x%lx",
+            inst->pc, inst->inst_name.c_str(), typ.c_str(),
             inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
     }
     if (m_pipe[1].valid) {
         auto inst = m_pipe[1].inst;
-        LOG_LEVEL1(log_prefix + "R1", "rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
+        std::string typ = inst->type == InstType::STA ? "STA" :
+            inst->type == InstType::STD ? "STD" :
+            inst->type == InstType::LOAD ? "LOAD" : "OTHER";
+        LOG_LEVEL1(log_prefix + "E0", "pc: 0x%lx, inst: %s, type: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v%d-a%d-p%d-0x%lx",
+            inst->pc, inst->inst_name.c_str(), typ.c_str(),
             inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
     }

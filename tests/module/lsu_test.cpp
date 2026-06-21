@@ -172,7 +172,7 @@ MInstPtr make_sta(u64 pc, ROBID rid, u64 addr, u64 token)
     inst->rid = rid;
     inst->rs1.valid = false;
     inst->imm = static_cast<i64>(addr);
-    inst->store_idx = token;
+    inst->store_id = token;
     inst->ls_width = 8;
     return inst;
 }
@@ -188,7 +188,7 @@ MInstPtr make_std(u64 pc, ROBID rid, u64 data, u64 token)
     inst->rid = rid;
     inst->rs2.valid = false;
     inst->data = data;
-    inst->store_idx = token;
+    inst->store_id = token;
     inst->ls_width = 8;
     return inst;
 }
@@ -363,7 +363,7 @@ void test_load_lcam_forward_waits_until_cycle_after_execute()
     assert(h.lsu.allocate(sta));
     assert(h.lsu.allocate(std));
 
-    SQEntry* st = h.lsu.find_store_by_id(sta->store_idx);
+    SQEntry* st = h.lsu.find_store_by_id(sta->store_id);
     assert(st != nullptr);
     st->addr = 0x1180;
     st->pa = 0x1180;

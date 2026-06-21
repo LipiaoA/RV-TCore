@@ -24,6 +24,7 @@ ExecuteUnit::ExecuteUnit(const ExecConfig& conf, const ExecDeps& deps)
      m_inst_commit_q(*deps.inst_commit_q),
      m_flush_event(*deps.flush_event),
      m_rob(*deps.rob),
+     m_reg_bypass_bus(*deps.alu_deps->reg_bypass_bus),
      m_stats(deps.perf_stats)
 {
     ALUDeps *alu_deps = deps.alu_deps;
@@ -119,14 +120,26 @@ void ExecuteUnit::commit() {
         m_stds[i].commit();
     }
     m_lsu.commit();
-    m_inst_commit_q.commit();
-}
 
-bool ExecuteUnit::dispatch(MInstPtr inst) {
-    if (!inst) {
-        return false;
+    for (u32 i = 0; i < m_alu_num; ++i) {
+        m_alus[i].fwd_bypass();
+    }
+    for (u32 i = 0; i < m_bru_num; ++i) {
+        m_brus[i].fwd_bypass();
+    }
+    for (u32 i = 0; i < m_agu_num; ++i) {
+        m_agus[i].fwd_bypass();
+    }
+    for (u32 i = 0; i < m_std_num; ++i) {
+        m_stds[i].fwd_bypass();
     }
 
+    m_inst_commit_q.commit();
+    m_reg_bypass_bus.clear();
+}
+
+bool ExecuteUnit::dispatch(MInstPtr inst)
+{
     auto dispatch_round_robin = [&](auto& fus, u32 count, u32& next) {
         for (u32 n = 0; n < count; ++n) {
             u32 idx = (next + n) % count;

@@ -6,7 +6,10 @@
 #include "config.h"
 #include "rob/rob.h"
 
+class ExecuteUnit;
+
 class BRU : public DevIntf {
+    friend class ExecuteUnit;
     constexpr static u32 MAX_STAGES = 8;
 public:
     BRU(const BRUConfig& conf, const BRUDeps& deps);
@@ -37,7 +40,8 @@ private:
     void                                    dump_states() const;
     void                                    wakeup(MInstPtr inst);
 
-private:
+    void                                    fwd_bypass();
+
     FUStage                                 m_input_latch;
     FUStage                                 m_commit_latch;
     ROB&                                    m_rob;

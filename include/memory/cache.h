@@ -8,6 +8,7 @@
 #include "mem.h"
 #include "pseudo_lru.h"
 #include "config.h"
+#include "module_comm.h"
 
 // --------------------------- Generic Cache ------------------------------
 struct LineMeta { bool valid=false; u64 tag=0; bool dirty=false; u64 last_access=0; };
@@ -30,12 +31,19 @@ typedef struct MemResp {
 } MemResp;
 
 class GCache {
+    struct PendingStore {
+        StoreReq req;
+        SimpleFuture<bool> fut;
+        u64 start_cycle { 0 };
+    };
+
     struct MSHREntry {
         u64 line_addr { 0 };
         u64 epoch { 0 };
         u64 seq { 0 };
         bool lower_in_flight { false };
         std::vector<SimpleFuture<MemResp>> promises;
+        std::vector<PendingStore> pending_stores;
     };
     typedef struct Stats { u64 accesses=0, hits=0, misses=0, total_latency=0; } Stats;
 
@@ -55,6 +63,9 @@ public:
 
     // write_line_async used by upper caches to write back
     SimpleFuture<bool>                  write_line_async(MemResp resp);
+
+    // write-back store: merge bytes on hit, write-allocate on miss
+    SimpleFuture<bool>                  store_merge_async(StoreReq req);
 
     // expose invalidate used by inclusive policy
     void                                invalidate_line(u64 line_addr);
@@ -83,6 +94,11 @@ protected:
     void                                complete_miss(u64 line_addr, MemResp resp, u64 start_cycle, u64 miss_seq);
 
     void                                send_lower_for_miss(MemReq req, u64 start_cycle, u64 miss_seq);
+
+    static void                         merge_store_data(std::vector<u8>& line, u64 byte_addr,
+                                                         u64 line_addr, u64 data, u32 width);
+
+    void                                apply_pending_store_merges(u64 line_addr);
 
     CycleScheduler*                                                 m_sched;
     CacheConfig                                                     m_cfg;

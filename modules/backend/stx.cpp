@@ -26,12 +26,32 @@ STD::STD(const STDConfig& conf, const STDDeps& deps)
     m_idx = STD::std_idx++;
 }
 
+void STD::fwd_bypass()
+{
+    if (!m_pipe[0].valid || !m_pipe[0].inst) {
+        return;
+    }
+    MInstPtr inst = m_pipe[0].inst;
+    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+        if (!src->valid || !src->bypass_hint) {
+            continue;
+        }
+        for (const auto& resp : m_reg_bypass_bus) {
+            if (resp.valid && resp.ptag == src->ptag) {
+                src->val = resp.val;
+                src->bypass_ready = true;
+                break;
+            }
+        }
+    }
+}
+
 void STD::tick()
 {
     E0();
-    bool r1_ready = R1();
+    R1();
     dump_states();
-    shift(r1_ready);
+    shift();
 }
 
 bool STD::accept() const
@@ -49,33 +69,23 @@ bool STD::dispatch(MInstPtr inst)
     return true;
 }
 
-bool STD::read_reg(Operand& src)
+void STD::R1()
 {
-    for (auto& resp : m_reg_bypass_bus) {
-        if (resp.valid && resp.ptag == src.ptag) {
-            src.val = resp.val;
-            return true;
-        }
-    }
-    for (auto& resp : m_reg_resp_q) {
-        if (resp.valid && resp.ptag == src.ptag) {
-            src.val = resp.val;
-            return true;
-        }
-    }
-    return false;
-}
-
-bool STD::R1()
-{
-    if (!m_pipe[0].valid || !m_pipe[0].inst) {
-        return true;
-    }
     MInstPtr inst = m_pipe[0].inst;
-    if (inst->rs2.valid && !read_reg(inst->rs2)) {
-        return false;
+    if (!m_pipe[0].valid || !inst || !inst->rs1.valid) {
+        return;
     }
-    return true;
+    auto& src = inst->rs1;
+    if (src.bypass_hint) {
+        return;
+    }
+    // read from reg prf
+    for (const auto& resp : m_reg_resp_q) {
+        if (resp.valid && resp.ptag == src.ptag) {
+            src.val = resp.val;
+            break;
+        }
+    }
 }
 
 void STD::E0()
@@ -84,9 +94,6 @@ void STD::E0()
         return;
     }
     MInstPtr inst = m_pipe[1].inst;
-    if (inst->rs2.valid && !read_reg(inst->rs2)) {
-        return;
-    }
 
     SQEntry* sq = m_lsu.find_sq_for_std(inst);
     if (!sq) {
@@ -105,12 +112,9 @@ void STD::E0()
     m_commit_latch.valid = true;
 }
 
-void STD::shift(bool r1_ready)
+void STD::shift()
 {
     for (i32 i = m_stages - 1; i > 0; --i) {
-        if (i == 1 && !r1_ready) {
-            continue;
-        }
         if (!m_pipe[i].valid) {
             m_pipe[i] = m_pipe[i - 1];
             m_pipe[i - 1].valid = false;

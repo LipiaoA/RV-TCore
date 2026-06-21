@@ -210,10 +210,15 @@ enum WakeupType {
 };
 typedef struct {
     bool       valid { false };
-    WakeupType type;
-    i32        ptag;
+    WakeupType type { WAKEUP_BYPASS };
+    i32        ptag { -1 };
     ROBID      rid;
     RegType   rtyp { RegType::GPR };
+    bool       bypassable { false };
+    bool       speculative { false };
+    u32        speculative_mask { 0 };
+    FuType     producer_fu { FuType::NONE };
+    int        producer_fu_id { -1 };
 } WakeupEvent;
 
 typedef struct {
@@ -271,6 +276,7 @@ typedef struct {
 
     bool sta_completed = false;
     bool committed = false;
+    bool store_in_flight = false;
     bool succeeded = false;
     bool violation_checked = false;
 } SQEntry;
@@ -310,9 +316,10 @@ typedef struct {
 
 typedef struct {
     bool valid { false };
-    uint64_t addr;
-    uint64_t data;
-    uint64_t store_idx;
+    u64 addr { 0 };
+    u64 data { 0 };
+    u32 width { 8 };
+    u64 epoch { 0 };
 } StoreReq;
 
 typedef struct {
@@ -583,6 +590,7 @@ typedef struct {
     ASyncQueue<MInstPtr>*       inst_commit_q { nullptr };
     ASyncQueue<FlushEvent>*     flush_req_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
     ALUDeps*                    alu_deps { nullptr };
     BRUDeps*                    bru_deps { nullptr };
     AGUDeps*                    agu_deps { nullptr };

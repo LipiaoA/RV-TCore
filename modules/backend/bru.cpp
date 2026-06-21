@@ -26,6 +26,26 @@ BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
     m_idx = BRU::bru_idx++;
 }
 
+void BRU::fwd_bypass()
+{
+    if (!m_pipe[0].valid || !m_pipe[0].inst) {
+        return;
+    }
+    MInstPtr inst = m_pipe[0].inst;
+    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+        if (!src->valid || !src->bypass_hint) {
+            continue;
+        }
+        for (const auto& resp : m_reg_bypass_bus) {
+            if (resp.valid && resp.ptag == src->ptag) {
+                src->val = resp.val;
+                src->bypass_ready = true;
+                break;
+            }
+        }
+    }
+}
+
 bool branch_taken(InstOp op, u64 v1, u64 v2)
 {
     switch (op) {
@@ -77,30 +97,23 @@ bool BRU::accept() const
 
 void BRU::R1()
 {
-    if (!m_pipe[0].valid || !m_pipe[0].inst)
+    if (!m_pipe[0].valid || !m_pipe[0].inst) {
         return;
+    }
     MInstPtr inst = m_pipe[0].inst;
-    auto read_reg = [&](Operand &src) -> bool {
-        for (auto& resp : m_reg_bypass_bus) {
-            if (resp.valid && resp.ptag == src.ptag) {
-                src.val = resp.val;
-                return true;
+    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+        if (!src->valid || src->bypass_hint) {
+            continue;
+        }
+        for (const auto& resp : m_reg_bypass_bus) {
+            if (resp.valid && resp.ptag == src->ptag) {
+                src->val = resp.val;
+                src->bypass_ready = true;
+                break;
             }
         }
-        for (auto& resp : m_reg_resp_q) {
-            if (resp.valid && resp.ptag == src.ptag) {
-                src.val = resp.val;
-                return true;
-            }
-        }
-        return false;
-    };
-    if (inst->rs1.valid && !read_reg(inst->rs1)) {
-        return;
     }
-    if (inst->rs2.valid && !read_reg(inst->rs2)) {
-        return;
-    }
+
     m_pred_taken= branch_taken(inst->opcode, inst->rs1.val, inst->rs2.val);
     if (inst->rd.valid) {
         wakeup(inst);

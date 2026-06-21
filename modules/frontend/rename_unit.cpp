@@ -15,41 +15,7 @@ bool is_lsq_type(InstType type)
         || type == InstType::STD || type == InstType::STORE;
 }
 
-void rename_src_gpr(Operand& src,
-                    const std::array<i32, RV_GPR_SIZE>& rat,
-                    RegFileUnit& regfile)
-{
-    if (!src.valid) {
-        return;
-    }
-    src.rtyp = RegType::GPR;
-    src.ptag = rat[src.atag];
-    src.ready = regfile.is_ready(src.ptag);
-}
 
-void rename_src_vec(Operand& src,
-                    const std::array<i32, RV_VREG_SIZE>& vrat,
-                    VRegFileUnit& vregfile)
-{
-    if (!src.valid) {
-        return;
-    }
-    src.rtyp = RegType::VEC;
-    src.ptag = vrat[src.atag];
-    src.ready = vregfile.is_ready(src.ptag);
-}
-
-void rename_src_tile(Operand& src,
-                     const std::array<i32, RV_TILE_SIZE>& trat,
-                     TRegFileUnit& tregfile)
-{
-    if (!src.valid) {
-        return;
-    }
-    src.rtyp = RegType::TILE;
-    src.ptag = trat[src.atag];
-    src.ready = tregfile.is_ready(src.ptag);
-}
 }
 
 RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
@@ -120,10 +86,32 @@ bool RenameUnit::needs_tile_free_entry(const MInstPtr& inst) const
     return inst->type == InstType::TENSOR && inst->td.valid;
 }
 
-void RenameUnit::rename_inst_gpr(MInstPtr inst)
+void RenameUnit::rename_src_gpr(Operand& src)
 {
-    rename_src_gpr(inst->rs1, m_rat, m_regfile);
-    rename_src_gpr(inst->rs2, m_rat, m_regfile);
+    if (!src.valid) {
+        return;
+    }
+    src.ptag = m_rat[src.atag];
+    src.ready = m_regfile.is_ready(src.ptag);
+    return;
+}
+
+void RenameUnit::rename_src_vec(Operand& src)
+{
+    if (!src.valid) {
+        return;
+    }
+    src.ptag = m_vrat[src.atag];
+    src.ready = m_vregfile.is_ready(src.ptag);
+}
+
+void RenameUnit::rename_src_tile(Operand& src)
+{
+    if (!src.valid) {
+        return;
+    }
+    src.ptag = m_trat[src.atag];
+    src.ready = m_tregfile.is_ready(src.ptag);
 }
 
 void RenameUnit::rename_rd_gpr(MInstPtr inst)
@@ -145,21 +133,11 @@ void RenameUnit::rename_rd_gpr(MInstPtr inst)
     }
 }
 
-void RenameUnit::rename_inst_vec(MInstPtr inst)
-{
-    rename_src_vec(inst->vs1, m_vrat, m_vregfile);
-    rename_src_vec(inst->vs2, m_vrat, m_vregfile);
-    if (inst->rs1.valid) {
-        rename_src_gpr(inst->rs1, m_rat, m_regfile);
-    }
-}
-
-void RenameUnit::rename_rd_vector(MInstPtr inst)
+void RenameUnit::rename_rd_vec(MInstPtr inst)
 {
     if (!inst->vd.valid) {
         return;
     }
-    inst->vd.rtyp = RegType::VEC;
     if (inst->vd.atag == 0) {
         inst->vd.ptag = 0;
         m_vrat[0] = 0;
@@ -178,18 +156,11 @@ void RenameUnit::rename_rd_vector(MInstPtr inst)
     m_vrat[inst->vd.atag] = ptag;
 }
 
-void RenameUnit::rename_inst_tile(MInstPtr inst)
-{
-    rename_src_tile(inst->ts1, m_trat, m_tregfile);
-    rename_src_tile(inst->ts2, m_trat, m_tregfile);
-}
-
 void RenameUnit::rename_rd_tile(MInstPtr inst)
 {
     if (!inst->td.valid) {
         return;
     }
-    inst->td.rtyp = RegType::TILE;
     const i32 ptag = m_tfree_list.front();
     m_tfree_list.pop_front();
     m_tregfile.set_busy(ptag);
@@ -224,7 +195,7 @@ bool RenameUnit::lsq_allocate(MInstPtr inst)
     if (!m_lsu.can_alloc(inst)) {
         return false;
     }
-    return m_lsu.allocate(inst);
+    return true;
 }
 
 bool RenameUnit::save_branch_checkpoint(MInstPtr inst)
@@ -306,14 +277,26 @@ void RenameUnit::r1() {
             }
 
             if (inst->type == InstType::VECTOR) {
-                rename_inst_vec(inst);
-                rename_rd_vector(inst);
+                rename_src_vec(inst->vs1);
+                rename_src_vec(inst->vs2);
+                if (inst->rs1.valid) {
+                    rename_src_gpr(inst->rs1);
+                }
+                rename_rd_vec(inst);
             } else if (inst->type == InstType::TENSOR) {
-                rename_inst_tile(inst);
+                rename_src_tile(inst->ts1);
+                rename_src_tile(inst->ts2);
                 rename_rd_tile(inst);
             } else {
-                rename_inst_gpr(inst);
+                rename_src_gpr(inst->rs1);
+                rename_src_gpr(inst->rs2);
                 rename_rd_gpr(inst);
+                LOG_LEVEL1("RenameUnit R1", "r1 pc:0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx,"
+                    " rs2: v%d-a%d-p%d-0x%lx, rd: v%d-a%d-p%d-0x%lx",
+                    inst->pc, inst->inst_name.c_str(),
+                    inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
+                    inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
+                    inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
             }
         }
 
@@ -361,12 +344,21 @@ void RenameUnit::r2() {
             break;
         }
 
+        if (!lsq_allocate(inst)) {
+            break;
+        }
+
+        if (!rob_allocate(inst)) {
+            assert(false);
+        }
+
+        m_lsu.allocate(inst);
+
         if (inst->type == InstType::STORE) {
             MInstPtr inst2 = new MicroOp();
             *inst2 = *inst;
             inst2->type = InstType::STA;
             inst2->rs2.valid = false; // rs2 is the data to be stored
-
 
             if (!dispatch(inst2)) {
                 delete inst2;
@@ -377,12 +369,10 @@ void RenameUnit::r2() {
             inst->rs2.valid = false;
         }
 
-        if (!rob_allocate(inst) || !lsq_allocate(inst)) {
-            break;
-        }
+
         if (!dispatch(inst)) {
             m_r2_buf.push_front(inst);
-            break;
+            assert(false);
         }
         save_branch_checkpoint(inst);
         m_r2_buf.pop_front();

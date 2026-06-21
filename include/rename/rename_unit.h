@@ -46,12 +46,15 @@ private:
     void                                rebuild_vfree_list();
     void                                rebuild_tfree_list();
 
-    void                                rename_inst_gpr(MInstPtr inst);
+    void                                rename_src_gpr(Operand& src);
+    void                                rename_src_vec(Operand& src);
+    void                                rename_src_tile(Operand& src);
+
     void                                rename_inst_vec(MInstPtr inst);
     void                                rename_inst_tile(MInstPtr inst);
 
     void                                rename_rd_gpr(MInstPtr inst);
-    void                                rename_rd_vector(MInstPtr inst);
+    void                                rename_rd_vec(MInstPtr inst);
     void                                rename_rd_tile(MInstPtr inst);
 
     bool                                lsq_resources_available(const MInstPtr& inst) const;

@@ -20,6 +20,14 @@ void PRF::reset()
     m_busy[0] = false;
     m_valid[0] = true;
     m_regs[0] = 0;
+
+    m_sys[SYS_VSTART]   = 0;
+    m_sys[SYS_VXSAT]    = 0;
+    m_sys[SYS_VXRM]     = 0;
+    m_sys[SYS_VL]       = 0;
+    m_sys[SYS_VLENB]    = 0;
+    m_sys[SYS_VTYPE]    = 0;
+    m_sys[SYS_VCSR]     = 0;
 }
 
 u64 PRF::read(i32 pidx) const

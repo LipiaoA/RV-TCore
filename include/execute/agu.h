@@ -7,8 +7,10 @@
 #include "rob/rob.h"
 
 class LSU;
+class ExecuteUnit;
 
 class AGU : public DevIntf {
+    friend class ExecuteUnit;
     constexpr static u32 MAX_STAGES = 8;
 public:
     explicit AGU(const AGUConfig& conf, const AGUDeps& deps);
@@ -26,13 +28,13 @@ public:
     void                                    reset();
 
 private:
-    bool                                    R1();
+    void                                    R1();
     void                                    E0();
 
-    void                                    shift(bool r1_ready);
-    bool                                    read_reg(Operand& src);
+    void                                    shift();
 
-private:
+    void                                    fwd_bypass();
+
     FUStage                                 m_input_latch;
     i32                                     m_stages { 4 };
     FUStage                                 m_pipe[MAX_STAGES];

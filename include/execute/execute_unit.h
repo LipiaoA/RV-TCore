@@ -71,6 +71,7 @@ private:
     ASyncQueue<MInstPtr>&               m_inst_commit_q;
     FlushEvent&                         m_flush_event;
     ROB&                                m_rob;
+    FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>& m_reg_bypass_bus;
     PerfStats*                          m_stats { nullptr };
 };
 

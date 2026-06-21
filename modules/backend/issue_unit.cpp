@@ -45,18 +45,26 @@ void IssueUnit::commit()
 
 void IssueUnit::wakeup() {
     auto apply_gpr = [](const MInstPtr inst, const WakeupEvent& event) {
-        if (!event.valid || event.rtyp != RegType::GPR ||
-            (event.type != WAKEUP_BYPASS && event.type != WAKEUP_WRITEBACK)) {
+        if (!event.valid || event.rtyp != RegType::GPR) {
             return;
         }
-        if (inst->rs1.valid && inst->rs1.rtyp == RegType::GPR
-            && inst->rs1.ptag == event.ptag) {
-            inst->rs1.ready = true;
-        }
-        if (inst->rs2.valid && inst->rs2.rtyp == RegType::GPR
-            && inst->rs2.ptag == event.ptag) {
-            inst->rs2.ready = true;
-        }
+        auto apply_src = [&](Operand& src) {
+            if (!src.valid || src.rtyp != RegType::GPR) {
+                return;
+            }
+            if ((event.type == WAKEUP_BYPASS || event.type == WAKEUP_WRITEBACK)
+                && src.ptag == event.ptag) {
+                src.ready = true;
+                src.bypass_hint = event.type == WAKEUP_BYPASS && event.bypassable;
+                src.bypass_ready = false;
+            } else if (event.type == WAKEUP_REPLAY && src.ptag == event.ptag) {
+                src.ready = false;
+                src.bypass_hint = false;
+                src.bypass_ready = false;
+            }
+        };
+        apply_src(inst->rs1);
+        apply_src(inst->rs2);
     };
     auto apply_vec = [](const MInstPtr inst, const WakeupEvent& event) {
         if (!event.valid || event.rtyp != RegType::VEC ||
@@ -110,18 +118,18 @@ void IssueUnit::wakeup() {
     m_wakeup_bus.clear();
 }
 
-static bool is_int_issue_type(InstType type)
+static bool int_type(InstType type)
 {
     return type == InstType::INT || type == InstType::BRANCH;
 }
 
-static bool is_ls_issue_type(InstType type)
+static bool ls_type(InstType type)
 {
-    return type == InstType::LOAD || type == InstType::STA || type == InstType::STORE
-        || type == InstType::STD;
+    return type == InstType::LOAD  || type == InstType::STA ||
+           type == InstType::STORE || type == InstType::STD;
 }
 
-static bool is_fp_issue_type(InstType type)
+static bool fp_type(InstType type)
 {
     return type == InstType::FP;
 }
@@ -150,7 +158,7 @@ size_t IssueUnit::count_buffered_int_slots() const
 {
     size_t n = 0;
     for (const auto& inst : m_select_buffer) {
-        if (inst && is_int_issue_type(inst->type)) {
+        if (inst && int_type(inst->type)) {
             ++n;
         }
     }
@@ -161,7 +169,7 @@ size_t IssueUnit::count_buffered_ls_slots() const
 {
     size_t n = 0;
     for (const auto& inst : m_select_buffer) {
-        if (inst && is_ls_issue_type(inst->type)) {
+        if (inst && ls_type(inst->type)) {
             ++n;
         }
     }
@@ -180,7 +188,7 @@ void IssueUnit::select()
             : 0;
     size_t buffered_fp_slots = 0;
     for (const auto& inst : m_select_buffer) {
-        if (inst && is_fp_issue_type(inst->type)) {
+        if (inst && fp_type(inst->type)) {
             ++buffered_fp_slots;
         }
     }
@@ -256,43 +264,37 @@ void IssueUnit::select()
     size_t sel = 0;
     for (size_t i = 0; sel < int_slots_left && i < candidates.size(); ++i) {
         auto& inst = candidates[i];
-        if (!is_int_issue_type(inst->type)) {
+        if (!int_type(inst->type)) {
             continue;
         }
         m_select_buffer.emplace_back(inst);
         if (m_stats) {
             ++m_stats->issue.selected_insts;
         }
-        EmitSrcRead(inst, inst->rs1, 1);
-        EmitSrcRead(inst, inst->rs2, 2);
         ++sel;
     }
     sel = 0;
     for (size_t i = 0; sel < ls_slots_left && i < candidates.size(); ++i) {
         auto& inst = candidates[i];
-        if (!is_ls_issue_type(inst->type)) {
+        if (!ls_type(inst->type)) {
             continue;
         }
         m_select_buffer.emplace_back(inst);
         if (m_stats) {
             ++m_stats->issue.selected_insts;
         }
-        EmitSrcRead(inst, inst->rs1, 1);
-        EmitSrcRead(inst, inst->rs2, 2);
         ++sel;
     }
     sel = 0;
     for (size_t i = 0; sel < fp_slots_left && i < candidates.size(); ++i) {
         auto& inst = candidates[i];
-        if (!is_fp_issue_type(inst->type)) {
+        if (!fp_type(inst->type)) {
             continue;
         }
         m_select_buffer.emplace_back(inst);
         if (m_stats) {
             ++m_stats->issue.selected_insts;
         }
-        EmitSrcRead(inst, inst->rs1, 1);
-        EmitSrcRead(inst, inst->rs2, 2);
         ++sel;
     }
     sel = 0;
@@ -304,11 +306,6 @@ void IssueUnit::select()
         m_select_buffer.emplace_back(inst);
         if (m_stats) {
             ++m_stats->issue.selected_insts;
-        }
-        EmitVecSrcRead(inst, inst->vs1, 1);
-        EmitVecSrcRead(inst, inst->vs2, 2);
-        if (inst->rs1.valid && inst->rs1.rtyp == RegType::GPR) {
-            EmitSrcRead(inst, inst->rs1, 3);
         }
         ++sel;
     }
@@ -322,8 +319,6 @@ void IssueUnit::select()
         if (m_stats) {
             ++m_stats->issue.selected_insts;
         }
-        EmitTileSrcRead(inst, inst->ts1, 1);
-        EmitTileSrcRead(inst, inst->ts2, 2);
         ++sel;
     }
 }
@@ -343,9 +338,31 @@ void IssueUnit::issue()
             ++m_stats->issue.issued_insts;
         }
         if (!ret) {
+            if (inst->rs1.bypass_hint) {
+                inst->rs1.bypass_hint = false;
+                inst->rs1.bypass_ready = false;
+            }
+            if (inst->rs2.bypass_hint) {
+                inst->rs2.bypass_hint = false;
+                inst->rs2.bypass_ready = false;
+            }
             retry.emplace_back(inst);
             fu_busy_cycle = true;
         }
+        if (inst->type == InstType::VECTOR) {
+            EmitVecSrcRead(inst, inst->vs1, 1);
+            EmitVecSrcRead(inst, inst->vs2, 2);
+            if (inst->rs1.valid) {
+                EmitSrcRead(inst, inst->rs1, 3);
+            }
+        } else if (inst->type == InstType::TILE) {
+            EmitTileSrcRead(inst, inst->ts1, 1);
+            EmitTileSrcRead(inst, inst->ts2, 2);
+        } else {
+            EmitSrcRead(inst, inst->rs1, 1);
+            EmitSrcRead(inst, inst->rs2, 2);
+        }
+
         LOG_LEVEL1("IssueUnit", "issued:%s pc:0x%lx, %s, v%d-x%d-p%d%s%d", ret ? "true" : "false", inst->pc,
                    inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
                    inst->rd.ptag, inst->rid.idx == 0 ? "++" : "--", inst->rid.idx);
@@ -500,7 +517,7 @@ FuType IssueUnit::GetFuType(const MInstPtr inst)
 
 void IssueUnit::EmitSrcRead(const MInstPtr inst, const Operand& src, int idx)
 {
-    if (!src.valid) {
+    if (!src.valid || src.bypass_hint) {
         return;
     }
     FuType fu = GetFuType(inst);

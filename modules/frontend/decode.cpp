@@ -5,13 +5,13 @@ static int64_t extract_imm(uint32_t raw, InstFmt fmt) {
     switch (fmt) {
 
     case RV_FMT_I:
-        return sign_extend(raw >> 20, 12);
+        return sextend64(raw >> 20, 12);
 
     case RV_FMT_S: {
         uint32_t imm =
             ((raw >> 7) & 0x1f) |
             ((raw >> 25) << 5);
-        return sign_extend(imm, 12);
+        return sextend64(imm, 12);
     }
 
     case RV_FMT_B: {
@@ -20,7 +20,7 @@ static int64_t extract_imm(uint32_t raw, InstFmt fmt) {
             ((raw >> 25) & 0x3f) << 5 |
             ((raw >> 7) & 0x1) << 11 |
             ((raw >> 31) << 12);
-        return sign_extend(imm, 13);
+        return sextend64(imm, 13);
     }
 
     case RV_FMT_U:
@@ -32,7 +32,7 @@ static int64_t extract_imm(uint32_t raw, InstFmt fmt) {
             ((raw >> 20) & 0x1) << 11 |
             ((raw >> 12) & 0xff) << 12 |
             ((raw >> 31) << 20);
-        return sign_extend(imm, 21);
+        return sextend64(imm, 21);
     }
 
     default:
