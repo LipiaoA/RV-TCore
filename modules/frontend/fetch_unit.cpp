@@ -14,6 +14,8 @@
 #include "log.h"
 #include "perf/perf_stats.h"
 #include "util/util.h"
+#include "isa/decode.h"
+
 extern u64 g_cycles;
 FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     : m_sched(*deps.sched)
@@ -381,7 +383,7 @@ void FetchUnit::fetch3()
         pkt.insts.push_back(finst);
 
         PredecodeInfo& pd = pkt.predecode[i];
-        DecodeUnit::predecode_one(finst.insn, &pd);
+        isa::predecode(finst.insn, &pd);
         pd.slot = i;
         pkt.valid_mask |= (1u << i);
         // fetch3 根据实际取指重新预测结果

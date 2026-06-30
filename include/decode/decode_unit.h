@@ -21,24 +21,15 @@ public:
     void                                commit() override;
     void                                build() override {}
     void                                reset() override;
-    bool                                has_decoded() const;
     bool                                try_pop_decoded(MicroOp& out);
-
-    static void                         predecode(insn_t raw, PredecodeInfo* out);
-    static void                         predecode_one(insn_t raw, PredecodeInfo* out) { predecode(raw, out); }
 
 private:
     void                                d0();
     void                                d1();
     void                                flush();
-    bool                                decode(insn_t raw, MicroOp *out);
-    i64                                 extract_imm(u64 raw, InstFmt fmt, InstOp op);
-    InstType                            get_inst_type(InstOp op);
-    u32                                 get_ls_width(InstOp op);
 
 private:
     FetchUnit*                          m_fetch { nullptr };
-    u32                                 rv64i_insts_size;
     std::deque<MicroOp>                 m_decoded_q;
     size_t                              m_decode_width { 4 };
 

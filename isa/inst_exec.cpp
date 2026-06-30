@@ -226,6 +226,7 @@ AluExecResult exec_alu(MInstPtr inst) {
     case OP_FMV_D_X:
     default:
         result.valid = false;
+        assert(false);
         break;
     }
     return result;

@@ -22,6 +22,7 @@ option(ENABLE_TESTS "Build tests" OFF)
 include_directories(${CMAKE_SOURCE_DIR}/include)
 
 # 子模块
+add_subdirectory(isa)
 add_subdirectory(modules/memory)
 add_subdirectory(modules/frontend)
 add_subdirectory(modules/backend)

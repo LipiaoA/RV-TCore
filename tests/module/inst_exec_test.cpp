@@ -1,7 +1,7 @@
 #include <cassert>
 #include <cstdlib>
 
-#include "execute/inst_exec.h"
+#include "inst_exec.h"
 
 static MicroOp make_inst(InstOp op, u64 pc = 0x1000)
 {

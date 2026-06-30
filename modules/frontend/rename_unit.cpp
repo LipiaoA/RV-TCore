@@ -7,6 +7,7 @@
 #include "vregfile_unit.h"
 #include "tregfile_unit.h"
 #include "execute/lsu/lsu.h"
+#include "isa/decode.h"
 
 namespace {
 bool is_lsq_type(InstType type)
@@ -200,7 +201,7 @@ bool RenameUnit::lsq_allocate(MInstPtr inst)
 
 bool RenameUnit::save_branch_checkpoint(MInstPtr inst)
 {
-    if (!is_branch(inst->opcode)) {
+    if (!isa::is_branch(inst->opcode)) {
         return false;
     }
     RatCheckpoint cp;

@@ -421,9 +421,11 @@ void IssueUnit::async() {
             m_vec_q.emplace_back(inst);
         } else if (inst->type == InstType::TILE) {
             m_tile_q.emplace_back(inst);
-        } else if (is_load_store(op)) {
+        } else if (inst->type == InstType::LOAD ||
+            inst->type == InstType::STA ||
+            inst->type == InstType::STD) {
             m_ls_q.emplace_back(inst);
-        } else if (is_fp(op)) {
+        } else if (inst->type == InstType::FP) {
             m_fp_q.emplace_back(inst);
         } else {
             m_int_q.emplace_back(inst);

@@ -52,12 +52,12 @@ public:
 public:
     u8*                                         raw_ptr(u64 addr);
     void                                        dump_segments() const;
+    u64                                         load(u64 addr, u32 size) const;
+    void                                        store(u64 addr, u64 value, u32 size);
 
 private:
     const Segment*                              find_segment(u64 addr, u64 len) const;
     Segment*                                    find_segment(u64 addr, u64 len);
-    u64                                         load(u64 addr, int size) const;
-    void                                        store(u64 addr, u64 value, int size);
 
 
 private:

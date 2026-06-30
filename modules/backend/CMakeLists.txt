@@ -10,7 +10,6 @@ add_library(backend STATIC
     alu.cpp
     stx.cpp
     fpu.cpp
-    inst_exec.cpp
     prf.cpp
     vprf.cpp
     tprf.cpp
@@ -37,4 +36,5 @@ target_link_libraries(backend PUBLIC
     util
     tools
     memory
+    isa
 )

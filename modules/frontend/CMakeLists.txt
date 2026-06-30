@@ -22,4 +22,5 @@ target_link_libraries(fetch PUBLIC
     util
     tools
     memory
+    isa
 )

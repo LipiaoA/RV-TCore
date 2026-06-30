@@ -14,11 +14,11 @@ void Memory::add_segment(u64 base, u64 size) {
 }
 
 
-u64 Memory::load(u64 addr, int size) const {
+u64 Memory::load(u64 addr, u32 size) const {
     auto seg = find_segment(addr, size);
     u64 off = seg->offset(addr);
     u64 val = 0;
-    for (int i = 0; i < size; i++) {
+    for (u32 i = 0; i < size; i++) {
         val |= static_cast<u64>(seg->storage[off + i]) << (8 * i);
     }
     return val;
@@ -45,10 +45,10 @@ bool Memory::contains(u64 addr, u64 len) const
     return false;
 }
 
-void Memory::store(u64 addr, u64 value, int size) {
+void Memory::store(u64 addr, u64 value, u32 size) {
     auto seg = find_segment(addr, size);
     u64 off = seg->offset(addr);
-    for (int i = 0; i < size; i++) {
+    for (u32 i = 0; i < size; i++) {
         seg->storage[off + i] = static_cast<u8>((value >> (8 * i)) & 0xFF);
     }
 }
