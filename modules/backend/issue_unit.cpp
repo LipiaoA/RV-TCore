@@ -141,7 +141,7 @@ static bool is_vec_issue_type(InstType type)
 
 static bool is_tile_issue_type(InstType type)
 {
-    return type == InstType::TILE;
+    return type == InstType::TENSOR;
 }
 
 bool IssueUnit::is_buffered(const MInstPtr& inst) const
@@ -355,7 +355,7 @@ void IssueUnit::issue()
             if (inst->rs1.valid) {
                 EmitSrcRead(inst, inst->rs1, 3);
             }
-        } else if (inst->type == InstType::TILE) {
+        } else if (inst->type == InstType::TENSOR) {
             EmitTileSrcRead(inst, inst->ts1, 1);
             EmitTileSrcRead(inst, inst->ts2, 2);
         } else {
@@ -419,7 +419,7 @@ void IssueUnit::async() {
         InstOp op = inst->opcode;
         if (inst->type == InstType::VECTOR) {
             m_vec_q.emplace_back(inst);
-        } else if (inst->type == InstType::TILE) {
+        } else if (inst->type == InstType::TENSOR) {
             m_tile_q.emplace_back(inst);
         } else if (inst->type == InstType::LOAD ||
             inst->type == InstType::STA ||
@@ -510,7 +510,7 @@ FuType IssueUnit::GetFuType(const MInstPtr inst)
         return FuType::FPU;
     case InstType::VECTOR:
         return FuType::VPU;
-    case InstType::TILE:
+    case InstType::TENSOR:
         return FuType::TPU;
     default:
         return FuType::NONE;

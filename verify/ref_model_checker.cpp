@@ -27,7 +27,7 @@ void VeriRef::bind(FuncModel* ref)
 
 bool VeriRef::passed() const
 {
-    return m_mismatch_count() == 0;
+    return mismatch_count() == 0;
 }
 
 u64 VeriRef::mismatch_count() const
@@ -40,7 +40,6 @@ static bool is_skippable_type(InstType type)
     switch (type) {
     case InstType::FP:
     case InstType::VECTOR:
-    case InstType::TILE:
     case InstType::TENSOR:
         return true;
     default:
@@ -140,7 +139,7 @@ void VeriRef::dump_mismatch() const
               << std::dec << std::endl;
     std::cerr << "  DUT: pc=0x" << std::hex << dut->pc
               << " op=" << static_cast<int>(dut->opcode)
-              << " effect=" << static_cast<int>(dut.effect)
+              << " effect=" << static_cast<int>(dut->effect)
               << " rd=x" << std::dec << dut->rd
               << " val=0x" << std::hex << dut->rd_val
               << " mem_addr=0x" << dut->mem_addr

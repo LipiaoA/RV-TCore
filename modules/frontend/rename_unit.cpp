@@ -519,7 +519,7 @@ void RenameUnit::flush() {
         if (inst->vd.valid && inst->type == InstType::VECTOR) {
             m_vfree_list.push_back(inst->vd.ptag);
         }
-        if (inst->td.valid && inst->type == InstType::TILE) {
+        if (inst->td.valid && inst->type == InstType::TENSOR) {
             m_tfree_list.push_back(inst->td.ptag);
         }
         inst->valid = false;

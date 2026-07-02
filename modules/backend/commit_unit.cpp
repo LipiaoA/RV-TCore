@@ -198,7 +198,7 @@ bool CommitUnit::write_back(const MInstPtr inst)
         req.fu = FuType::VPU;
         return m_vec_reg_req_q.write(req);
     }
-    if (inst->type == InstType::TILE && inst->td.valid) {
+    if (inst->type == InstType::TENSOR && inst->td.valid) {
         TileRegReq req;
         req.valid = true;
         req.write = true;
@@ -249,7 +249,7 @@ void CommitUnit::retire_inst(const MInstPtr inst)
             m_rename.recycle_vec_phys(inst->vd.o_ptag, inst->vd.rgrp);
         }
     }
-    if (inst->type == InstType::TILE && inst->td.valid
+    if (inst->type == InstType::TENSOR && inst->td.valid
         && static_cast<std::size_t>(inst->td.atag) < m_tcrat.size()) {
         m_tcrat[inst->td.atag] = inst->td.ptag;
         if (inst->td.o_ptag >= 0 && inst->td.o_ptag != inst->td.ptag) {

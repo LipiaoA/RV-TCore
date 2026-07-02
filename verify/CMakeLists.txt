@@ -1,5 +1,4 @@
 add_library(verify STATIC
-    ref_inst_record.cpp
     ref_inst_log.cpp
     ref_model_checker.cpp
 )

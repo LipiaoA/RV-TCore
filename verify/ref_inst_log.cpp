@@ -247,7 +247,6 @@ RefInstRecord RefInstLog::recording(const MicroOp& inst, const RetireMemInfo* me
         break;
     }
     case InstType::VECTOR:
-    case InstType::TILE:
     case InstType::TENSOR:
         rec.effect = RefEffect::SKIP;
         break;

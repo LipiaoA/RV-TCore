@@ -46,7 +46,7 @@ public:
     u64                                         mismatch_count() const { return m_mismatch_count; }
     const RefInstRecord*                        last_ref_mismatch() const;
     const RefInstRecord*                        last_dut_mismatch() const;
-    VeriResTyp                                last_result() const { return m_last_result; }
+    VeriResTyp                                  last_result() const { return m_last_result; }
     std::string                                 result_string(VeriResTyp r) const;
 
 private:

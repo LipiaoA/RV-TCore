@@ -186,6 +186,8 @@ public:
     SQEntry*                            find_store_by_id(uint64_t store_id);
     LQEntry*                            find_load_by_id(uint64_t load_id);
     void                                on_store_operands_updated(SQEntry& st);
+    SQEntry*                            find_store_by_rid(ROBID rid);
+    LQEntry*                            find_load_by_rid(ROBID rid);
 
 private:
     static size_t                       wrap_inc(size_t idx, size_t cap);
@@ -219,8 +221,7 @@ private:
     void                                complete_load(uint64_t load_id, uint64_t data);
     void                                enqueue_wb(uint64_t load_id, u64 data, u32 delay);
 
-    SQEntry*                            find_store_by_rid(ROBID rid);
-    LQEntry*                            find_load_by_rid(ROBID rid);
+
     LQEntry*                            find_load_by_ldq_idx(size_t idx);
     SQEntry*                            find_store_by_stq_idx(size_t idx);
 

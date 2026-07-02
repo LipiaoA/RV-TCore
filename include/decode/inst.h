@@ -75,7 +75,6 @@ enum class InstType {
     FP,
     VECTOR,
     TENSOR,
-    TILE = TENSOR,
     NONE,
 };
 
@@ -157,7 +156,7 @@ typedef struct MicroOp {
                 ready &= vs2.ready;
             }
         }
-        if (type == InstType::TILE) {
+        if (type == InstType::TENSOR) {
             if (ts1.valid) {
                 ready &= ts1.ready;
             }
