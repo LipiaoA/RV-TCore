@@ -1,12 +1,24 @@
-
-add_executable(rv_func
-    main.cpp
+add_library(func STATIC
     func_model.cpp
 )
 
-target_link_libraries(rv_func PRIVATE
+target_include_directories(func PUBLIC
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/include/func
+    ${CMAKE_SOURCE_DIR}/include/verify
+)
+
+target_link_libraries(func PUBLIC
     memory
     util
-    tools
     isa
+)
+
+add_executable(rv_func
+    main.cpp
+)
+
+target_link_libraries(rv_func PRIVATE
+    func
+    tools
 )

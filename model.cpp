@@ -1,6 +1,7 @@
 #include <iostream>
 
 #include "model.h"
+#include "verify/ref_model_checker.h"
 
 
 extern u64 g_cycles;
@@ -18,6 +19,10 @@ bool Model::build() {
     m_core = new Core(deps);
     m_core->build();
     m_core->reset();
+
+    m_ref = new FuncModel();
+    VeriRef::instance().bind(m_ref);
+    VeriRef::instance().enable(true);
 
     m_log = &LogSystem::instance();
     m_log->set_level(LogLevel::LEVEL3);
@@ -58,11 +63,18 @@ bool Model::init(const std::string& path) {
     reader.read(*m_mem);
     m_entry = reader.get_entry();
     m_core->init(m_entry);
+
+    if (m_ref && !m_ref->init(path)) {
+        std::cerr << "failed to init reference func model" << std::endl;
+        return false;
+    }
+    VeriRef::instance().reset();
     return true;
 }
 
 
 Model::~Model() {
+    delete_ptr(m_ref);
     delete_ptr(m_core);
     delete_ptr(m_top);
 }

@@ -45,7 +45,13 @@ void FuncModel::reset()
 
 void FuncModel::run(u64 max_inst)
 {
-    while (m_inst_cnt < max_inst && step()) {
+    while (m_inst_cnt < max_inst) {
+        if (m_arch.halt) {
+            break;
+        }
+        if (!step()) {
+            break;
+        }
     }
 }
 
@@ -78,25 +84,30 @@ bool FuncModel::fetch_dec(MicroOp& uop)
     return true;
 }
 
-bool FuncModel::exec_uop(MicroOp& uop)
+bool FuncModel::exec_uop(MicroOp& uop, StepSnapshot& snap)
 {
+    snap = StepSnapshot {};
+
     switch (uop.opcode) {
     case OP_ECALL:
     case OP_EBREAK:
+        snap.effect = RefEffect::HALT;
         m_arch.halt = true;
         return true;
     case OP_FENCE:
     case OP_FENCE_I:
     case OP_PAUSE:
+        snap.effect = RefEffect::FENCE;
         return true;
     default:
         break;
     }
 
-    // x0 hardwires to 0: silently drop writes to gpr[0].
     auto write_rd = [&](u64 v) {
         if (uop.rd.valid && uop.rd.atag != 0) {
             m_arch.gpr[uop.rd.atag] = v;
+            snap.rd = static_cast<u32>(uop.rd.atag);
+            snap.rd_val = v;
         }
     };
 
@@ -108,7 +119,12 @@ bool FuncModel::exec_uop(MicroOp& uop)
             m_arch.halt = true;
             return false;
         }
-        write_rd(res.value);
+        if (uop.rd.valid && uop.rd.atag != 0) {
+            snap.effect = RefEffect::GPR_WRITE;
+            write_rd(res.value);
+        } else {
+            snap.effect = RefEffect::NONE;
+        }
         break;
     }
     case InstType::BRANCH: {
@@ -117,12 +133,16 @@ bool FuncModel::exec_uop(MicroOp& uop)
             m_arch.halt = true;
             return false;
         }
+        snap.effect = RefEffect::BRANCH;
+        snap.branch_taken = res.taken;
+        snap.branch_target = res.target;
         if (res.taken) {
             m_next_pc = res.target;
         }
-        // not taken: m_next_pc stays pc+4 as initialised by step().
         if (res.write_rd && uop.rd.atag != 0) {
             m_arch.gpr[uop.rd.atag] = res.link;
+            snap.rd = static_cast<u32>(uop.rd.atag);
+            snap.rd_val = res.link;
         }
         break;
     }
@@ -142,12 +162,17 @@ bool FuncModel::exec_uop(MicroOp& uop)
             m_arch.halt = true;
             return false;
         }
-        // Memory::load zero-extends; sign-extend signed loads to XLEN.
         switch (uop.opcode) {
         case OP_LB: val = static_cast<u64>(sextend64(val & 0xFF, 8)); break;
         case OP_LH: val = static_cast<u64>(sextend64(val & 0xFFFF, 16)); break;
         case OP_LW: val = static_cast<u64>(sextend64(val & 0xFFFFFFFFu, 32)); break;
-        default: break; // LBU/LHU/LWU/LD already zero-extended
+        default: break;
+        }
+        snap.effect = RefEffect::LOAD;
+        snap.mem_addr = res.addr;
+        snap.mem_width = uop.ls_width;
+        if (uop.rd.valid && uop.rd.atag != 0) {
+            snap.rd = static_cast<u32>(uop.rd.atag);
         }
         write_rd(val);
         break;
@@ -167,6 +192,10 @@ bool FuncModel::exec_uop(MicroOp& uop)
             m_arch.halt = true;
             return false;
         }
+        snap.effect = RefEffect::STORE;
+        snap.mem_addr = res.addr;
+        snap.mem_data = uop.rs2.val;
+        snap.mem_width = uop.ls_width;
         break;
     }
     default:
@@ -177,7 +206,7 @@ bool FuncModel::exec_uop(MicroOp& uop)
     return true;
 }
 
-bool FuncModel::step()
+bool FuncModel::step(RefInstRecord* record_out)
 {
     if (m_arch.halt) {
         return false;
@@ -189,11 +218,16 @@ bool FuncModel::step()
         return false;
     }
 
-    if (!exec_uop(uop)) {
+    StepSnapshot snap {};
+    if (!exec_uop(uop, snap)) {
         return false;
     }
 
+    snap.next_pc = m_next_pc;
     m_arch.pc = m_next_pc;
+    if (record_out) {
+        *record_out = ref_record(m_inst_cnt, uop, snap);
+    }
     m_inst_cnt++;
-    return !m_arch.halt;
+    return true;
 }

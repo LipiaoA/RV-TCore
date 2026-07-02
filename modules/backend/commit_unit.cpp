@@ -8,6 +8,7 @@
 #include "rob/rob.h"
 #include "rename/rename_unit.h"
 #include "execute/lsu/lsu.h"
+#include "verify/ref_model_checker.h"
 
 namespace {
 bool same_rob_id(const ROBID& lhs, const ROBID& rhs)
@@ -39,6 +40,38 @@ CommitUnit::CommitUnit(const CommitConfig& conf, const CommitDeps& deps)
 void CommitUnit::build()
 {
     InstrTrace::instance().open("instr_trace.log");
+}
+
+namespace {
+
+RetireMemInfo retired_ls_info(const MInstPtr& inst, LSU& lsu)
+{
+    RetireMemInfo mem {};
+    if (!inst) {
+        return mem;
+    }
+
+    if (inst->type == InstType::LOAD) {
+        if (LQEntry* ld = lsu.find_load_by_rid(inst->rid)) {
+            mem.valid = ld->addr_ready;
+            mem.addr = ld->addr;
+            mem.width = inst->ls_width;
+            mem.data = inst->rd.valid ? inst->rd.val : ld->data;
+        }
+        return mem;
+    }
+
+    if (inst->type == InstType::STA || inst->type == InstType::STORE) {
+        if (SQEntry* st = lsu.find_store_by_rid(inst->rid)) {
+            mem.valid = st->addr_ready && st->data_ready;
+            mem.addr = st->addr;
+            mem.data = st->data;
+            mem.width = st->ls_width != 0 ? st->ls_width : inst->ls_width;
+        }
+    }
+    return mem;
+}
+
 }
 
 void CommitUnit::tick() {
@@ -136,6 +169,11 @@ void CommitUnit::inst_commit() {
                     committed->inst->pc, committed->inst->inst_name.c_str());
                 u64 result = committed->inst->rd.valid ? committed->inst->rd.val : 0;
                 InstrTrace::instance().record_retire(committed->inst->pc, result);
+                RetireMemInfo mem_info = retired_ls_info(committed->inst, m_lsu);
+                if (!VeriRef::instance().check_retire(*committed->inst, &mem_info)) {
+                    LOG_LEVEL1("CommitUnit", "ref model mismatch at pc: 0x%lx inst: %s",
+                               committed->inst->pc, committed->inst->inst_name.c_str());
+                }
             }
         } else {
             if (i == 0 && m_stats) {

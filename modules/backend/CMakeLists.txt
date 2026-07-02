@@ -37,4 +37,5 @@ target_link_libraries(backend PUBLIC
     tools
     memory
     isa
+    verify
 )

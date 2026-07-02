@@ -7,6 +7,7 @@
 #include "arch_state.h"
 #include "decode/inst.h"
 #include "mem.h"
+#include "verify/ref_inst_record.h"
 
 class FuncModel {
 public:
@@ -15,14 +16,14 @@ public:
     bool                                            init(const std::string& path);
     void                                            reset();
     void                                            run(u64 max_inst = UINT64_MAX);
-    bool                                            step();
+    bool                                            step(RefInstRecord* record_out = nullptr);
 
     const ArchState&                                arch() const { return m_arch; }
     u64                                             inst_cnt() const { return m_inst_cnt; }
 
 private:
     bool                                            fetch_dec(MicroOp& uop);
-    bool                                            exec_uop(MicroOp& uop);
+    bool                                            exec_uop(MicroOp& uop, StepSnapshot& snap);
     void                                            setup_mem();
 
 private:

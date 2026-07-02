@@ -7,6 +7,7 @@
 #include "core.h"
 #include "top.h"
 #include "peripheral.h"
+#include "func/func_model.h"
 
 class Model {
 public:
@@ -29,6 +30,7 @@ private:
     Core                                *m_core;
     LogSystem                           *m_log;
     Top                                 *m_top;
+    FuncModel                           *m_ref { nullptr };
 };
 
 #endif
