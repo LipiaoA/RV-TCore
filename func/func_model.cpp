@@ -43,6 +43,17 @@ void FuncModel::reset()
     m_next_pc = 0;
 }
 
+void FuncModel::trace_on(const std::string& path)
+{
+    m_trace = FuncTrace::inst().open(path);
+}
+
+void FuncModel::trace_off()
+{
+    FuncTrace::inst().close();
+    m_trace = false;
+}
+
 void FuncModel::run(u64 max_inst)
 {
     while (m_inst_cnt < max_inst) {
@@ -227,6 +238,9 @@ bool FuncModel::step(RefInstRecord* record_out)
     m_arch.pc = m_next_pc;
     if (record_out) {
         *record_out = ref_record(m_inst_cnt, uop, snap);
+    }
+    if (m_trace) {
+        FuncTrace::inst().write(FuncStepLog::from(m_inst_cnt, uop, snap));
     }
     m_inst_cnt++;
     return true;

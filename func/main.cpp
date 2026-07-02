@@ -1,13 +1,15 @@
 #include <iostream>
 
 #include "func/func_model.h"
+#include "func/func_step_log.h"
 #include "arg_parser.h"
 #include "log.h"
 
-static bool parse_args(int argc, char* argv[], std::string& elf_path, u64& max_inst)
+static bool parse_args(int argc, char* argv[], std::string& elf_path, u64& max_inst, bool& trace)
 {
     ArgParser parser(argv[0]);
     parser.add_flag('h', "help", "show help message");
+    parser.add_flag('t', "trace", "enable instruction trace");
     parser.add_option('f', "file", "execute elf", "");
     parser.add_option('n', "max-inst", "max instruction count", "1000000");
     parser.add_option('l', "log", "log level", "0");
@@ -46,6 +48,7 @@ static bool parse_args(int argc, char* argv[], std::string& elf_path, u64& max_i
     }
 
     max_inst = static_cast<u64>(parser.get_int("max-inst"));
+    trace = parser.has('t') || parser.has("trace");
     return true;
 }
 
@@ -58,7 +61,8 @@ int main(int argc, char* argv[])
 
     std::string elf_path;
     u64 max_inst = 0;
-    if (!parse_args(argc, argv, elf_path, max_inst)) {
+    bool trace = false;
+    if (!parse_args(argc, argv, elf_path, max_inst, trace)) {
         return 1;
     }
 
@@ -68,7 +72,13 @@ int main(int argc, char* argv[])
     if (!model.init(elf_path)) {
         return 1;
     }
+    if (trace) {
+        model.trace_on();
+    }
     model.run(max_inst);
+    if (trace) {
+        FuncTrace::inst().flush();
+    }
 
     std::cout << "inst_cnt=" << model.inst_cnt()
               << " pc=0x" << std::hex << model.arch().pc

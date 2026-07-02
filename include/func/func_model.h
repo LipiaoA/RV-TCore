@@ -6,6 +6,7 @@
 
 #include "arch_state.h"
 #include "decode/inst.h"
+#include "func/func_step_log.h"
 #include "mem.h"
 #include "verify/ref_inst_record.h"
 
@@ -17,6 +18,9 @@ public:
     void                                            reset();
     void                                            run(u64 max_inst = UINT64_MAX);
     bool                                            step(RefInstRecord* record_out = nullptr);
+
+    void                                            trace_on(const std::string& path = "func_inst_trace.log");
+    void                                            trace_off();
 
     const ArchState&                                arch() const { return m_arch; }
     u64                                             inst_cnt() const { return m_inst_cnt; }
@@ -31,6 +35,7 @@ private:
     ArchState                                       m_arch;
     u64                                             m_inst_cnt { 0 };
     pc_t                                            m_next_pc;
+    bool                                            m_trace { false };
 };
 
 #endif

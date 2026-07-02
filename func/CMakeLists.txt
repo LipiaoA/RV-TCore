@@ -1,5 +1,6 @@
 add_library(func STATIC
     func_model.cpp
+    func_step_log.cpp
 )
 
 target_include_directories(func PUBLIC
