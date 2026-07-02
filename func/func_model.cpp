@@ -15,6 +15,8 @@ void FuncModel::setup_mem()
 
 bool FuncModel::init(const std::string& path)
 {
+    m_mem = Memory{};
+    m_arch = ArchState{};
     setup_mem();
     MappedFile elf;
     if (!elf.map(path.c_str())) {
@@ -29,6 +31,7 @@ bool FuncModel::init(const std::string& path)
     m_arch.pc = reader.get_entry();
     m_arch.halt = false;
     m_inst_cnt = 0;
+    m_next_pc = m_arch.pc;
     m_arch.gpr[2] = STACK_POINTER;
     return true;
 }
@@ -36,7 +39,8 @@ bool FuncModel::init(const std::string& path)
 void FuncModel::reset()
 {
     m_arch = ArchState{};
-    m_arch.halt = false;
+    m_inst_cnt = 0;
+    m_next_pc = 0;
 }
 
 void FuncModel::run(u64 max_inst)
@@ -47,7 +51,15 @@ void FuncModel::run(u64 max_inst)
 
 bool FuncModel::fetch_dec(MicroOp& uop)
 {
-    u32 raw = m_mem.load32(m_arch.pc);
+    u32 raw = 0;
+    try {
+        raw = m_mem.load32(m_arch.pc);
+    } catch (const std::exception& e) {
+        std::cerr << "fetch OOB at pc=0x" << std::hex << m_arch.pc << std::dec
+                  << ": " << e.what() << std::endl;
+        m_arch.halt = true;
+        return false;
+    }
     uop.pc = m_arch.pc;
     if (!isa::decode(raw, &uop)) {
         std::cerr << "illegal insn at pc=0x" << std::hex << m_arch.pc << std::dec << std::endl;
@@ -75,10 +87,18 @@ bool FuncModel::exec_uop(MicroOp& uop)
         return true;
     case OP_FENCE:
     case OP_FENCE_I:
+    case OP_PAUSE:
         return true;
     default:
         break;
     }
+
+    // x0 hardwires to 0: silently drop writes to gpr[0].
+    auto write_rd = [&](u64 v) {
+        if (uop.rd.valid && uop.rd.atag != 0) {
+            m_arch.gpr[uop.rd.atag] = v;
+        }
+    };
 
     switch (uop.type) {
     case InstType::INT: {
@@ -88,9 +108,7 @@ bool FuncModel::exec_uop(MicroOp& uop)
             m_arch.halt = true;
             return false;
         }
-        if (uop.rd.valid) {
-            m_arch.gpr[uop.rd.atag] = res.value;
-        }
+        write_rd(res.value);
         break;
     }
     case InstType::BRANCH: {
@@ -100,9 +118,10 @@ bool FuncModel::exec_uop(MicroOp& uop)
             return false;
         }
         if (res.taken) {
-            m_arch.pc = res.target;
+            m_next_pc = res.target;
         }
-        if (res.write_rd) {
+        // not taken: m_next_pc stays pc+4 as initialised by step().
+        if (res.write_rd && uop.rd.atag != 0) {
             m_arch.gpr[uop.rd.atag] = res.link;
         }
         break;
@@ -113,10 +132,24 @@ bool FuncModel::exec_uop(MicroOp& uop)
             m_arch.halt = true;
             return false;
         }
-        u64 val = m_mem.load(res.addr, uop.ls_width);
-        if (uop.rd.valid) {
-            m_arch.gpr[uop.rd.atag] = val;
+        u64 val = 0;
+        try {
+            val = m_mem.load(res.addr, uop.ls_width);
+        } catch (const std::exception& e) {
+            std::cerr << "load OOB at pc=0x" << std::hex << uop.pc
+                      << " addr=0x" << res.addr << std::dec
+                      << ": " << e.what() << std::endl;
+            m_arch.halt = true;
+            return false;
         }
+        // Memory::load zero-extends; sign-extend signed loads to XLEN.
+        switch (uop.opcode) {
+        case OP_LB: val = static_cast<u64>(sextend64(val & 0xFF, 8)); break;
+        case OP_LH: val = static_cast<u64>(sextend64(val & 0xFFFF, 16)); break;
+        case OP_LW: val = static_cast<u64>(sextend64(val & 0xFFFFFFFFu, 32)); break;
+        default: break; // LBU/LHU/LWU/LD already zero-extended
+        }
+        write_rd(val);
         break;
     }
     case InstType::STORE: {
@@ -125,7 +158,15 @@ bool FuncModel::exec_uop(MicroOp& uop)
             m_arch.halt = true;
             return false;
         }
-        m_mem.store(res.addr, uop.rs2.val, uop.ls_width);
+        try {
+            m_mem.store(res.addr, uop.rs2.val, uop.ls_width);
+        } catch (const std::exception& e) {
+            std::cerr << "store OOB at pc=0x" << std::hex << uop.pc
+                      << " addr=0x" << res.addr << std::dec
+                      << ": " << e.what() << std::endl;
+            m_arch.halt = true;
+            return false;
+        }
         break;
     }
     default:
@@ -141,6 +182,7 @@ bool FuncModel::step()
     if (m_arch.halt) {
         return false;
     }
+    m_next_pc = m_arch.pc + 4;
 
     MicroOp uop {};
     if (!fetch_dec(uop)) {
@@ -151,7 +193,7 @@ bool FuncModel::step()
         return false;
     }
 
-    m_arch.pc += 4;
+    m_arch.pc = m_next_pc;
     m_inst_cnt++;
     return !m_arch.halt;
 }

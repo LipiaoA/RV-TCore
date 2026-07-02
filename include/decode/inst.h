@@ -95,6 +95,7 @@ typedef struct MicroOp {
     u64 pc;
     std::string inst_name;
     InstState state { InstState::NONE };
+    u32 inst_size {4}; // FIXME: should be modified
 
     InstOp opcode;
     InstType type;

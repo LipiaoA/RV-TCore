@@ -167,7 +167,12 @@ bool decode(u64 raw, MicroOp *out) {
         if ((raw & rv64i_table[i].mask) == rv64i_table[i].match) {
             const InstOp op   = rv64i_table[i].opcode;
             const InstFmt fmt = rv64i_table[i].format;
-            out->inst_name = rv64i_inst_map.at(op);;
+            auto name_it = rv64i_inst_map.find(op);
+            if (name_it != rv64i_inst_map.end()) {
+                out->inst_name = name_it->second;
+            } else {
+                out->inst_name.clear();
+            }
             out->raw_inst = raw;
             out->opcode   = op;
             out->format   = fmt;
@@ -178,8 +183,8 @@ bool decode(u64 raw, MicroOp *out) {
             out->rs2.atag = static_cast<i32>((raw >> 20) & 0x1f);
             fill_operands(fmt, out);
             if (is_vector(op)) {
-                // TODO: map vector operands
-                assert(false);
+                // Vector operand mapping not implemented yet; reject so the
+                // caller reports an illegal insn instead of corrupting state.
                 return false;
             }
             return true;

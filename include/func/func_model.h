@@ -29,6 +29,7 @@ private:
     Memory                                          m_mem;
     ArchState                                       m_arch;
     u64                                             m_inst_cnt { 0 };
+    pc_t                                            m_next_pc;
 };
 
 #endif

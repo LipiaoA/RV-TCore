@@ -1,121 +1,67 @@
-#include <cassert>
-
 #include "inst_exec.h"
 #include "isa/opcode.h"
 #include "decode/inst.h"
 
 namespace InstExec {
 
+namespace {
+inline u64 sext32(u64 v) {
+    return static_cast<u64>(static_cast<i64>(static_cast<i32>(static_cast<u32>(v))));
+}
+inline u32 shamt64(u64 v) { return static_cast<u32>(v & 0x3F); }
+inline u32 shamt32(u64 v) { return static_cast<u32>(v & 0x1F); }
+}
+
 AluExecResult exec_alu(MInstPtr inst) {
     AluExecResult result;
     result.valid = true;
     result.write_rd = inst->rd.valid;
     switch (inst->opcode) {
-    case OP_ADD: {
-        result.value = inst->rs1.val + inst->rs2.val;
-    } break;
-    case OP_SUB: {
-        result.value = inst->rs1.val - inst->rs2.val;
-    } break;
-    case OP_AND: {
-        result.value = inst->rs1.val & inst->rs2.val;
-    } break;
-    case OP_OR: {
-        result.value = inst->rs1.val | inst->rs2.val;
-    } break;
-    case OP_XOR: {
-        result.value = inst->rs1.val ^ inst->rs2.val;
-    } break;
-    case OP_SLL: {
-        result.value = inst->rs1.val << inst->rs2.val;
-    } break;
-    case OP_SRL: {
-        result.value = inst->rs1.val >> inst->rs2.val;
-    } break;
-    case OP_SRA: {
-        result.value = inst->rs1.val >> inst->rs2.val;
-    } break;
-    case OP_SLT: {
-        result.value = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->rs2.val);
-    } break;
-    case OP_SLTU: {
-        result.value = inst->rs1.val < inst->rs2.val;
-    } break;
-    case OP_ADDI: {
-        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
-    } break;
-    case OP_SLTI: {
-        result.value = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->imm);
-    } break;
-    case OP_SLTIU: {
-        result.value = inst->rs1.val < static_cast<u64>(inst->imm);
-    } break;
-    case OP_XORI: {
-        result.value = inst->rs1.val ^ static_cast<u64>(inst->imm);
-    } break;
-    case OP_ORI: {
-        result.value = inst->rs1.val | static_cast<u64>(inst->imm);
-    } break;
-    case OP_ANDI: {
-        result.value = inst->rs1.val & static_cast<u64>(inst->imm);
-    } break;
-    case OP_SLLI: {
-        result.value = inst->rs1.val << static_cast<u64>(inst->imm);
-    } break;
-    case OP_SRLI: {
-        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
-    } break;
-    case OP_SRAI: {
-        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
-    } break;
-    case OP_ADDIW: {
-        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
-    } break;
-    case OP_SLLIW: {
-        result.value = inst->rs1.val << static_cast<u64>(inst->imm);
-    } break;
-    case OP_SRLIW: {
-        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
-    } break;
-    case OP_SRAIW: {
-        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
-    } break;
-    case OP_ADDW: {
-        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
-    } break;
-    case OP_SUBW: {
-        result.value = inst->rs1.val - static_cast<u64>(inst->imm);
-    } break;
-    case OP_SLLW: {
-        result.value = inst->rs1.val << static_cast<u64>(inst->imm);
-    } break;
-    case OP_SRLW: {
-        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
-    } break;
-    case OP_SRAW: {
-        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
-    } break;
-    case OP_ADDID: {
-        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
-    } break;
-    case OP_SLLID: {
-        result.value = inst->rs1.val << static_cast<u64>(inst->imm);
-    } break;
-    case OP_SRLID: {
-        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
-    } break;
-    case OP_SRAID: {
-        result.value = inst->rs1.val >> static_cast<u64>(inst->imm);
-    } break;
-    case OP_ADDD: {
-        result.value = inst->rs1.val + static_cast<u64>(inst->imm);
-    } break;
-    case OP_AUIPC: {
-        result.value = inst->pc + inst->imm;
-    } break;
-    case OP_LUI: {
-        result.value = inst->imm;
-    } break;
+    // ----- RV64I R-type -----
+    case OP_ADD:  result.value = inst->rs1.val + inst->rs2.val; break;
+    case OP_SUB:  result.value = inst->rs1.val - inst->rs2.val; break;
+    case OP_AND:  result.value = inst->rs1.val & inst->rs2.val; break;
+    case OP_OR:   result.value = inst->rs1.val | inst->rs2.val; break;
+    case OP_XOR:  result.value = inst->rs1.val ^ inst->rs2.val; break;
+    case OP_SLL:  result.value = inst->rs1.val << shamt64(inst->rs2.val); break;
+    case OP_SRL:  result.value = inst->rs1.val >> shamt64(inst->rs2.val); break;
+    case OP_SRA:  result.value = static_cast<u64>(static_cast<i64>(inst->rs1.val) >> shamt64(inst->rs2.val)); break;
+    case OP_SLT:  result.value = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->rs2.val); break;
+    case OP_SLTU: result.value = inst->rs1.val < inst->rs2.val; break;
+
+    // ----- RV64I I-type -----
+    case OP_ADDI:  result.value = inst->rs1.val + static_cast<u64>(inst->imm); break;
+    case OP_SLTI:  result.value = static_cast<i64>(inst->rs1.val) < static_cast<i64>(inst->imm); break;
+    case OP_SLTIU: result.value = inst->rs1.val < static_cast<u64>(inst->imm); break;
+    case OP_XORI:  result.value = inst->rs1.val ^ static_cast<u64>(inst->imm); break;
+    case OP_ORI:   result.value = inst->rs1.val | static_cast<u64>(inst->imm); break;
+    case OP_ANDI:  result.value = inst->rs1.val & static_cast<u64>(inst->imm); break;
+    case OP_SLLI:  result.value = inst->rs1.val << shamt64(static_cast<u64>(inst->imm)); break;
+    case OP_SRLI:  result.value = inst->rs1.val >> shamt64(static_cast<u64>(inst->imm)); break;
+    case OP_SRAI:  result.value = static_cast<u64>(static_cast<i64>(inst->rs1.val) >> shamt64(static_cast<u64>(inst->imm))); break;
+
+    // ----- RV64I U/J-type -----
+    case OP_AUIPC: result.value = inst->pc + static_cast<u64>(inst->imm); break;
+    case OP_LUI:   result.value = static_cast<u64>(inst->imm); break;
+
+    // ----- RV64I W-variants (32-bit result, sign-extended to XLEN) -----
+    case OP_ADDIW: result.value = sext32(inst->rs1.val + static_cast<u64>(inst->imm)); break;
+    case OP_SLLIW: result.value = sext32(inst->rs1.val << shamt32(static_cast<u64>(inst->imm))); break;
+    case OP_SRLIW: result.value = sext32(inst->rs1.val >> shamt32(static_cast<u64>(inst->imm))); break;
+    case OP_SRAIW: result.value = sext32(static_cast<u64>(static_cast<i32>(inst->rs1.val) >> shamt32(static_cast<u64>(inst->imm)))); break;
+
+    case OP_ADDW:  result.value = sext32(inst->rs1.val + inst->rs2.val); break;
+    case OP_SUBW:  result.value = sext32(inst->rs1.val - inst->rs2.val); break;
+    case OP_SLLW:  result.value = sext32(inst->rs1.val << shamt32(inst->rs2.val)); break;
+    case OP_SRLW:  result.value = sext32(inst->rs1.val >> shamt32(inst->rs2.val)); break;
+    case OP_SRAW:  result.value = sext32(static_cast<u64>(static_cast<i32>(inst->rs1.val) >> shamt32(inst->rs2.val))); break;
+
+    // ----- RV128 ("D" suffix) — not supported on RV64 -----
+    case OP_ADDID:
+    case OP_SLLID:
+    case OP_SRLID:
+    case OP_SRAID:
+    case OP_ADDD:
     case OP_SUBD:
     case OP_SLLD:
     case OP_SRLD:
@@ -225,8 +171,9 @@ AluExecResult exec_alu(MInstPtr inst) {
     case OP_FCVT_D_LU:
     case OP_FMV_D_X:
     default:
+        // M/AMO/F/D and any unhandled opcode: report unsupported without
+        // aborting the simulator so the caller can log PC and halt cleanly.
         result.valid = false;
-        assert(false);
         break;
     }
     return result;
