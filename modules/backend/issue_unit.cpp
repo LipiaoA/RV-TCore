@@ -111,7 +111,7 @@ void IssueUnit::wakeup() {
             apply_gpr(inst, event);
             apply_vec(inst, event);
         }
-        for (auto inst : m_tile_q) {
+        for (auto inst : m_tensor_q) {
             apply_tile(inst, event);
         }
     }
@@ -134,12 +134,12 @@ static bool fp_type(InstType type)
     return type == InstType::FP;
 }
 
-static bool is_vec_issue_type(InstType type)
+static bool vec_type(InstType type)
 {
     return type == InstType::VECTOR;
 }
 
-static bool is_tile_issue_type(InstType type)
+static bool tensor_type(InstType type)
 {
     return type == InstType::TENSOR;
 }
@@ -199,10 +199,10 @@ void IssueUnit::select()
     size_t buffered_vec_slots = 0;
     size_t buffered_tile_slots = 0;
     for (const auto& inst : m_select_buffer) {
-        if (inst && is_vec_issue_type(inst->type)) {
+        if (inst && vec_type(inst->type)) {
             ++buffered_vec_slots;
         }
-        if (inst && is_tile_issue_type(inst->type)) {
+        if (inst && tensor_type(inst->type)) {
             ++buffered_tile_slots;
         }
     }
@@ -217,13 +217,13 @@ void IssueUnit::select()
     if ((int_slots_left == 0 && ls_slots_left == 0 && fp_slots_left == 0
          && vec_slots_left == 0 && tile_slots_left == 0) ||
         (m_int_q.empty() && m_ls_q.empty() && m_fp_q.empty()
-         && m_vec_q.empty() && m_tile_q.empty())) {
+         && m_vec_q.empty() && m_tensor_q.empty())) {
         return;
     }
 
     std::vector<MInstPtr> candidates;
     candidates.reserve(m_int_q.size() + m_ls_q.size() + m_fp_q.size()
-                       + m_vec_q.size() + m_tile_q.size());
+                       + m_vec_q.size() + m_tensor_q.size());
 
     for (const auto& inst : m_int_q) {
         if (inst->ready() && !is_buffered(inst)) {
@@ -245,7 +245,7 @@ void IssueUnit::select()
             candidates.emplace_back(inst);
         }
     }
-    for (const auto& inst : m_tile_q) {
+    for (const auto& inst : m_tensor_q) {
         if (inst->ready() && !is_buffered(inst)) {
             candidates.emplace_back(inst);
         }
@@ -300,7 +300,7 @@ void IssueUnit::select()
     sel = 0;
     for (size_t i = 0; sel < vec_slots_left && i < candidates.size(); ++i) {
         auto& inst = candidates[i];
-        if (!is_vec_issue_type(inst->type)) {
+        if (!vec_type(inst->type)) {
             continue;
         }
         m_select_buffer.emplace_back(inst);
@@ -312,7 +312,7 @@ void IssueUnit::select()
     sel = 0;
     for (size_t i = 0; sel < tile_slots_left && i < candidates.size(); ++i) {
         auto& inst = candidates[i];
-        if (!is_tile_issue_type(inst->type)) {
+        if (!tensor_type(inst->type)) {
             continue;
         }
         m_select_buffer.emplace_back(inst);
@@ -400,9 +400,9 @@ void IssueUnit::issue()
             ++it;
         }
     }
-    for (auto it = m_tile_q.begin(); it != m_tile_q.end();) {
+    for (auto it = m_tensor_q.begin(); it != m_tensor_q.end();) {
         if ((*it)->state == InstState::ISSUED) {
-            it = m_tile_q.erase(it);
+            it = m_tensor_q.erase(it);
         } else {
             ++it;
         }
@@ -420,7 +420,7 @@ void IssueUnit::async() {
         if (inst->type == InstType::VECTOR) {
             m_vec_q.emplace_back(inst);
         } else if (inst->type == InstType::TENSOR) {
-            m_tile_q.emplace_back(inst);
+            m_tensor_q.emplace_back(inst);
         } else if (inst->type == InstType::LOAD ||
             inst->type == InstType::STA ||
             inst->type == InstType::STD) {
@@ -464,7 +464,7 @@ void IssueUnit::flush() {
         clear_q(m_select_buffer);
         clear_q(m_fp_q);
         clear_q(m_vec_q);
-        clear_q(m_tile_q);
+        clear_q(m_tensor_q);
         m_rename_issue_q.flush_if([&](const MInstPtr& inst) {
             bool flushed = m_rob.is_older_than(m_flush_event.rid, inst->rid);
             if (flushed && m_stats) {
@@ -483,7 +483,7 @@ void IssueUnit::flush() {
         m_ls_q.clear();
         m_fp_q.clear();
         m_vec_q.clear();
-        m_tile_q.clear();
+        m_tensor_q.clear();
         m_select_buffer.clear();
         m_rename_issue_q.clear();
     } break;
@@ -575,7 +575,7 @@ void IssueUnit::reset() {
     m_ls_q.clear();
     m_fp_q.clear();
     m_vec_q.clear();
-    m_tile_q.clear();
+    m_tensor_q.clear();
     m_select_buffer.clear();
     m_wakeup_bus.clear();
     m_reg_req_q.clear();

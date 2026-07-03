@@ -83,6 +83,9 @@ bool FuncModel::fetch_dec(MicroOp& uop)
         m_arch.halt = true;
         return false;
     }
+    if (uop.format != RV_FMT_NONE) {
+        uop.imm = isa::extract_imm(uop.raw_inst, uop.format, uop.opcode);
+    }
     uop.valid = true;
     if (uop.rs1.valid) {
         uop.rs1.val = m_arch.gpr[uop.rs1.atag];

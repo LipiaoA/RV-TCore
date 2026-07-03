@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "ras.h"
 
 RAS::RAS(u32 depth)

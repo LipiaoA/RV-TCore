@@ -37,7 +37,7 @@ private:
     std::vector<MInstPtr>               m_ls_q;
     std::vector<MInstPtr>               m_fp_q;
     std::vector<MInstPtr>               m_vec_q;
-    std::vector<MInstPtr>               m_tile_q;
+    std::vector<MInstPtr>               m_tensor_q;
     ROB&                                m_rob;
     ExecuteUnit&                        m_exec;
     INPUT ASyncQueue<MInstPtr>&         m_rename_issue_q;

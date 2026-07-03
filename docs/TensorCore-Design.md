@@ -56,7 +56,7 @@ flowchart TB
 | TPRF / TRegFileUnit | `rename/tprf.h`, `tregfile_unit.*` | ✅ |
 | TRAT 重命名 | `rename_unit.cpp::rename_tile` | ✅ |
 | TileUnit | `execute/tile/tile_unit.*` | ✅ 骨架 |
-| Issue `m_tile_q` | `issue_unit.cpp` | ✅ |
+| Issue `m_tensor_q` | `issue_unit.cpp` | ✅ |
 | Commit Tile 写回 | `commit_unit.cpp` | ✅ |
 
 ### 2.2 未实现
@@ -278,7 +278,7 @@ td[M_t×N_t] += ts1[M_t×K_t] × ts2[K_t×N_t]
 
 | 参数 | Phase 1 | Phase 2 目标 |
 |------|---------|--------------|
-| 队列 | `m_tile_q` | 独立 `TileIssueQueue` |
+| 队列 | `m_tensor_q` | 独立 `TileIssueQueue` |
 | 发射宽度 | `tile_issue_width = 1` | 1（MAC 占带宽大） |
 | 调度 | Oldest-first | Oldest-first |
 

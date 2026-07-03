@@ -265,7 +265,7 @@ rename.recycle_tile_phys(td.o_ptag)
 | `m_ls_q` | LOAD, STORE, STA, STD |
 | `m_fp_q` | FP |
 | `m_vec_q` | VECTOR |
-| `m_tile_q` | TILE |
+| `m_tensor_q` | TILE |
 
 ### 10.2 就绪判断（MicroOp::ready）
 
