@@ -185,6 +185,7 @@ bool FuncModel::exec_uop(MicroOp& uop, StepSnapshot& snap)
         snap.effect = RefEffect::LOAD;
         snap.mem_addr = res.addr;
         snap.mem_width = uop.ls_width;
+        snap.mem_data = val;
         if (uop.rd.valid && uop.rd.atag != 0) {
             snap.rd = static_cast<u32>(uop.rd.atag);
         }
@@ -226,7 +227,7 @@ bool FuncModel::step(RefInstRecord* record_out)
         return false;
     }
     m_next_pc = m_arch.pc + 4;
-
+    std::cout << "func model step pc: 0x" << std::hex << m_arch.pc << std::dec << std::endl;
     MicroOp uop {};
     if (!fetch_dec(uop)) {
         return false;

@@ -78,9 +78,10 @@ bool VeriRef::check_retire(const MicroOp& inst, const RetireMemInfo* mem)
         return true;
     }
 
-    if (inst.type == InstType::STD) {
-        return true;
-    }
+    // if (inst.type == InstType::STD) {
+    //     ++m_checked_count;
+    //     return true;
+    // }
 
     if (m_ref_halted) {
         RefInstRecord dut = m_log.recording(inst, mem);

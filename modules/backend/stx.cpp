@@ -99,7 +99,8 @@ void STD::E0()
     if (!sq) {
         return;
     }
-    sq->data = inst->rs2.valid ? inst->rs2.val : inst->data;
+    sq->data = inst->rs2.valid ? inst->rs2.val
+                               : (inst->rs1.valid ? inst->rs1.val : inst->data);
     sq->data_ready = true;
     if (sq->ls_width == 0) {
         sq->ls_width = inst->ls_width;

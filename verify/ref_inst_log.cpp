@@ -208,12 +208,15 @@ RefInstRecord RefInstLog::recording(const MicroOp& inst, const RetireMemInfo* me
         }
         break;
     }
+    case InstType::STD:
+        // rec.effect = RefEffect::SKIP;
+        // break;
     case InstType::STORE:
-    case InstType::STA:
-    case InstType::STD: {
+    case InstType::STA: {
         rec.effect = RefEffect::STORE;
         rec.mem_width = inst.ls_width;
         rec.mem_data = inst.rs2.val;
+
         if (mem && mem->valid) {
             rec.mem_addr = mem->addr;
             rec.mem_data = mem->data;

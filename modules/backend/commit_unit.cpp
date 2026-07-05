@@ -61,7 +61,7 @@ RetireMemInfo retired_ls_info(const MInstPtr& inst, LSU& lsu)
         return mem;
     }
 
-    if (inst->type == InstType::STA || inst->type == InstType::STORE) {
+    if (inst->type == InstType::STA || inst->type == InstType::STD || inst->type == InstType::STORE) {
         if (SQEntry* st = lsu.find_store_by_rid(inst->rid)) {
             mem.valid = st->addr_ready && st->data_ready;
             mem.addr = st->addr;
@@ -165,14 +165,17 @@ void CommitUnit::inst_commit() {
                 ++m_stats->commit.retired_insts;
             }
             if (!committed->inst->fetch_fault) {
-                LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired",
-                    committed->inst->pc, committed->inst->inst_name.c_str());
+                std::string rid_str = committed->inst->rid.direct ? "--" : "++";
+                u32 r_idx = committed->inst->rid.idx;
+                LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired, rid: %s%u",
+                    committed->inst->pc, committed->inst->inst_name.c_str(), rid_str.c_str(), r_idx);
                 u64 result = committed->inst->rd.valid ? committed->inst->rd.val : 0;
                 InstrTrace::instance().record_retire(committed->inst->pc, result);
                 RetireMemInfo mem_info = retired_ls_info(committed->inst, m_lsu);
                 if (!VeriRef::instance().check_retire(*committed->inst, &mem_info)) {
                     LOG_LEVEL1("CommitUnit", "ref model mismatch at pc: 0x%lx inst: %s",
                                committed->inst->pc, committed->inst->inst_name.c_str());
+                    exit(1);
                 }
             }
         } else {

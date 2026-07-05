@@ -1220,8 +1220,9 @@ void LSU::on_store_operands_updated(SQEntry& st)
         check_mem_order(st);
     }
     if (st.addr_ready && st.data_ready) {
-        LOG_LEVEL1("LSU Store", "operands ready store_id:%lu stq:%zu addr:0x%lx data:0x%lx width:%u",
-                   st.store_id, st.stq_idx, st.addr, st.data, st.ls_width ? st.ls_width : 8);
+        LOG_LEVEL1("LSU Store", "operands ready store_id:%lu stq:%zu addr:0x%lx data:0x%lx width:%u, rid:%s%u",
+                   st.store_id, st.stq_idx, st.addr, st.data, st.ls_width,
+                   st.rob_idx.direct ? "--" : "++", st.rob_idx.idx);
         const u8 store_mask = gen_byte_mask(st.addr, st.ls_width ? st.ls_width : 8);
         for (auto& l : lsu_ld_q) {
             if (!l.valid) {
@@ -1276,8 +1277,8 @@ void LSU::commit_store(ROBID rid)
         if (s.uop) {
             m_ssp.clearLFST(s.uop->ssid, s.store_id);
         }
-        LOG_LEVEL1("LSU Commit", "store committed store_id:%lu stq:%zu rid:%u-%u",
-                   s.store_id, s.stq_idx, rid.direct, rid.idx);
+        LOG_LEVEL1("LSU Commit", "store committed store_id:%lu stq:%zu rid:%s%u, addr:0x%lx, data:0x%lx, width:%u",
+                   s.store_id, s.stq_idx, rid.direct ? "--" : "++", rid.idx, s.addr, s.data, s.ls_width);
         return;
     }
 }
@@ -1289,8 +1290,8 @@ void LSU::retire_load(ROBID rid)
         return;
     }
     const size_t idx = lq->ldq_idx;
-    LOG_LEVEL1("LSU Commit", "load retired load_id:%lu ldq:%zu rid:%u-%u",
-               lq->load_id, idx, rid.direct, rid.idx);
+    LOG_LEVEL1("LSU Commit", "load retired load_id:%lu ldq:%zu rid:%s%u, addr:0x%lx, width:%u",
+               lq->load_id, idx, rid.direct ? "--" : "++", rid.idx, lq->addr, lq->uop->ls_width);
     *lq = LQEntry {};
     if (idx == m_ldq_head) {
         while (m_ldq_head != m_ldq_tail && !lsu_ld_q[m_ldq_head].valid) {

@@ -8,7 +8,7 @@
 
 class VeriRef {
 public:
-    static VeriRef&                     instance();
+    static VeriRef&                             instance();
 
     void                                        reset();
     void                                        enable(bool on) { m_enabled = on; }
@@ -21,7 +21,7 @@ public:
     bool                                        passed() const;
     u64                                         mismatch_count() const;
     u64                                         checked_count() const { return m_checked_count; }
-    VeriResTyp                                last_result() const { return m_log.last_result(); }
+    VeriResTyp                                  last_result() const { return m_log.last_result(); }
     std::string                                 last_error() const { return m_last_error; }
 
     void                                        dump_mismatch() const;
