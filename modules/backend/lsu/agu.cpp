@@ -112,6 +112,8 @@ void AGU::E0()
             st_entry.ls_width = inst->ls_width;
         }
         m_lsu.on_store_operands_updated(st_entry);
+        LOG_LEVEL1("AGU E0", "addr ready,store pc:0x%lx id:%lu addr:0x%lx rid:%s%u",
+                   inst->pc, st_entry.store_id, st_entry.addr, inst->rid.direct ? "--" : "++", inst->rid.idx);
     } else if (inst->type == InstType::LOAD) {
         LQEntry* ld = m_lsu.find_load_by_id(inst->load_idx);
         if (!ld) {
@@ -119,6 +121,8 @@ void AGU::E0()
         }
         ld->addr = ret.addr;
         ld->addr_ready = true;
+        LOG_LEVEL1("AGU E0", "addr ready, load pc:0x%lx id:%lu addr:0x%lx rid:%s%u",
+                   inst->pc, ld->load_id, ld->addr, inst->rid.direct ? "--" : "++", inst->rid.idx);
     }
     m_pipe[1].valid = false;
     m_pipe[1].inst = nullptr;
@@ -179,25 +183,5 @@ void AGU::reset() {
 
 void AGU::dump_states() const
 {
-    std::string log_prefix = "AGU" + std::to_string(m_idx) + " ";
-    if (m_pipe[0].valid) {
-        auto inst = m_pipe[0].inst;
-        std::string typ = inst->type == InstType::STA ? "STA" :
-            inst->type == InstType::STD ? "STD" :
-            inst->type == InstType::LOAD ? "LOAD" : "OTHER";
-        LOG_LEVEL1(log_prefix + "R1", "pc: 0x%lx, inst: %s, type: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v%d-a%d-p%d-0x%lx",
-            inst->pc, inst->inst_name.c_str(), typ.c_str(),
-            inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
-            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
-    }
-    if (m_pipe[1].valid) {
-        auto inst = m_pipe[1].inst;
-        std::string typ = inst->type == InstType::STA ? "STA" :
-            inst->type == InstType::STD ? "STD" :
-            inst->type == InstType::LOAD ? "LOAD" : "OTHER";
-        LOG_LEVEL1(log_prefix + "E0", "pc: 0x%lx, inst: %s, type: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v%d-a%d-p%d-0x%lx",
-            inst->pc, inst->inst_name.c_str(), typ.c_str(),
-            inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
-            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
-    }
+
 }

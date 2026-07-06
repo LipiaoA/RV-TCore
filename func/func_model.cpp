@@ -169,6 +169,8 @@ bool FuncModel::exec_uop(MicroOp& uop, StepSnapshot& snap)
         u64 val = 0;
         try {
             val = m_mem.load(res.addr, uop.ls_width);
+            LOG_LEVEL1("FuncModel", "load pc: 0x%lx addr: 0x%lx width: %u load val: 0x%lx",
+                       uop.pc, res.addr, uop.ls_width, val);
         } catch (const std::exception& e) {
             std::cerr << "load OOB at pc=0x" << std::hex << uop.pc
                       << " addr=0x" << res.addr << std::dec
@@ -200,6 +202,8 @@ bool FuncModel::exec_uop(MicroOp& uop, StepSnapshot& snap)
         }
         try {
             m_mem.store(res.addr, uop.rs2.val, uop.ls_width);
+            LOG_LEVEL1("FuncModel", "store pc: 0x%lx addr: 0x%lx width: %u store val: 0x%lx",
+                       uop.pc, res.addr, uop.ls_width, uop.rs2.val);
         } catch (const std::exception& e) {
             std::cerr << "store OOB at pc=0x" << std::hex << uop.pc
                       << " addr=0x" << res.addr << std::dec

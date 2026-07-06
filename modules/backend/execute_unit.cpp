@@ -87,13 +87,13 @@ void ExecuteUnit::tick() {
     for (u32 i = 0; i < m_bru_num; i++) {
         m_brus[i].tick();
     }
+    m_lsu.tick();
     for (u32 i = 0; i < m_agu_num; i++) {
         m_agus[i].tick();
     }
     for (u32 i = 0; i < m_std_num; i++) {
         m_stds[i].tick();
     }
-    m_lsu.tick();
     arbitration();
 }
 
@@ -212,7 +212,8 @@ void ExecuteUnit::arbitration() {
     auto collect = [&](auto& fu) {
         if (fu.commit_ready()) {
             auto* fu_ptr = &fu;
-            ready.push_back({fu.commit_inst(), [fu_ptr]() { fu_ptr->commit_ack(); }});
+            MInstPtr inst = fu.commit_inst();
+            ready.push_back({inst, [fu_ptr]() { fu_ptr->commit_ack(); }});
         }
     };
 
@@ -231,9 +232,7 @@ void ExecuteUnit::arbitration() {
     for (u32 i = 0; i < m_bru_num; ++i) {
         collect(m_brus[i]);
     }
-    for (u32 i = 0; i < m_std_num; ++i) {
-        collect(m_stds[i]);
-    }
+
     collect(m_lsu);
 
     std::stable_sort(ready.begin(), ready.end(),

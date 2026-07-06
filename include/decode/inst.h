@@ -40,6 +40,7 @@ typedef struct {
     bool ready { false };
     bool bypass_hint { false };
     bool bypass_ready { false };
+    bool data_available {false};
     i32 o_ptag { -1 };
     RegType rtyp { RegType::GPR };
     u32 rgrp { 1 };
@@ -66,7 +67,8 @@ typedef struct {
 } DecodeInst;
 
 enum class InstType {
-    STA = 0,
+    NONE = 0,
+    STA,
     STD,
     LOAD,
     STORE,
@@ -75,7 +77,7 @@ enum class InstType {
     FP,
     VECTOR,
     TENSOR,
-    NONE,
+    NUM_INST_TYPES,
 };
 
 enum class InstState {
@@ -97,7 +99,7 @@ typedef struct MicroOp {
     u32 inst_size {4}; // FIXME: should be modified
 
     InstOp opcode;
-    InstType type;
+    InstType type { InstType::NONE };
     bool valid { false };
     bool pred_taken { false };
     InstFmt format;

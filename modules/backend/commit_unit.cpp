@@ -111,7 +111,9 @@ void CommitUnit::inst_resolve() {
             if (m_stats) {
                 ++m_stats->commit.resolved_insts;
             }
-            LOG_LEVEL1("CommitUnit", "pc: 0x%lx, inst: %s resolved", inst->pc, inst->inst_name.c_str());
+            LOG_LEVEL1("CommitUnit", "pc: 0x%lx, inst: %s type:%s resolved, rid:%s%u", inst->pc,
+                        inst->inst_name.c_str(), inst_type_str(inst->type),
+                        inst->rid.direct ? "--" : "++", inst->rid.idx);
         }
     }
 }
@@ -127,7 +129,7 @@ void CommitUnit::inst_commit() {
         auto entry = m_rob.head();
         if (entry && entry->valid && entry->inst && entry->inst->valid
             && entry->inst->state == InstState::EXECUTED) {
-            if (entry->inst->type == InstType::STA &&
+            if (entry->inst->type == InstType::STD &&
                 !m_lsu.store_commit_ready(entry->inst->rid)) {
                 if (i == 0 && m_stats) {
                     ++m_stats->commit.head_not_ready_cycles;

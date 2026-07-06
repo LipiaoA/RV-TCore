@@ -197,7 +197,7 @@ private:
     static bool                         dword_addr_match(u64 a, u64 b);
     static bool                         mask_overlap(u8 a, u8 b);
     static bool                         mask_contains(u8 container, u8 sub);
-    static u64                          apply_load_gen(u64 store_data, u64 addr, u32 width);
+    static u64                          apply_load_gen(const SQEntry& s_entry, u64 load_addr, u32 load_width);
 
     bool                                ldq_full() const;
     bool                                stq_full() const;

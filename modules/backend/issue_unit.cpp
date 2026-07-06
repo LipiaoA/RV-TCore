@@ -363,9 +363,13 @@ void IssueUnit::issue()
             EmitSrcRead(inst, inst->rs2, 2);
         }
 
-        LOG_LEVEL1("IssueUnit", "issued:%s pc:0x%lx, %s, v%d-x%d-p%d%s%d", ret ? "true" : "false", inst->pc,
-                   inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag,
-                   inst->rd.ptag, inst->rid.idx == 0 ? "++" : "--", inst->rid.idx);
+        LOG_LEVEL1("IssueUnit", "inst typ:%s issued:%s pc:0x%lx, name:%s,"
+                    "rs1:v%d-x%d-p%d, rs2:v%d-x%d-p%d, rd:v%d-x%d-p%d%s%d",
+                    inst_type_str(inst->type), ret ? "true" : "false", inst->pc, inst->inst_name.c_str(),
+                    inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag,
+                    inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag,
+                    inst->rd.valid, inst->rd.atag, inst->rd.ptag,
+                    inst->rid.direct ? "--" : "++", inst->rid.idx);
     }
     m_select_buffer.swap(retry);
     if (fu_busy_cycle && m_stats) {

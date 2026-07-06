@@ -7,12 +7,12 @@ static const InstPattern rv64i_table[] = {
   .mask = 0xffffffff,
   .match = 0x00000073,
   .opcode = OP_ECALL,
- .format = RV_FMT_R
+ .format = RV_FMT_I
 },{
   .mask = 0xffffffff,
   .match = 0x00100073,
   .opcode = OP_EBREAK,
- .format = RV_FMT_R
+ .format = RV_FMT_I
 },{
   .mask = 0xffffffff,
   .match = 0x10400073,

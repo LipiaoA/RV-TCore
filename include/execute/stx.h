@@ -23,10 +23,6 @@ public:
     void                                    tick() override;
     void                                    commit() override;
 
-    bool                                    commit_ready() const;
-    MInstPtr                                commit_inst() const;
-    void                                    commit_ack();
-
     void                                    flush(const FlushEvent& event);
     void                                    reset();
 
@@ -39,7 +35,6 @@ private:
     void                                    fwd_bypass();
 
     FUStage                                 m_input_latch;
-    FUStage                                 m_commit_latch;
     i32                                     m_stages { 2 };
     FUStage                                 m_pipe[MAX_STAGES];
     OUTPUT ASyncQueue<RegReq>&              m_reg_req_q;

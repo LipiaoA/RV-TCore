@@ -192,6 +192,34 @@ constexpr static const char* FlushSourceStr[] = {
     "BRU",
 };
 
+inline static const char* inst_type_str(InstType typ) {
+    switch (typ) {
+        case InstType::NONE:
+            return "NONE";
+        case InstType::STA:
+            return "STA";
+        case InstType::STD:
+            return "STD";
+        case InstType::LOAD:
+            return "LOAD";
+        case InstType::STORE:
+            return "STORE";
+        case InstType::BRANCH:
+            return "BRANCH";
+        case InstType::INT:
+            return "INT";
+        case InstType::FP:
+            return "FP";
+        case InstType::VECTOR:
+            return "VECTOR";
+        case InstType::TENSOR:
+            return "TENSOR";
+        default:
+            return "UNKNOWN";
+    }
+    return "UNKNOWN";
+}
+
 enum class FlushScope {
     NONE,
     // 清除 rid 之后的年轻指令，保留 rid 本身。
@@ -330,6 +358,7 @@ typedef struct {
 
 typedef struct {
     bool valid { false };
+    bool ready { false };
     MInstPtr inst { nullptr };
 } FUStage;
 

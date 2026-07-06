@@ -56,10 +56,10 @@ void RegFileUnit::r0() {
                 event.rtyp = RegType::GPR;
                 m_wakeup_bus.push_back(event);
             }
-        } else {
+        } else if (m_prf.is_ready(req.ptag)) {
+            resp.val = m_prf.read(req.ptag);
             resp.valid = true;
             resp.ptag = req.ptag;
-            resp.val = m_prf.read(req.ptag);
             resp.rid = req.rid;
             resp.idx = req.idx;
             resp.fu = req.fu;

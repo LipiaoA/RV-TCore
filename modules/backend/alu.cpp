@@ -37,6 +37,7 @@ void ALU::fwd_bypass()
             if (resp.valid && resp.ptag == src->ptag) {
                 src->val = resp.val;
                 src->bypass_ready = true;
+                src->data_available = true;
                 break;
             }
         }
@@ -85,17 +86,27 @@ void ALU::R1()
         return;
     }
     MInstPtr inst = m_pipe[0].inst;
-    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+    auto& rs1 = inst->rs1;
+    auto& rs2 = inst->rs2;
+    for (Operand* src : {&rs1, &rs2}) {
         if (!src->valid || src->bypass_hint) {
             continue;
         }
         for (const auto& resp : m_reg_resp_q) {
             if (resp.valid && resp.ptag == src->ptag) {
                 src->val = resp.val;
+                src->data_available = true;
                 break;
             }
         }
     }
+    if (rs1.valid && !rs1.bypass_hint && !rs1.data_available) {
+        return;
+    }
+    if (rs2.valid && !rs2.bypass_hint && !rs2.data_available) {
+        return;
+    }
+    m_pipe[0].ready = true;
 }
 
 void ALU::E0()
@@ -119,11 +130,14 @@ void ALU::E0()
 void ALU::shift()
 {
     for (i32 i = m_stages - 1; i > 0; --i) {
-        if (!m_pipe[i].valid) {
+        if (!m_pipe[i].valid && m_pipe[i - 1].ready) {
             m_pipe[i] = m_pipe[i - 1];
             m_pipe[i - 1].valid = false;
             m_pipe[i - 1].inst = nullptr;
         }
+    }
+    for (i32 i = 0; i < m_stages; ++i) {
+        m_pipe[i].ready = false;
     }
 }
 

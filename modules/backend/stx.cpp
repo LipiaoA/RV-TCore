@@ -21,8 +21,6 @@ STD::STD(const STDConfig& conf, const STDDeps& deps)
     }
     m_input_latch.valid = false;
     m_input_latch.inst = nullptr;
-    m_commit_latch.valid = false;
-    m_commit_latch.inst = nullptr;
     m_idx = STD::std_idx++;
 }
 
@@ -51,7 +49,6 @@ void STD::tick()
     E0();
     R1();
     dump_states();
-    shift();
 }
 
 bool STD::accept() const
@@ -90,7 +87,7 @@ void STD::R1()
 
 void STD::E0()
 {
-    if (!m_pipe[1].valid || !m_pipe[1].inst || m_commit_latch.valid) {
+    if (!m_pipe[1].valid || !m_pipe[1].inst) {
         return;
     }
     MInstPtr inst = m_pipe[1].inst;
@@ -107,10 +104,12 @@ void STD::E0()
     }
     m_lsu.on_store_operands_updated(*sq);
 
+
+    LOG_LEVEL1("STD E0", "store pc:0x%lx id:%lu stq idx:%zu addr:0x%lx data:0x%lx width:%u rid:%s%u",
+               inst->pc, sq->store_id, sq->stq_idx, sq->addr, sq->data, sq->ls_width,
+               inst->rid.direct ? "--" : "++", inst->rid.idx);
     m_pipe[1].valid = false;
     m_pipe[1].inst = nullptr;
-    m_commit_latch.inst = inst;
-    m_commit_latch.valid = true;
 }
 
 void STD::shift()
@@ -136,12 +135,6 @@ void STD::flush(const FlushEvent& event)
         m_input_latch.valid = false;
         m_input_latch.inst = nullptr;
     }
-    if (m_commit_latch.valid && should_flush(m_commit_latch.inst)) {
-        m_commit_latch.inst->valid = false;
-        m_commit_latch.inst->state = InstState::FLUSHED;
-        m_commit_latch.valid = false;
-        m_commit_latch.inst = nullptr;
-    }
     for (i32 i = 0; i < m_stages; ++i) {
         if (m_pipe[i].valid && should_flush(m_pipe[i].inst)) {
             m_pipe[i].inst->valid = false;
@@ -154,6 +147,7 @@ void STD::flush(const FlushEvent& event)
 
 void STD::commit()
 {
+    shift();
     if (m_input_latch.valid && !m_pipe[0].valid) {
         m_pipe[0].inst = m_input_latch.inst;
         m_pipe[0].valid = true;
@@ -162,28 +156,11 @@ void STD::commit()
     }
 }
 
-bool STD::commit_ready() const
-{
-    return m_commit_latch.valid && m_commit_latch.inst;
-}
-
-MInstPtr STD::commit_inst() const
-{
-    return m_commit_latch.inst;
-}
-
-void STD::commit_ack()
-{
-    m_commit_latch.valid = false;
-    m_commit_latch.inst = nullptr;
-}
 
 void STD::reset()
 {
     m_input_latch.valid = false;
     m_input_latch.inst = nullptr;
-    m_commit_latch.valid = false;
-    m_commit_latch.inst = nullptr;
     for (i32 i = 0; i < m_stages; ++i) {
         m_pipe[i].valid = false;
         m_pipe[i].inst = nullptr;
@@ -192,15 +169,5 @@ void STD::reset()
 
 void STD::dump_states() const
 {
-    std::string log_prefix = "STD" + std::to_string(m_idx) + " ";
-    if (m_pipe[0].valid) {
-        auto inst = m_pipe[0].inst;
-        LOG_LEVEL1(log_prefix + "R0", "rs2: v-%d-a%d-p%d-0x%lx",
-            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
-    }
-    if (m_pipe[1].valid) {
-        auto inst = m_pipe[1].inst;
-        LOG_LEVEL1(log_prefix + "R1", "rs2: v-%d-a%d-p%d-0x%lx",
-            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
-    }
+
 }
