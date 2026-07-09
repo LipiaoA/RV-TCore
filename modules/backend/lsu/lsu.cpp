@@ -454,7 +454,8 @@ void LSU::lcam(LSUS1Slot& slot)
         entry->state = READY;
         enqueue_wb(entry->load_id, fwd->second, 1);
         if (entry->uop && entry->uop->rd.valid) {
-            wakeup_load(entry->uop, true);
+            // TODO: Add speculative load wakeup
+            // wakeup_load(entry->uop, true);
         }
         LOG_LEVEL1("LSU LCAM", "forward pc:0x%lx load_id:%lu ldq:%zu stq:%zu addr:0x%lx data:0x%lx",
                    entry->uop->pc, entry->load_id, slot.ldq_idx, fwd->first, slot.vaddr, fwd->second);
@@ -629,7 +630,8 @@ void LSU::fire_load(size_t ldq_idx)
         if (!s.valid) {
             s = slot;
             if (entry.uop && entry.uop->rd.valid) {
-                wakeup_load(entry.uop, true);
+                // TODO: Add speculative load wakeup
+                // wakeup_load(entry.uop, true);
             }
             LOG_LEVEL1("LSU ISS", "issue load pc:0x%lx id:%lu addr:0x%lx mask:0x%x, waiting store:%d",
                        entry.uop->pc, entry.load_id, entry.addr, load_mask, entry.waiting_on_store);

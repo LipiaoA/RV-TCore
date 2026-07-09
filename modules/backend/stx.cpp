@@ -30,7 +30,9 @@ void STD::fwd_bypass()
         return;
     }
     MInstPtr inst = m_pipe[0].inst;
-    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+    Operand* rs1 = &inst->rs1;
+    Operand* rs2 = &inst->rs2;
+    for (Operand* src : {rs1, rs2}) {
         if (!src->valid || !src->bypass_hint) {
             continue;
         }
@@ -41,6 +43,10 @@ void STD::fwd_bypass()
                 break;
             }
         }
+    }
+    if ((rs1->valid && !rs1->bypass_ready) || (rs2->valid && !rs2->bypass_ready)) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
 }
 

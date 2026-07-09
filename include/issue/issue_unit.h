@@ -28,9 +28,7 @@ private:
     void                                EmitVecSrcRead(const MInstPtr inst, const Operand& src, int idx);
     void                                EmitTileSrcRead(const MInstPtr inst, const Operand& src, int idx);
     FuType                              GetFuType(const MInstPtr inst);
-    bool                                is_buffered(const MInstPtr& inst) const;
-    size_t                              count_buffered_int_slots() const;
-    size_t                              count_buffered_ls_slots() const;
+    void                                update_next_ready(std::vector<MInstPtr>& inst_q);
 
 private:
     std::vector<MInstPtr>               m_int_q;

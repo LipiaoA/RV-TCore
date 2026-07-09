@@ -41,6 +41,7 @@ typedef struct {
     bool bypass_hint { false };
     bool bypass_ready { false };
     bool data_available {false};
+    u32 speculative_child_mask { 0 };
     i32 o_ptag { -1 };
     RegType rtyp { RegType::GPR };
     u32 rgrp { 1 };
@@ -83,12 +84,13 @@ enum class InstType {
 enum class InstState {
     NONE = 0,
     RENAMED = 1,
-    ISSUED = 2,
-    EXECUTED = 3,
-    COMMITTED = 4,
-    FLUSHED = 5,
-    REPLAY = 6,
-    RETIRED = 7,
+    ISSUED,
+    FU_ACTIVE,
+    EXECUTED,
+    COMMITTED,
+    FLUSHED,
+    REPLAY,
+    RETIRED,
 };
 
 typedef struct MicroOp {
@@ -96,6 +98,7 @@ typedef struct MicroOp {
     u64 pc;
     std::string inst_name;
     InstState state { InstState::NONE };
+    bool next_valid { false };
     u32 inst_size {4}; // FIXME: should be modified
 
     InstOp opcode;

@@ -31,8 +31,9 @@ void BRU::fwd_bypass()
     if (!m_pipe[0].valid || !m_pipe[0].inst) {
         return;
     }
-    MInstPtr inst = m_pipe[0].inst;
-    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+    Operand* rs1 = &m_pipe[0].inst->rs1;
+    Operand* rs2 = &m_pipe[0].inst->rs2;
+    for (Operand* src : {rs1, rs2}) {
         if (!src->valid || !src->bypass_hint) {
             continue;
         }
@@ -43,6 +44,10 @@ void BRU::fwd_bypass()
                 break;
             }
         }
+    }
+    if ((rs1->valid && !rs1->data_available) || (rs2->valid && !rs2->data_available)) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
 }
 
@@ -68,11 +73,11 @@ void BRU::tick()
     E0();
     R1();
     dump_states();
-    shift();
 }
 
 void BRU::commit()
 {
+    shift();
     if (m_input_latch.valid && !m_pipe[0].valid) {
         m_pipe[0].inst = m_input_latch.inst;
         m_pipe[0].valid = true;
@@ -109,6 +114,7 @@ void BRU::R1()
             if (resp.valid && resp.ptag == src->ptag) {
                 src->val = resp.val;
                 src->bypass_ready = true;
+                src->data_available = true;
                 break;
             }
         }

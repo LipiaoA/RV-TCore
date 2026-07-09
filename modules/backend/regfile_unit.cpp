@@ -74,6 +74,14 @@ void RegFileUnit::r0() {
             } else {
                 assert(0);
             }
+        } else {
+            WakeupEvent event;
+            event.valid = true;
+            event.type = WAKEUP_REPLAY;
+            event.ptag = req.ptag;
+            event.rid = req.rid;
+            event.rtyp = RegType::GPR;
+            m_wakeup_bus.push_back(event);
         }
     }
 }

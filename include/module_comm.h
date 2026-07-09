@@ -233,6 +233,7 @@ enum class FlushScope {
 enum WakeupType {
     WAKEUP_BYPASS,     // 可旁路
     WAKEUP_WRITEBACK,  // 已写回PRF
+    WAKEUP_ACTIVE,     // 已激活
     WAKEUP_REPLAY,     // 依赖失效
     WAKEUP_KILL        // flush
 };
@@ -241,7 +242,7 @@ typedef struct {
     WakeupType type { WAKEUP_BYPASS };
     i32        ptag { -1 };
     ROBID      rid;
-    RegType   rtyp { RegType::GPR };
+    RegType    rtyp { RegType::GPR };
     bool       bypassable { false };
     bool       speculative { false };
     u32        speculative_mask { 0 };
@@ -358,7 +359,6 @@ typedef struct {
 
 typedef struct {
     bool valid { false };
-    bool ready { false };
     MInstPtr inst { nullptr };
 } FUStage;
 

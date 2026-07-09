@@ -44,7 +44,7 @@ void IssueUnit::commit()
 }
 
 void IssueUnit::wakeup() {
-    auto apply_gpr = [](const MInstPtr inst, const WakeupEvent& event) {
+    auto apply_gpr = [](MInstPtr inst, const WakeupEvent& event) {
         if (!event.valid || event.rtyp != RegType::GPR) {
             return;
         }
@@ -57,10 +57,22 @@ void IssueUnit::wakeup() {
                 src.ready = true;
                 src.bypass_hint = event.type == WAKEUP_BYPASS && event.bypassable;
                 src.bypass_ready = false;
-            } else if (event.type == WAKEUP_REPLAY && src.ptag == event.ptag) {
+                src.speculative_child_mask =
+                    event.speculative ? event.speculative_mask : 0;
+            } else if (event.type == WAKEUP_REPLAY) {
+                const bool replay_by_mask =
+                    event.speculative_mask != 0 &&
+                    (src.speculative_child_mask & event.speculative_mask) != 0;
+                const bool replay_by_ptag = event.ptag >= 0 && src.ptag == event.ptag;
+                if (!replay_by_mask && !replay_by_ptag) {
+                    return;
+                }
                 src.ready = false;
                 src.bypass_hint = false;
                 src.bypass_ready = false;
+                src.data_available = false;
+                src.speculative_child_mask = 0;
+                inst->state = InstState::REPLAY;
             }
         };
         apply_src(inst->rs1);
@@ -114,6 +126,9 @@ void IssueUnit::wakeup() {
         for (auto inst : m_tensor_q) {
             apply_tile(inst, event);
         }
+        for (auto inst : m_select_buffer) {
+            apply_gpr(inst, event);
+        }
     }
     m_wakeup_bus.clear();
 }
@@ -144,116 +159,44 @@ static bool tensor_type(InstType type)
     return type == InstType::TENSOR;
 }
 
-bool IssueUnit::is_buffered(const MInstPtr& inst) const
-{
-    for (const auto& pending : m_select_buffer) {
-        if (pending == inst) {
-            return true;
-        }
-    }
-    return false;
-}
-
-size_t IssueUnit::count_buffered_int_slots() const
-{
-    size_t n = 0;
-    for (const auto& inst : m_select_buffer) {
-        if (inst && int_type(inst->type)) {
-            ++n;
-        }
-    }
-    return n;
-}
-
-size_t IssueUnit::count_buffered_ls_slots() const
-{
-    size_t n = 0;
-    for (const auto& inst : m_select_buffer) {
-        if (inst && ls_type(inst->type)) {
-            ++n;
-        }
-    }
-    return n;
-}
-
 void IssueUnit::select()
 {
-    const size_t int_slots_left =
-        m_int_issue_width > count_buffered_int_slots()
-            ? m_int_issue_width - count_buffered_int_slots()
-            : 0;
-    const size_t ls_slots_left =
-        m_ls_issue_width > count_buffered_ls_slots()
-            ? m_ls_issue_width - count_buffered_ls_slots()
-            : 0;
-    size_t buffered_fp_slots = 0;
-    for (const auto& inst : m_select_buffer) {
-        if (inst && fp_type(inst->type)) {
-            ++buffered_fp_slots;
-        }
-    }
-    const size_t fp_slots_left =
-        m_fp_issue_width > buffered_fp_slots
-            ? m_fp_issue_width - buffered_fp_slots
-            : 0;
-    size_t buffered_vec_slots = 0;
-    size_t buffered_tile_slots = 0;
-    for (const auto& inst : m_select_buffer) {
-        if (inst && vec_type(inst->type)) {
-            ++buffered_vec_slots;
-        }
-        if (inst && tensor_type(inst->type)) {
-            ++buffered_tile_slots;
-        }
-    }
-    const size_t vec_slots_left =
-        m_vec_issue_width > buffered_vec_slots
-            ? m_vec_issue_width - buffered_vec_slots
-            : 0;
-    const size_t tile_slots_left =
-        m_tile_issue_width > buffered_tile_slots
-            ? m_tile_issue_width - buffered_tile_slots
-            : 0;
-    if ((int_slots_left == 0 && ls_slots_left == 0 && fp_slots_left == 0
-         && vec_slots_left == 0 && tile_slots_left == 0) ||
-        (m_int_q.empty() && m_ls_q.empty() && m_fp_q.empty()
-         && m_vec_q.empty() && m_tensor_q.empty())) {
-        return;
-    }
+    const size_t int_slots_left =  m_int_issue_width;
+    const size_t ls_slots_left = m_ls_issue_width;
+    const size_t fp_slots_left = m_fp_issue_width;
+    const size_t vec_slots_left = m_vec_issue_width;
+    const size_t tile_slots_left = m_tile_issue_width;
 
     std::vector<MInstPtr> candidates;
     candidates.reserve(m_int_q.size() + m_ls_q.size() + m_fp_q.size()
                        + m_vec_q.size() + m_tensor_q.size());
 
     for (const auto& inst : m_int_q) {
-        if (inst->ready() && !is_buffered(inst)) {
+        if (inst->ready() && (inst->state == InstState::RENAMED || inst->state == InstState::REPLAY)) {
             candidates.emplace_back(inst);
         }
     }
     for (const auto& inst : m_ls_q) {
-        if (inst->ready() && !is_buffered(inst)) {
+        if (inst->ready() && (inst->state == InstState::RENAMED || inst->state == InstState::REPLAY)) {
             candidates.emplace_back(inst);
         }
     }
     for (const auto& inst : m_fp_q) {
-        if (inst->ready() && !is_buffered(inst)) {
+        if (inst->ready() && (inst->state == InstState::RENAMED || inst->state == InstState::REPLAY)) {
             candidates.emplace_back(inst);
         }
     }
     for (const auto& inst : m_vec_q) {
-        if (inst->ready() && !is_buffered(inst)) {
+        if (inst->ready() && (inst->state == InstState::RENAMED || inst->state == InstState::REPLAY)) {
             candidates.emplace_back(inst);
         }
     }
     for (const auto& inst : m_tensor_q) {
-        if (inst->ready() && !is_buffered(inst)) {
+        if (inst->ready() && (inst->state == InstState::RENAMED || inst->state == InstState::REPLAY)) {
             candidates.emplace_back(inst);
         }
     }
     if (candidates.empty()) {
-        if (m_stats && m_select_buffer.empty()) {
-            ++m_stats->issue.ready_stall_cycles;
-        }
         return;
     }
 
@@ -325,12 +268,19 @@ void IssueUnit::select()
 
 void IssueUnit::issue()
 {
-    std::vector<MInstPtr> retry;
-    retry.reserve(m_select_buffer.size());
     bool fu_busy_cycle = false;
+
+    update_next_ready(m_int_q);
+    update_next_ready(m_ls_q);
+    update_next_ready(m_fp_q);
+    update_next_ready(m_vec_q);
+    update_next_ready(m_tensor_q);
 
     for (auto& inst : m_select_buffer) {
         if (!inst || !inst->valid) {
+            continue;
+        }
+        if (!inst->ready()) {
             continue;
         }
         bool ret = m_exec.dispatch(inst);
@@ -341,13 +291,16 @@ void IssueUnit::issue()
             if (inst->rs1.bypass_hint) {
                 inst->rs1.bypass_hint = false;
                 inst->rs1.bypass_ready = false;
+                inst->rs1.speculative_child_mask = 0;
             }
             if (inst->rs2.bypass_hint) {
                 inst->rs2.bypass_hint = false;
                 inst->rs2.bypass_ready = false;
+                inst->rs2.speculative_child_mask = 0;
             }
-            retry.emplace_back(inst);
             fu_busy_cycle = true;
+        } else {
+            inst->state = InstState::ISSUED;
         }
         if (inst->type == InstType::VECTOR) {
             EmitVecSrcRead(inst, inst->vs1, 1);
@@ -371,47 +324,65 @@ void IssueUnit::issue()
                     inst->rd.valid, inst->rd.atag, inst->rd.ptag,
                     inst->rid.direct ? "--" : "++", inst->rid.idx);
     }
-    m_select_buffer.swap(retry);
+    m_select_buffer.clear();
     if (fu_busy_cycle && m_stats) {
         ++m_stats->issue.fu_busy_stall_cycles;
     }
 
-    for (auto it = m_int_q.begin(); it != m_int_q.end();) {
-        if ((*it)->state == InstState::ISSUED) {
-            it = m_int_q.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    for (auto it = m_ls_q.begin(); it != m_ls_q.end();) {
-        if ((*it)->state == InstState::ISSUED) {
-            it = m_ls_q.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    for (auto it = m_fp_q.begin(); it != m_fp_q.end();) {
-        if ((*it)->state == InstState::ISSUED) {
-            it = m_fp_q.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    for (auto it = m_vec_q.begin(); it != m_vec_q.end();) {
-        if ((*it)->state == InstState::ISSUED) {
-            it = m_vec_q.erase(it);
-        } else {
-            ++it;
-        }
-    }
-    for (auto it = m_tensor_q.begin(); it != m_tensor_q.end();) {
-        if ((*it)->state == InstState::ISSUED) {
-            it = m_tensor_q.erase(it);
-        } else {
-            ++it;
-        }
-    }
+    // for (auto it = m_int_q.begin(); it != m_int_q.end();) {
+    //     if ((*it)->state == InstState::FU_ACTIVE) {
+    //         it = m_int_q.erase(it);
+    //     } else {
+    //         ++it;
+    //     }
+    // }
+    // for (auto it = m_ls_q.begin(); it != m_ls_q.end();) {
+    //     if ((*it)->state == InstState::FU_ACTIVE) {
+    //         it = m_ls_q.erase(it);
+    //     } else {
+    //         ++it;
+    //     }
+    // }
+    // for (auto it = m_fp_q.begin(); it != m_fp_q.end();) {
+    //     if ((*it)->state == InstState::FU_ACTIVE) {
+    //         it = m_fp_q.erase(it);
+    //     } else {
+    //         ++it;
+    //     }
+    // }
+    // for (auto it = m_vec_q.begin(); it != m_vec_q.end();) {
+    //     if ((*it)->state == InstState::FU_ACTIVE) {
+    //         it = m_vec_q.erase(it);
+    //     } else {
+    //         ++it;
+    //     }
+    // }
+    // for (auto it = m_tensor_q.begin(); it != m_tensor_q.end();) {
+    //     if ((*it)->state == InstState::FU_ACTIVE) {
+    //         it = m_tensor_q.erase(it);
+    //     } else {
+    //         ++it;
+    //     }
+    // }
 }
+
+void IssueUnit::update_next_ready(std::vector<MInstPtr>& inst_q)
+{
+    std::vector<MInstPtr> tmp_q;
+    for (auto& inst : inst_q) {
+        if (!inst || !inst->valid) {
+            continue;
+        }
+        if (inst->state == InstState::ISSUED && !inst->next_valid) {
+            inst->next_valid = true;
+            tmp_q.emplace_back(inst);
+        } else if (inst->state != InstState::ISSUED) {
+            tmp_q.emplace_back(inst);
+        }
+    }
+    inst_q.swap(tmp_q);
+}
+
 
 void IssueUnit::async() {
     MInstPtr inst;

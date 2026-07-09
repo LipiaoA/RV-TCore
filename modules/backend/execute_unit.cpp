@@ -97,7 +97,21 @@ void ExecuteUnit::tick() {
     arbitration();
 }
 
-void ExecuteUnit::commit() {
+void ExecuteUnit::commit()
+{
+    for (u32 i = 0; i < m_alu_num; ++i) {
+        m_alus[i].fwd_bypass();
+    }
+    for (u32 i = 0; i < m_bru_num; ++i) {
+        m_brus[i].fwd_bypass();
+    }
+    for (u32 i = 0; i < m_agu_num; ++i) {
+        m_agus[i].fwd_bypass();
+    }
+    for (u32 i = 0; i < m_std_num; ++i) {
+        m_stds[i].fwd_bypass();
+    }
+
     for (u32 i = 0; i < m_alu_num; i++) {
         m_alus[i].commit();
     }
@@ -120,20 +134,6 @@ void ExecuteUnit::commit() {
         m_stds[i].commit();
     }
     m_lsu.commit();
-
-    for (u32 i = 0; i < m_alu_num; ++i) {
-        m_alus[i].fwd_bypass();
-    }
-    for (u32 i = 0; i < m_bru_num; ++i) {
-        m_brus[i].fwd_bypass();
-    }
-    for (u32 i = 0; i < m_agu_num; ++i) {
-        m_agus[i].fwd_bypass();
-    }
-    for (u32 i = 0; i < m_std_num; ++i) {
-        m_stds[i].fwd_bypass();
-    }
-
     m_inst_commit_q.commit();
     m_reg_bypass_bus.clear();
 }
@@ -145,7 +145,6 @@ bool ExecuteUnit::dispatch(MInstPtr inst)
             u32 idx = (next + n) % count;
             if (fus[idx].dispatch(inst)) {
                 next = (idx + 1) % count;
-                inst->state = InstState::ISSUED;
                 if (m_stats) {
                     ++m_stats->execute.dispatch_accepted;
                 }

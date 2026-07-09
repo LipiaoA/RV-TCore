@@ -32,8 +32,9 @@ void AGU::fwd_bypass()
     if (!m_pipe[0].valid || !m_pipe[0].inst) {
         return;
     }
-    MInstPtr inst = m_pipe[0].inst;
-    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+    Operand* rs1 = &m_pipe[0].inst->rs1;
+    Operand* rs2 = &m_pipe[0].inst->rs2;
+    for (Operand* src : {rs1, rs2}) {
         if (!src->valid || !src->bypass_hint) {
             continue;
         }
@@ -41,9 +42,14 @@ void AGU::fwd_bypass()
             if (resp.valid && resp.ptag == src->ptag) {
                 src->val = resp.val;
                 src->bypass_ready = true;
+                src->data_available = true;
                 break;
             }
         }
+    }
+    if ((rs1->valid && !rs1->data_available) || (rs2->valid && !rs2->data_available)) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
 }
 
@@ -83,8 +89,13 @@ void AGU::R1()
     for (const auto& resp : m_reg_resp_q) {
         if (resp.valid && resp.ptag == src.ptag) {
             src.val = resp.val;
+            src.data_available = true;
             break;
         }
+    }
+    if ((src.valid && !src.data_available)) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
 }
 
@@ -185,3 +196,6 @@ void AGU::dump_states() const
 {
 
 }
+
+
+
