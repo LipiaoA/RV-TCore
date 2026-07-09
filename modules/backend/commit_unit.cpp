@@ -9,6 +9,7 @@
 #include "rename/rename_unit.h"
 #include "execute/lsu/lsu.h"
 #include "verify/ref_model_checker.h"
+#include "isa/decode.h"
 
 namespace {
 bool same_rob_id(const ROBID& lhs, const ROBID& rhs)
@@ -129,7 +130,7 @@ void CommitUnit::inst_commit() {
         auto entry = m_rob.head();
         if (entry && entry->valid && entry->inst && entry->inst->valid
             && entry->inst->state == InstState::EXECUTED) {
-            if (entry->inst->type == InstType::STD &&
+            if (entry->inst->type == InstType::STORE &&
                 !m_lsu.store_commit_ready(entry->inst->rid)) {
                 if (i == 0 && m_stats) {
                     ++m_stats->commit.head_not_ready_cycles;
@@ -179,6 +180,10 @@ void CommitUnit::inst_commit() {
                                committed->inst->pc, committed->inst->inst_name.c_str());
                     exit(1);
                 }
+            }
+            if (isa::is_ecall(committed->inst->opcode)) {
+                LOG_LEVEL1("CommitUnit", "ecall pc: 0x%lx", committed->inst->pc);
+                exit(committed->inst->rd.val);
             }
         } else {
             if (i == 0 && m_stats) {

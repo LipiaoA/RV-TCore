@@ -157,6 +157,10 @@ InstType inst_type(InstOp op) {
         type = InstType::VECTOR;
     } else if (is_int(op)) {
         type = InstType::INT;
+    } else if (is_cmd(op)) {
+        type = InstType::CMD;
+    } else if (is_ecall(op)) {
+        type = InstType::BRANCH;
     }
     return type;
 }

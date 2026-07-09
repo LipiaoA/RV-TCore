@@ -25,6 +25,7 @@ public:
 
     void                                    dump_states() const;
     void                                    flush(const FlushEvent& event);
+    void                                    squash_rid(const ROBID& rid, i32 ptag);
     void                                    reset();
 
 private:

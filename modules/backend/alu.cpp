@@ -28,8 +28,9 @@ void ALU::fwd_bypass()
     if (!m_pipe[0].valid || !m_pipe[0].inst) {
         return;
     }
-    MInstPtr inst = m_pipe[0].inst;
-    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+    Operand* rs1 = &m_pipe[0].inst->rs1;
+    Operand* rs2 = &m_pipe[0].inst->rs2;
+    for (Operand* src : {rs1, rs2}) {
         if (!src->valid || !src->bypass_hint) {
             continue;
         }
@@ -41,6 +42,20 @@ void ALU::fwd_bypass()
                 break;
             }
         }
+    }
+    if ((rs1->valid && !rs1->data_available) || (rs2->valid && !rs2->data_available)) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
+    } else {
+        WakeupEvent event;
+        event.valid = true;
+        event.type = WAKEUP_BYPASS;
+        event.ptag = rs1->ptag;
+        event.rid = m_pipe[0].inst->rid;
+        event.rtyp = RegType::GPR;
+        event.bypassable = true;
+        event.speculative = true;
+        event.speculative_mask = 1u << m_idx;
     }
     return;
 }
@@ -100,18 +115,16 @@ void ALU::R1()
             }
         }
     }
-    if (rs1.valid && !rs1.bypass_hint && !rs1.data_available) {
-        return;
+    if ((rs1.valid && !rs1.data_available && !rs1.bypass_hint) || (rs2.valid && !rs2.data_available && !rs2.bypass_hint)) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
-    if (rs2.valid && !rs2.bypass_hint && !rs2.data_available) {
-        return;
-    }
-    m_pipe[0].ready = true;
 }
 
 void ALU::E0()
 {
     if (!m_pipe[1].valid || !m_pipe[1].inst || m_commit_latch.valid) {
+        // broadcast(m_commit_latch.inst);
         return;
     }
     MInstPtr inst = m_pipe[1].inst;
@@ -130,14 +143,11 @@ void ALU::E0()
 void ALU::shift()
 {
     for (i32 i = m_stages - 1; i > 0; --i) {
-        if (!m_pipe[i].valid && m_pipe[i - 1].ready) {
+        if (!m_pipe[i].valid) {
             m_pipe[i] = m_pipe[i - 1];
             m_pipe[i - 1].valid = false;
             m_pipe[i - 1].inst = nullptr;
         }
-    }
-    for (i32 i = 0; i < m_stages; ++i) {
-        m_pipe[i].ready = false;
     }
 }
 
@@ -157,6 +167,8 @@ void ALU::wakeup(MInstPtr inst)
     event.producer_fu = FuType::ALU;
     event.producer_fu_id = static_cast<int>(m_idx);
     m_wakeup_bus.push_back(event);
+    LOG_LEVEL1("ALU Wakeup", "idx:%d inst: %s, rd:v%d-x%d-p%d-0x%016lx",
+               m_idx, inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
 }
 
 void ALU::broadcast(MInstPtr inst)
@@ -205,6 +217,27 @@ void ALU::flush(const FlushEvent& event)
     if (m_input_latch.valid && should_flush(m_input_latch.inst)) {
         m_input_latch.inst->state = InstState::FLUSHED;
         m_input_latch.inst->valid = false;
+        m_input_latch.valid = false;
+        m_input_latch.inst = nullptr;
+    }
+}
+
+void ALU::squash_rid(const ROBID& rid, i32 ptag)
+{
+    auto match = [&](MInstPtr inst) {
+        return inst && inst->rid.idx == rid.idx && inst->rid.direct == rid.direct;
+    };
+    for (i32 i = 0; i < m_stages; ++i) {
+        if (m_pipe[i].valid && match(m_pipe[i].inst)) {
+            m_pipe[i].valid = false;
+            m_pipe[i].inst = nullptr;
+        }
+    }
+    if (m_commit_latch.valid && match(m_commit_latch.inst)) {
+        m_commit_latch.valid = false;
+        m_commit_latch.inst = nullptr;
+    }
+    if (m_input_latch.valid && match(m_input_latch.inst)) {
         m_input_latch.valid = false;
         m_input_latch.inst = nullptr;
     }

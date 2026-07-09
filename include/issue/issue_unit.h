@@ -5,8 +5,16 @@
 #include "module_comm.h"
 #include "decode/inst.h"
 #include <deque>
+#include <unordered_set>
 #include "config.h"
 #include "rob/rob.h"
+
+class RegFileUnit;
+
+struct IssueCand {
+    MInstPtr inst { nullptr };
+    StoreIssueHalf store_half { StoreIssueHalf::NONE };
+};
 
 class IssueUnit : public IIssue {
 public:
@@ -27,10 +35,13 @@ private:
     void                                EmitSrcRead(const MInstPtr inst, const Operand& src, int idx);
     void                                EmitVecSrcRead(const MInstPtr inst, const Operand& src, int idx);
     void                                EmitTileSrcRead(const MInstPtr inst, const Operand& src, int idx);
-    FuType                              GetFuType(const MInstPtr inst);
-    bool                                is_buffered(const MInstPtr& inst) const;
-    size_t                              count_buffered_int_slots() const;
-    size_t                              count_buffered_ls_slots() const;
+    FuType                              GetFuType(const MInstPtr inst, StoreIssueHalf half);
+    void                                retire_executed(std::vector<MInstPtr>& inst_q);
+    bool                                in_issue_q(const ROBID& rid) const;
+    void                                requeue_from_rob(MInstPtr inst);
+    void                                apply_replay_to_inst(MInstPtr inst, i32 ptag, bool kill_sta, bool kill_std);
+    void                                handle_dep_kill(const WakeupEvent& event);
+    void                                clean_bypass_hint();
 
 private:
     std::vector<MInstPtr>               m_int_q;
@@ -45,7 +56,9 @@ private:
     OUTPUT ASyncQueue<RegReq>&          m_reg_req_q;
     OUTPUT ASyncQueue<VecRegReq>&       m_vec_reg_req_q;
     OUTPUT ASyncQueue<TileRegReq>&      m_tile_reg_req_q;
-    std::vector<MInstPtr>               m_select_buffer;
+    std::vector<IssueCand>              m_select_buffer;
+    RegFileUnit*                        m_regfile { nullptr };
+    LSU*                                m_lsu { nullptr };
     PerfStats*                          m_stats { nullptr };
 
     size_t                              m_int_issue_width  { 4 };

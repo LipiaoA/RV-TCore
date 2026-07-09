@@ -219,6 +219,11 @@ BruExecResult exec_bru(MInstPtr inst) {
             result.write_rd = inst->rd.valid;
             result.link = inst->pc + 4;
         } break;
+        case OP_ECALL: {
+            result.taken = false;
+            result.target = inst->pc + 4;
+            result.link = inst->rs1.val;
+        } break;
         default:
             result.valid = false;
             break;

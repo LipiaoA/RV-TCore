@@ -31,8 +31,9 @@ void BRU::fwd_bypass()
     if (!m_pipe[0].valid || !m_pipe[0].inst) {
         return;
     }
-    MInstPtr inst = m_pipe[0].inst;
-    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+    Operand* rs1 = &m_pipe[0].inst->rs1;
+    Operand* rs2 = &m_pipe[0].inst->rs2;
+    for (Operand* src : {rs1, rs2}) {
         if (!src->valid || !src->bypass_hint) {
             continue;
         }
@@ -43,6 +44,10 @@ void BRU::fwd_bypass()
                 break;
             }
         }
+    }
+    if ((rs1->valid && !rs1->data_available && !rs1->bypass_hint) || (rs2->valid && !rs2->data_available && !rs2->bypass_hint)) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
 }
 
@@ -57,6 +62,7 @@ bool branch_taken(InstOp op, u64 v1, u64 v2)
     case OP_BGEU: return v1 >= v2;
     case OP_JAL: return true;
     case OP_JALR: return true;
+    case OP_ECALL: return false;
     default:
         break;
     }
@@ -68,11 +74,11 @@ void BRU::tick()
     E0();
     R1();
     dump_states();
-    shift();
 }
 
 void BRU::commit()
 {
+    shift();
     if (m_input_latch.valid && !m_pipe[0].valid) {
         m_pipe[0].inst = m_input_latch.inst;
         m_pipe[0].valid = true;
@@ -105,10 +111,11 @@ void BRU::R1()
         if (!src->valid || src->bypass_hint) {
             continue;
         }
-        for (const auto& resp : m_reg_bypass_bus) {
+        for (const auto& resp : m_reg_resp_q) {
             if (resp.valid && resp.ptag == src->ptag) {
                 src->val = resp.val;
                 src->bypass_ready = true;
+                src->data_available = true;
                 break;
             }
         }

@@ -32,6 +32,8 @@ public:
     void                                reset() override;
 
     bool                                dispatch(MInstPtr inst);
+    // 轻量依赖 kill：从 FU pipe 摘掉该 rid，不置 FLUSHED，供 IQ 内 REPLAY
+    void                                squash_rid(const ROBID& rid, i32 ptag);
 
 private:
     void                                arbitration();

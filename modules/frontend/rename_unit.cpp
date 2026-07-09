@@ -16,7 +16,21 @@ bool is_lsq_type(InstType type)
         || type == InstType::STD || type == InstType::STORE;
 }
 
+void mark_ptag_used(std::vector<bool>& used, i32 ptag)
+{
+    if (ptag >= 0 && static_cast<u32>(ptag) < used.size()) {
+        used[static_cast<size_t>(ptag)] = true;
+    }
+}
 
+void mark_operand_phys(std::vector<bool>& used, const Operand& op)
+{
+    if (!op.valid) {
+        return;
+    }
+    mark_ptag_used(used, op.ptag);
+    mark_ptag_used(used, op.o_ptag);
+}
 }
 
 RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
@@ -263,6 +277,8 @@ void RenameUnit::r1() {
                     ++m_stats->rename.free_list_stall_cycles;
                 }
                 m_r1_buf.push_front(inst);
+                LOG_LEVEL1("RenameUnit R1", "r1 pc:0x%lx, inst: %s, free list stall",
+                    inst->pc, inst->inst_name.c_str());
                 break;
             }
             if (needs_vec_free_entry(inst)) {
@@ -356,20 +372,12 @@ void RenameUnit::r2() {
         m_lsu.allocate(inst);
 
         if (inst->type == InstType::STORE) {
-            MInstPtr inst2 = new MicroOp();
-            *inst2 = *inst;
-            inst2->type = InstType::STA;
-            inst2->rs2.valid = false; // rs2 is the data to be stored
-
-            if (!dispatch(inst2)) {
-                delete inst2;
-                assert(false);
-            }
-            inst->type = InstType::STD;
-            inst->rs1 = inst->rs2;
-            inst->rs2.valid = false;
+            inst->sta_iss = false;
+            inst->std_iss = false;
+            inst->sta_done = false;
+            inst->std_done = false;
+            inst->store_issue_half = StoreIssueHalf::NONE;
         }
-
 
         if (!dispatch(inst)) {
             m_r2_buf.push_front(inst);
@@ -430,10 +438,17 @@ void RenameUnit::rebuild_free_list() {
     std::vector<bool> used(m_prf_capacity, false);
     used[0] = true;
     for (i32 ptag : m_rat) {
-        if (ptag >= 0 && static_cast<u32>(ptag) < m_prf_capacity) {
-            used[static_cast<size_t>(ptag)] = true;
-        }
+        mark_ptag_used(used, ptag);
     }
+    // Surviving ROB entries still own dest/prev phys regs until retire.
+    m_rob.for_each([&](const RobEntry& e) {
+        if (!e.valid || !e.inst || !e.inst->valid) {
+            return;
+        }
+        if (e.inst->rd.valid && e.inst->rd.rtyp == RegType::GPR) {
+            mark_operand_phys(used, e.inst->rd);
+        }
+    });
 
     m_free_list.clear();
     for (u32 p = 1; p < m_prf_capacity; ++p) {
@@ -447,10 +462,16 @@ void RenameUnit::rebuild_vfree_list() {
     std::vector<bool> used(m_vprf_capacity, false);
     used[0] = true;
     for (i32 ptag : m_vrat) {
-        if (ptag >= 0 && static_cast<u32>(ptag) < m_vprf_capacity) {
-            used[static_cast<size_t>(ptag)] = true;
-        }
+        mark_ptag_used(used, ptag);
     }
+    m_rob.for_each([&](const RobEntry& e) {
+        if (!e.valid || !e.inst || !e.inst->valid) {
+            return;
+        }
+        if (e.inst->type == InstType::VECTOR && e.inst->vd.valid) {
+            mark_operand_phys(used, e.inst->vd);
+        }
+    });
     m_vfree_list.clear();
     for (u32 p = RV_VREG_SIZE; p < m_vprf_capacity; ++p) {
         if (!used[p]) {
@@ -462,10 +483,16 @@ void RenameUnit::rebuild_vfree_list() {
 void RenameUnit::rebuild_tfree_list() {
     std::vector<bool> used(m_tprf_capacity, false);
     for (i32 ptag : m_trat) {
-        if (ptag >= 0 && static_cast<u32>(ptag) < m_tprf_capacity) {
-            used[static_cast<size_t>(ptag)] = true;
-        }
+        mark_ptag_used(used, ptag);
     }
+    m_rob.for_each([&](const RobEntry& e) {
+        if (!e.valid || !e.inst || !e.inst->valid) {
+            return;
+        }
+        if (e.inst->type == InstType::TENSOR && e.inst->td.valid) {
+            mark_operand_phys(used, e.inst->td);
+        }
+    });
     m_tfree_list.clear();
     for (u32 p = RV_TILE_SIZE; p < m_tprf_capacity; ++p) {
         if (!used[p]) {
@@ -493,8 +520,7 @@ bool RenameUnit::can_dispatch(MInstPtr inst) const {
     if (!inst || !inst->valid) {
         return false;
     }
-    size_t need = inst->type == InstType::STORE ? 2 : 1;
-    return m_rename_issue_q.wsize() + need <= m_rename_issue_q.capacity();
+    return m_rename_issue_q.wsize() + 1 <= m_rename_issue_q.capacity();
 }
 
 void RenameUnit::flush() {
@@ -509,20 +535,12 @@ void RenameUnit::flush() {
             }
         });
     }
-    auto recycle_flushed = [&](const MInstPtr& inst) {
+    auto invalidate_flushed = [&](const MInstPtr& inst) {
         if (!inst || !inst->valid) {
             return;
         }
-        if (inst->rd.valid && inst->rd.rtyp == RegType::GPR) {
-            m_free_list.push_back(inst->rd.ptag);
-        }
-        if (inst->vd.valid && inst->type == InstType::VECTOR) {
-            m_vfree_list.push_back(inst->vd.ptag);
-        }
-        if (inst->td.valid && inst->type == InstType::TENSOR) {
-            m_tfree_list.push_back(inst->td.ptag);
-        }
         inst->valid = false;
+        inst->state = InstState::FLUSHED;
     };
 
     if (m_flush_event.scope == FlushScope::ALL) {
@@ -544,11 +562,11 @@ void RenameUnit::flush() {
     }
     m_r1_buf.clear();
     for (auto& inst : m_r2_buf) {
-        recycle_flushed(inst);
+        invalidate_flushed(inst);
     }
     m_r2_buf.clear();
     m_rename_issue_q.for_each([&](const MInstPtr& inst) {
-        recycle_flushed(inst);
+        invalidate_flushed(inst);
     });
     m_rename_issue_q.clear();
     auto it = std::find_if(m_checkpoints.begin(), m_checkpoints.end(),
@@ -562,9 +580,12 @@ void RenameUnit::flush() {
     m_rat = it->rat;
     m_vrat = it->vrat;
     m_trat = it->trat;
-    m_free_list = it->free_list;
-    m_vfree_list = it->vfree_list;
-    m_tfree_list = it->tfree_list;
+    // Rebuild from restored RAT + surviving ROB phys regs. Do not restore the
+    // checkpoint free-list snapshot: retires after the checkpoint already
+    // recycled o_ptags into the live free list, and that snapshot would drop them.
+    rebuild_free_list();
+    rebuild_vfree_list();
+    rebuild_tfree_list();
     m_checkpoints.erase(it, m_checkpoints.end());
 }
 

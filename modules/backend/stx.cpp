@@ -30,17 +30,22 @@ void STD::fwd_bypass()
         return;
     }
     MInstPtr inst = m_pipe[0].inst;
-    for (Operand* src : {&inst->rs1, &inst->rs2}) {
-        if (!src->valid || !src->bypass_hint) {
-            continue;
+    // STORE 半边用 rs2 作数据；旧 STD MicroOp 用 rs1
+    Operand* data = (inst->type == InstType::STORE) ? &inst->rs2 : &inst->rs1;
+    if (!data->valid || !data->bypass_hint) {
+        return;
+    }
+    for (const auto& resp : m_reg_bypass_bus) {
+        if (resp.valid && resp.ptag == data->ptag) {
+            data->val = resp.val;
+            data->bypass_ready = true;
+            data->data_available = true;
+            break;
         }
-        for (const auto& resp : m_reg_bypass_bus) {
-            if (resp.valid && resp.ptag == src->ptag) {
-                src->val = resp.val;
-                src->bypass_ready = true;
-                break;
-            }
-        }
+    }
+    if (data->valid && !data->bypass_ready && data->bypass_hint) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
 }
 
@@ -69,19 +74,23 @@ bool STD::dispatch(MInstPtr inst)
 void STD::R1()
 {
     MInstPtr inst = m_pipe[0].inst;
-    if (!m_pipe[0].valid || !inst || !inst->rs1.valid) {
+    if (!m_pipe[0].valid || !inst) {
         return;
     }
-    auto& src = inst->rs1;
-    if (src.bypass_hint) {
+    Operand& src = inst->rs2;
+    if (!src.valid || src.bypass_hint) {
         return;
     }
-    // read from reg prf
     for (const auto& resp : m_reg_resp_q) {
         if (resp.valid && resp.ptag == src.ptag) {
             src.val = resp.val;
+            src.data_available = true;
             break;
         }
+    }
+    if (src.valid && !src.data_available && !src.bypass_hint) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
 }
 
@@ -96,16 +105,22 @@ void STD::E0()
     if (!sq) {
         return;
     }
-    sq->data = inst->rs2.valid ? inst->rs2.val
-                               : (inst->rs1.valid ? inst->rs1.val : inst->data);
+    if (inst->type == InstType::STORE) {
+        sq->data = inst->rs2.valid ? inst->rs2.val : inst->data;
+    } else {
+        sq->data = inst->rs2.valid ? inst->rs2.val
+                                   : (inst->rs1.valid ? inst->rs1.val : inst->data);
+    }
     sq->data_ready = true;
     if (sq->ls_width == 0) {
         sq->ls_width = inst->ls_width;
     }
+    inst->std_done = true;
+    inst->data = sq->data;
+    inst->data_ready = true;
     m_lsu.on_store_operands_updated(*sq);
 
-
-    LOG_LEVEL1("STD E0", "store pc:0x%lx id:%lu stq idx:%zu addr:0x%lx data:0x%lx width:%u rid:%s%u",
+    LOG_LEVEL1("DGU E0", "store pc:0x%lx id:%lu stq idx:%zu addr:0x%lx data:0x%lx width:%u rid:%s%u",
                inst->pc, sq->store_id, sq->stq_idx, sq->addr, sq->data, sq->ls_width,
                inst->rid.direct ? "--" : "++", inst->rid.idx);
     m_pipe[1].valid = false;
@@ -139,6 +154,26 @@ void STD::flush(const FlushEvent& event)
         if (m_pipe[i].valid && should_flush(m_pipe[i].inst)) {
             m_pipe[i].inst->valid = false;
             m_pipe[i].inst->state = InstState::FLUSHED;
+            m_pipe[i].valid = false;
+            m_pipe[i].inst = nullptr;
+        }
+    }
+}
+
+void STD::squash_rid(const ROBID& rid, i32 ptag)
+{
+    auto match = [&](MInstPtr inst) {
+        return inst &&
+        inst->rid.idx == rid.idx &&
+        inst->rid.direct == rid.direct &&
+        inst->rs2.ptag == ptag;
+    };
+    if (m_input_latch.valid && match(m_input_latch.inst)) {
+        m_input_latch.valid = false;
+        m_input_latch.inst = nullptr;
+    }
+    for (i32 i = 0; i < m_stages; ++i) {
+        if (m_pipe[i].valid && match(m_pipe[i].inst)) {
             m_pipe[i].valid = false;
             m_pipe[i].inst = nullptr;
         }

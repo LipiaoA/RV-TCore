@@ -73,6 +73,37 @@ void ROB::mark_ready(ROBID rid, u64 result_val) {
     }
 }
 
+void ROB::mark_not_ready(ROBID rid) {
+    RobEntry* e = get(rid);
+    if (e) {
+        e->ready = false;
+    }
+}
+
+void ROB::for_each(const std::function<void(RobEntry&)>& fn)
+{
+    ROBID cur = m_head;
+    for (size_t n = 0; n < m_size; ++n) {
+        RobEntry& e = m_entries[cur.idx];
+        if (e.valid) {
+            fn(e);
+        }
+        cur = next_id(cur);
+    }
+}
+
+void ROB::for_each(const std::function<void(const RobEntry&)>& fn) const
+{
+    ROBID cur = m_head;
+    for (size_t n = 0; n < m_size; ++n) {
+        const RobEntry& e = m_entries[cur.idx];
+        if (e.valid) {
+            fn(e);
+        }
+        cur = next_id(cur);
+    }
+}
+
 std::optional<RobEntry> ROB::commit_head() {
     if (empty())
         return std::nullopt;

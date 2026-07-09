@@ -329,6 +329,8 @@ void Top::build() {
     issue_deps.reg_req_q = m_comm_queues.reg_req_q;
     issue_deps.vec_reg_req_q = m_comm_queues.vec_reg_req_q;
     issue_deps.tile_reg_req_q = m_comm_queues.tile_reg_req_q;
+    issue_deps.regfile = m_regfile;
+    issue_deps.lsu = m_lsu;
     issue_deps.perf_stats = &m_perf_stats;
     m_issue = new IssueUnit(issue_conf, issue_deps);
     FlushUnitDeps flush_deps;

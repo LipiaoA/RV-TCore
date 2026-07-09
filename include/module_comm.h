@@ -158,6 +158,7 @@ enum class FlushType {
     MEMORY_ORDER,
     LOAD_REPLAY,
     FENCE,
+    STOP,
     FLUSH_TYPE_COUNT
 };
 
@@ -171,6 +172,7 @@ constexpr static const char* FlushTypeStr[] = {
     "MEMORY_ORDER",
     "LOAD_REPLAY",
     "FENCE",
+    "STOP",
 };
 
 constexpr static const char* FlushScopeStr[] = {
@@ -233,7 +235,8 @@ enum class FlushScope {
 enum WakeupType {
     WAKEUP_BYPASS,     // 可旁路
     WAKEUP_WRITEBACK,  // 已写回PRF
-    WAKEUP_REPLAY,     // 依赖失效
+    WAKEUP_ACTIVE,     // 已激活
+    WAKEUP_REPLAY,     // 依赖失效 / LoadDepKill
     WAKEUP_KILL        // flush
 };
 typedef struct {
@@ -241,12 +244,14 @@ typedef struct {
     WakeupType type { WAKEUP_BYPASS };
     i32        ptag { -1 };
     ROBID      rid;
-    RegType   rtyp { RegType::GPR };
+    RegType    rtyp { RegType::GPR };
     bool       bypassable { false };
     bool       speculative { false };
     u32        speculative_mask { 0 };
     FuType     producer_fu { FuType::NONE };
     int        producer_fu_id { -1 };
+    // LoadDepKill：种子为出错 load 的 rd.ptag；IQ 内用 mask/ptag，离队用 ROB 闭包
+    bool       load_dep_kill { false };
 } WakeupEvent;
 
 typedef struct {
@@ -358,7 +363,6 @@ typedef struct {
 
 typedef struct {
     bool valid { false };
-    bool ready { false };
     MInstPtr inst { nullptr };
 } FUStage;
 
@@ -502,8 +506,6 @@ typedef struct {
     FlushEvent*                 flush_event { nullptr };
 } TRegFileDeps;
 
-class LSU;
-
 typedef struct {
     ASyncQueue<MInstPtr>*       inst_commit_q { nullptr };
     ROB*                        rob { nullptr };
@@ -530,6 +532,8 @@ typedef struct {
     ASyncQueue<VecRegReq>*      vec_reg_req_q { nullptr };
     ASyncQueue<TileRegReq>*     tile_reg_req_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
+    RegFileUnit*                regfile { nullptr };
+    LSU*                        lsu { nullptr };
     PerfStats*                  perf_stats { nullptr };
 } IssueDeps;
 

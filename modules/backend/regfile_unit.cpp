@@ -55,9 +55,12 @@ void RegFileUnit::r0() {
                 event.rid = req.rid;
                 event.rtyp = RegType::GPR;
                 m_wakeup_bus.push_back(event);
+                LOG_LEVEL1("RegFile Wakeup", "writeback x%d-p%d-0x%016lx",
+                    req.atag, req.ptag, req.val);
             }
         } else if (m_prf.is_ready(req.ptag)) {
             resp.val = m_prf.read(req.ptag);
+            LOG_LEVEL1("RegFile Ready", "read x%d-p%d-0x%016lx", req.atag, req.ptag, resp.val);
             resp.valid = true;
             resp.ptag = req.ptag;
             resp.rid = req.rid;
@@ -74,6 +77,15 @@ void RegFileUnit::r0() {
             } else {
                 assert(0);
             }
+        } else {
+            WakeupEvent event;
+            event.valid = true;
+            event.type = WAKEUP_REPLAY;
+            event.ptag = req.ptag;
+            event.rid = req.rid;
+            event.rtyp = RegType::GPR;
+            m_wakeup_bus.push_back(event);
+            LOG_LEVEL1("RegFile Wakeup", "replay x%d-p%d", req.atag, req.ptag);
         }
     }
 }

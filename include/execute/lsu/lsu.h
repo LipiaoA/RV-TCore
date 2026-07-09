@@ -180,6 +180,9 @@ public:
     int                                 alloc_store_entry();
     void                                replay(LQEntry& load_entry);
     void                                replay(SQEntry& store_entry);
+    void                                replay_store_half(ROBID rid, bool kill_sta, bool kill_std);
+    // 1A: load 错推测轻量恢复（原地 replay + LoadDepKill，不 flush）
+    void                                recover_load_misspec(LQEntry& load_entry, SQEntry* store_entry);
     bool                                checkViolation(uint64_t addr, ROBID rob_idx, u8 byte_mask) const;
 
     SQEntry*                            find_sq_for_std(MInstPtr inst);
@@ -237,6 +240,7 @@ private:
 
     void                                check_mem_order(SQEntry& st);
     void                                flush_order(LQEntry& load_entry, SQEntry& store_entry);
+    void                                emit_load_dep_kill(MInstPtr load_uop);
     void                                wakeup_load(MInstPtr inst, bool speculative);
     void                                issue_store(SQEntry& s, size_t stq_idx);
     static u64                          extract_load_data(const MemResp& resp, u64 addr, u32 width, u32 line_size);
@@ -245,7 +249,6 @@ private:
 
 
     RingQueue<MInstPtr>                 m_complete_q;
-    std::deque<MInstPtr>                m_wb_pending;
     std::deque<PendingMemResp>          m_pending_mem_resps;
     std::deque<PendingStoreResp>        m_pending_store_resps;
     std::deque<LSUWBSlot>               m_wb_pipe;

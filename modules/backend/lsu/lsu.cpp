@@ -233,7 +233,6 @@ void LSU::tick()
     m_tlb_port_busy = false;
 
     wb();
-    out();
     for (auto& s : lsu_st_q) {
         if (s.valid && s.addr_ready && !s.addr_is_virtual && !s.sta_completed && s.data_ready) {
             sta(s);
@@ -254,17 +253,6 @@ void LSU::tick()
 
 void LSU::commit()
 {
-}
-
-void LSU::out()
-{
-    while (!m_wb_pending.empty()) {
-        MInstPtr inst = m_wb_pending.front();
-        m_wb_pending.pop_front();
-        if (inst && inst->valid) {
-            m_complete_q.write(inst);
-        }
-    }
 }
 
 void LSU::wb()
@@ -454,7 +442,8 @@ void LSU::lcam(LSUS1Slot& slot)
         entry->state = READY;
         enqueue_wb(entry->load_id, fwd->second, 1);
         if (entry->uop && entry->uop->rd.valid) {
-            wakeup_load(entry->uop, true);
+            // TODO: Add speculative load wakeup
+            // wakeup_load(entry->uop, true);
         }
         LOG_LEVEL1("LSU LCAM", "forward pc:0x%lx load_id:%lu ldq:%zu stq:%zu addr:0x%lx data:0x%lx",
                    entry->uop->pc, entry->load_id, slot.ldq_idx, fwd->first, slot.vaddr, fwd->second);
@@ -464,7 +453,7 @@ void LSU::lcam(LSUS1Slot& slot)
     if (checkViolation(slot.vaddr, entry->rob_idx, load_mask)
         || sq_conflict(slot.vaddr, load_mask, *entry)) {
         slot.killed = true;
-        replay(*entry);
+        recover_load_misspec(*entry, nullptr);
         LOG_LEVEL1("LSU LCAM", "replay load_id:%lu ldq:%zu addr:0x%lx mask:0x%x",
                    entry->load_id, slot.ldq_idx, slot.vaddr, load_mask);
         return;
@@ -629,7 +618,8 @@ void LSU::fire_load(size_t ldq_idx)
         if (!s.valid) {
             s = slot;
             if (entry.uop && entry.uop->rd.valid) {
-                wakeup_load(entry.uop, true);
+                // TODO: Add speculative load wakeup
+                // wakeup_load(entry.uop, true);
             }
             LOG_LEVEL1("LSU ISS", "issue load pc:0x%lx id:%lu addr:0x%lx mask:0x%x, waiting store:%d",
                        entry.uop->pc, entry.load_id, entry.addr, load_mask, entry.waiting_on_store);
@@ -716,7 +706,7 @@ void LSU::complete_load(uint64_t load_id, uint64_t data)
 
     const u8 load_mask = entry.uop ? gen_byte_mask(entry.addr, entry.uop->ls_width) : 0xFFu;
     if (!entry.forward_std_val && checkViolation(entry.addr, entry.rob_idx, load_mask)) {
-        replay(entry);
+        recover_load_misspec(entry, nullptr);
         LOG_LEVEL1("LSU WB", "complete replay pc:0x%lx id:%lu addr:0x%lx mask:0x%x",
                    entry.uop->pc, entry.load_id, entry.addr, load_mask);
         if (entry.uop) {
@@ -744,7 +734,7 @@ void LSU::complete_load(uint64_t load_id, uint64_t data)
         entry.uop->rd.val = data;
         entry.uop->load_data = data;
         wakeup_load(entry.uop, false);
-        m_wb_pending.push_back(entry.uop);
+        m_complete_q.write(entry.uop);
     }
     LOG_LEVEL1("LSU WB", "complete load pc:0x%lx id:%lu ldq:%zu addr:0x%lx data:0x%lx",
                entry.uop->pc, entry.load_id, entry.ldq_idx, entry.addr, data);
@@ -755,8 +745,14 @@ void LSU::sta(SQEntry& st)
     if (!st.uop || st.sta_completed) {
         return;
     }
+    // 双半边都齐才完成整条 STORE
+    if (!st.addr_ready || !st.data_ready || st.addr_is_virtual) {
+        return;
+    }
     st.state = READY;
     st.sta_completed = true;
+    st.uop->sta_done = true;
+    st.uop->std_done = true;
     m_complete_q.write(st.uop);
     LOG_LEVEL1("LSU STA", "complete store_id:%lu stq:%zu addr:0x%lx paddr:0x%lx",
                st.store_id, st.stq_idx, st.addr, st.pa);
@@ -773,7 +769,7 @@ void LSU::wakeup_load(MInstPtr inst, bool speculative)
     event.ptag = inst->rd.ptag;
     event.rid = inst->rid;
     m_wakeup_bus.push_back(event);
-    LOG_LEVEL1("LSU Wakeup", "ptag:%d rid:%u-%u speculative:%d",
+    LOG_LEVEL1("LSU Wakeup", "ptag:p%d rid:%u-%u speculative:%d",
                event.ptag, event.rid.direct, event.rid.idx, speculative);
 }
 
@@ -990,29 +986,41 @@ void LSU::flush_order(LQEntry& load_entry, SQEntry& store_entry)
     if (!load_entry.uop) {
         return;
     }
-
+    // 4A: 默认轻量恢复，不再投递 MEMORY_ORDER flush / redirect
     load_entry.violation_reported = true;
-    uint32_t ssid = m_ssp.mergeSSID(load_entry.uop->pc,
-        store_entry.uop ? store_entry.uop->pc : store_entry.addr);
-    m_ssp.updateLFST(ssid, store_entry.store_id);
+    recover_load_misspec(load_entry, &store_entry);
+}
 
-    FlushEvent event {};
+void LSU::emit_load_dep_kill(MInstPtr load_uop)
+{
+    if (!load_uop || !load_uop->rd.valid) {
+        return;
+    }
+    WakeupEvent event {};
     event.valid = true;
-    event.type = FlushType::MEMORY_ORDER;
-    event.source = FlushSource::LSU;
-    event.scope = FlushScope::FROM_RID;
-    event.rid = load_entry.rob_idx;
-    event.redirect = true;
-    event.redirect_pc = load_entry.uop->pc;
-    event.inst_pc = load_entry.uop->pc;
-    event.fetch_id = load_entry.uop->fetch_id;
-    event.replay_load_idx = load_entry.uop->load_idx;
-    event.replay_store_idx = store_entry.store_id;
-    event.epoch = load_entry.uop->epoch;
-    m_flush_req_q.write(event);
-    LOG_LEVEL1("LSU Flush Req", "type:%s load_id:%lu store_id:%lu rid:%u-%u redirect_pc:0x%lx ssid:%u",
-               FlushTypeStr[static_cast<int>(event.type)], load_entry.load_id,
-               store_entry.store_id, event.rid.direct, event.rid.idx, event.redirect_pc, ssid);
+    event.type = WAKEUP_REPLAY;
+    event.load_dep_kill = true;
+    event.ptag = load_uop->rd.ptag;
+    event.rid = load_uop->rid;
+    event.rtyp = RegType::GPR;
+    m_wakeup_bus.push_back(event);
+    LOG_LEVEL1("LSU LoadDepKill", "ptag:p%d rid:%u-%u pc:0x%lx",
+               event.ptag, event.rid.direct, event.rid.idx, load_uop->pc);
+}
+
+void LSU::recover_load_misspec(LQEntry& load_entry, SQEntry* store_entry)
+{
+    if (store_entry && store_entry->uop && load_entry.uop) {
+        uint32_t ssid = m_ssp.mergeSSID(load_entry.uop->pc, store_entry->uop->pc);
+        m_ssp.updateLFST(ssid, store_entry->store_id);
+    } else if (store_entry && load_entry.uop) {
+        uint32_t ssid = m_ssp.mergeSSID(load_entry.uop->pc, store_entry->addr);
+        m_ssp.updateLFST(ssid, store_entry->store_id);
+    }
+    replay(load_entry);
+    emit_load_dep_kill(load_entry.uop);
+    LOG_LEVEL1("LSU Recover", "1A misspec load_id:%lu no-flush",
+               load_entry.load_id);
 }
 
 bool LSU::can_alloc(MInstPtr inst) const
@@ -1023,20 +1031,8 @@ bool LSU::can_alloc(MInstPtr inst) const
     if (inst->type == InstType::LOAD) {
         return !ldq_full();
     }
-    if (inst->type == InstType::STA || inst->type == InstType::STORE) {
+    if (inst->type == InstType::STORE || inst->type == InstType::STA) {
         return !stq_full();
-    }
-    if (inst->type == InstType::STD) {
-        auto token_it = m_store_token_map.find(inst->store_id);
-        if (token_it != m_store_token_map.end() && token_it->second < lsu_st_q.size()) {
-            return lsu_st_q[token_it->second].valid;
-        }
-        for (const auto& entry : lsu_st_q) {
-            if (entry.valid && entry.store_id == inst->store_id) {
-                return true;
-            }
-        }
-        return false;
     }
     return false;
 }
@@ -1054,9 +1050,16 @@ bool LSU::can_dispatch(MInstPtr inst) const
         }
         return false;
     }
-    if (inst->type == InstType::STA || inst->type == InstType::STD || inst->type == InstType::STORE) {
+    if (inst->type == InstType::STORE || inst->type == InstType::STA ||
+        inst->type == InstType::STD) {
         for (const auto& entry : lsu_st_q) {
-            if (entry.valid && entry.store_id == inst->store_id) {
+            if (!entry.valid) {
+                continue;
+            }
+            if (entry.rob_idx.idx == inst->rid.idx && entry.rob_idx.direct == inst->rid.direct) {
+                return true;
+            }
+            if (entry.store_id == inst->store_id && inst->store_id != 0) {
                 return true;
             }
         }
@@ -1120,19 +1123,6 @@ bool LSU::allocate(MInstPtr inst)
         LOG_LEVEL1("LSU Alloc", "store stq:%zu store_id:%lu token:%lu pc:0x%lx rid:%u-%u width:%u",
                    entry.stq_idx, entry.store_id, entry.store_token, inst->pc,
                    inst->rid.direct, inst->rid.idx, entry.ls_width);
-        return true;
-    }
-    if (inst->type == InstType::STD) {
-        SQEntry* sq = find_sq_for_std(inst);
-        if (!sq) {
-            return false;
-        }
-        inst->store_id = sq->store_id;
-        if (sq->ls_width == 0) {
-            sq->ls_width = inst->ls_width;
-        }
-        LOG_LEVEL1("LSU Alloc", "std bind store_id:%lu stq:%zu pc:0x%lx width:%u",
-                   sq->store_id, sq->stq_idx, inst->pc, sq->ls_width);
         return true;
     }
     return true;
@@ -1379,8 +1369,13 @@ void LSU::replay(LQEntry& load_entry)
     load_entry.succeeded = false;
     load_entry.forward_std_val = false;
     load_entry.speculative = false;
+    load_entry.order_fail = false;
     load_entry.state = WAIT_SQ_CHECK;
     load_entry.waiting_on_store = true;
+    if (load_entry.uop) {
+        load_entry.uop->state = InstState::REPLAY;
+        load_entry.uop->executed = false;
+    }
 }
 
 void LSU::replay(SQEntry& store_entry)
@@ -1390,6 +1385,38 @@ void LSU::replay(SQEntry& store_entry)
                ldst_state_str(store_entry.state));
     store_entry.data_ready = false;
     store_entry.state = WAIT_ADDR;
+    store_entry.sta_completed = false;
+}
+
+void LSU::replay_store_half(ROBID rid, bool kill_sta, bool kill_std)
+{
+    SQEntry* st = find_store_by_rid(rid);
+    if (!st || !st->valid) {
+        return;
+    }
+    if (kill_sta) {
+        st->addr_ready = false;
+        st->addr_is_virtual = true;
+        st->pa = 0;
+        st->sta_completed = false;
+        st->state = WAIT_ADDR;
+        // if (st->uop) {
+        //     st->uop->sta_iss = false;
+        //     st->uop->sta_done = false;
+        //     st->uop->addr_ready = false;
+        // }
+    }
+    if (kill_std) {
+        st->data_ready = false;
+        st->sta_completed = false;
+        // if (st->uop) {
+        //     st->uop->std_iss = false;
+        //     st->uop->std_done = false;
+        //     st->uop->data_ready = false;
+        // }
+    }
+    LOG_LEVEL1("LSU Replay", "store half rid:%s%u kill_sta:%d kill_std:%d",
+               rid.direct ? "--" : "++", rid.idx, kill_sta, kill_std);
 }
 
 void LSU::flush(const FlushEvent& event)
@@ -1450,18 +1477,6 @@ void LSU::flush(const FlushEvent& event)
         }
     }
     m_complete_q = std::move(kept);
-
-    m_wb_pending.erase(
-        std::remove_if(m_wb_pending.begin(), m_wb_pending.end(),
-            [&](const MInstPtr& inst) {
-                if (inst && should_flush(inst->rid)) {
-                    inst->valid = false;
-                    inst->state = InstState::FLUSHED;
-                    return true;
-                }
-                return false;
-            }),
-        m_wb_pending.end());
 
     m_pending_mem_resps.erase(
         std::remove_if(m_pending_mem_resps.begin(), m_pending_mem_resps.end(),
@@ -1525,7 +1540,6 @@ void LSU::reset()
         entry = SQEntry {};
     }
     m_complete_q.clear();
-    m_wb_pending.clear();
     m_pending_mem_resps.clear();
     m_pending_store_resps.clear();
     m_wb_pipe.clear();

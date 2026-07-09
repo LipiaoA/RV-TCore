@@ -1,6 +1,7 @@
 #ifndef RV_TCORE_ROB_H
 #define RV_TCORE_ROB_H
 
+#include <functional>
 #include <optional>
 #include <vector>
 
@@ -30,6 +31,7 @@ public:
     std::optional<ROBID>                alloc(const MInstPtr inst);
     RobEntry*                           get(ROBID id);
     void                                mark_ready(ROBID id, u64 result_val);
+    void                                mark_not_ready(ROBID id);
     std::optional<RobEntry>             commit_head();
     bool                                full() const;
     bool                                has_space(u32 count = 1) const;
@@ -37,6 +39,8 @@ public:
     std::optional<RobEntry>             head();
     size_t                              size() const { return m_size; }
     void                                reset();
+    void                                for_each(const std::function<void(RobEntry&)>& fn);
+    void                                for_each(const std::function<void(const RobEntry&)>& fn) const;
 
     // 若某一 id 当前不在有效占用窗口内，则退化为按 (direct, id) 字典序，保证全序稳定。
     bool                                 is_older_than(const ROBID& a, const ROBID& b) const;

@@ -41,14 +41,18 @@ typedef struct {
     bool bypass_hint { false };
     bool bypass_ready { false };
     bool data_available {false};
+    u32 speculative_child_mask { 0 };
     i32 o_ptag { -1 };
     RegType rtyp { RegType::GPR };
     u32 rgrp { 1 };
 } Operand;
 
-typedef struct {
+typedef struct ROBID{
     u32 idx;
     u32 direct {0};
+    bool operator ==(const struct ROBID& other) const {
+        return idx == other.idx && direct == other.direct;
+    }
 } ROBID;
 
 typedef struct {
@@ -75,6 +79,7 @@ enum class InstType {
     BRANCH,
     INT,
     FP,
+    CMD,
     VECTOR,
     TENSOR,
     NUM_INST_TYPES,
@@ -83,12 +88,19 @@ enum class InstType {
 enum class InstState {
     NONE = 0,
     RENAMED = 1,
-    ISSUED = 2,
-    EXECUTED = 3,
-    COMMITTED = 4,
-    FLUSHED = 5,
-    REPLAY = 6,
-    RETIRED = 7,
+    ISSUED,
+    FU_ACTIVE,
+    EXECUTED,
+    COMMITTED,
+    FLUSHED,
+    REPLAY,
+    RETIRED,
+};
+
+enum class StoreIssueHalf {
+    NONE = 0,
+    STA,
+    STD,
 };
 
 typedef struct MicroOp {
@@ -96,6 +108,7 @@ typedef struct MicroOp {
     u64 pc;
     std::string inst_name;
     InstState state { InstState::NONE };
+    bool next_valid { false };
     u32 inst_size {4}; // FIXME: should be modified
 
     InstOp opcode;
@@ -132,6 +145,12 @@ typedef struct MicroOp {
     u32 ls_width {0};
     bool executed = false;
     bool replay = false;
+    // STORE 半发射/半完成（单 MicroOp，不再拆 STA/STD）
+    bool sta_iss { false };
+    bool std_iss { false };
+    bool sta_done { false };
+    bool std_done { false };
+    StoreIssueHalf store_issue_half { StoreIssueHalf::NONE };
     u64 ssid { 0 };
     // checkpoint id
     u64 c_id { 0 };
@@ -142,7 +161,22 @@ typedef struct MicroOp {
     u64 exception_cause { 0 };
     pc_t exception_tval { 0 };
 
+    bool sta_ready() const {
+        return !rs1.valid || rs1.rtyp != RegType::GPR || rs1.ready;
+    }
+
+    bool std_ready() const {
+        return !rs2.valid || rs2.rtyp != RegType::GPR || rs2.ready;
+    }
+
+    bool store_fully_issued() const {
+        return sta_iss && std_iss;
+    }
+
     bool ready() const {
+        if (type == InstType::STORE) {
+            return (!sta_iss && sta_ready()) || (!std_iss && std_ready());
+        }
         bool ready = true;
         if (rs1.valid && rs1.rtyp == RegType::GPR) {
             ready &= rs1.ready;

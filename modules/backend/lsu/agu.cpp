@@ -33,17 +33,21 @@ void AGU::fwd_bypass()
         return;
     }
     MInstPtr inst = m_pipe[0].inst;
-    for (Operand* src : {&inst->rs1, &inst->rs2}) {
-        if (!src->valid || !src->bypass_hint) {
-            continue;
+    Operand* src = &inst->rs1;
+    if (!src->valid || !src->bypass_hint) {
+        return;
+    }
+    for (const auto& resp : m_reg_bypass_bus) {
+        if (resp.valid && resp.ptag == src->ptag) {
+            src->val = resp.val;
+            src->bypass_ready = true;
+            src->data_available = true;
+            break;
         }
-        for (const auto& resp : m_reg_bypass_bus) {
-            if (resp.valid && resp.ptag == src->ptag) {
-                src->val = resp.val;
-                src->bypass_ready = true;
-                break;
-            }
-        }
+    }
+    if ((!src->data_available)) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
 }
 
@@ -83,8 +87,13 @@ void AGU::R1()
     for (const auto& resp : m_reg_resp_q) {
         if (resp.valid && resp.ptag == src.ptag) {
             src.val = resp.val;
+            src.data_available = true;
             break;
         }
+    }
+    if ((src.valid && !src.data_available && !src.bypass_hint)) {
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
     }
 }
 
@@ -100,7 +109,7 @@ void AGU::E0()
         return;
     }
 
-    if (inst->type == InstType::STA) {
+    if (inst->type == InstType::STORE) {
         SQEntry* st = m_lsu.find_store_by_id(inst->store_id);
         if (!st) {
             return;
@@ -111,6 +120,9 @@ void AGU::E0()
         if (st_entry.ls_width == 0) {
             st_entry.ls_width = inst->ls_width;
         }
+        inst->sta_done = true;
+        inst->addr = ret.addr;
+        inst->addr_ready = true;
         m_lsu.on_store_operands_updated(st_entry);
         LOG_LEVEL1("AGU E0", "addr ready,store pc:0x%lx id:%lu addr:0x%lx rid:%s%u",
                    inst->pc, st_entry.store_id, st_entry.addr, inst->rid.direct ? "--" : "++", inst->rid.idx);
@@ -161,6 +173,25 @@ void AGU::flush(const FlushEvent& event)
     }
 }
 
+void AGU::squash_rid(const ROBID& rid, i32 ptag)
+{
+    auto match = [&](MInstPtr inst) {
+        return inst && inst->rid.idx == rid.idx &&
+               inst->rid.direct == rid.direct &&
+               inst->rs1.ptag == ptag;
+    };
+    if (m_input_latch.valid && match(m_input_latch.inst)) {
+        m_input_latch.valid = false;
+        m_input_latch.inst = nullptr;
+    }
+    for (i32 i = 0; i < m_stages; ++i) {
+        if (m_pipe[i].valid && match(m_pipe[i].inst)) {
+            m_pipe[i].valid = false;
+            m_pipe[i].inst = nullptr;
+        }
+    }
+}
+
 void AGU::commit()
 {
     shift();
@@ -185,3 +216,6 @@ void AGU::dump_states() const
 {
 
 }
+
+
+

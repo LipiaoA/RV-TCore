@@ -97,7 +97,21 @@ void ExecuteUnit::tick() {
     arbitration();
 }
 
-void ExecuteUnit::commit() {
+void ExecuteUnit::commit()
+{
+    for (u32 i = 0; i < m_alu_num; ++i) {
+        m_alus[i].fwd_bypass();
+    }
+    for (u32 i = 0; i < m_bru_num; ++i) {
+        m_brus[i].fwd_bypass();
+    }
+    for (u32 i = 0; i < m_agu_num; ++i) {
+        m_agus[i].fwd_bypass();
+    }
+    for (u32 i = 0; i < m_std_num; ++i) {
+        m_stds[i].fwd_bypass();
+    }
+
     for (u32 i = 0; i < m_alu_num; i++) {
         m_alus[i].commit();
     }
@@ -120,20 +134,6 @@ void ExecuteUnit::commit() {
         m_stds[i].commit();
     }
     m_lsu.commit();
-
-    for (u32 i = 0; i < m_alu_num; ++i) {
-        m_alus[i].fwd_bypass();
-    }
-    for (u32 i = 0; i < m_bru_num; ++i) {
-        m_brus[i].fwd_bypass();
-    }
-    for (u32 i = 0; i < m_agu_num; ++i) {
-        m_agus[i].fwd_bypass();
-    }
-    for (u32 i = 0; i < m_std_num; ++i) {
-        m_stds[i].fwd_bypass();
-    }
-
     m_inst_commit_q.commit();
     m_reg_bypass_bus.clear();
 }
@@ -145,7 +145,6 @@ bool ExecuteUnit::dispatch(MInstPtr inst)
             u32 idx = (next + n) % count;
             if (fus[idx].dispatch(inst)) {
                 next = (idx + 1) % count;
-                inst->state = InstState::ISSUED;
                 if (m_stats) {
                     ++m_stats->execute.dispatch_accepted;
                 }
@@ -182,15 +181,21 @@ bool ExecuteUnit::dispatch(MInstPtr inst)
         }
         break;
     case InstType::STA:
-    case InstType::STORE:
     case InstType::LOAD:
         if (dispatch_round_robin(m_agus, m_agu_num, m_next_agu)) {
             return true;
         }
         break;
-    case InstType::STD:
-        if (dispatch_round_robin(m_stds, m_std_num, m_next_std)) {
-            return true;
+    case InstType::STORE:
+        if (inst->store_issue_half == StoreIssueHalf::STD) {
+            if (dispatch_round_robin(m_stds, m_std_num, m_next_std)) {
+                return true;
+            }
+        } else {
+            // STA half or default → AGU
+            if (dispatch_round_robin(m_agus, m_agu_num, m_next_agu)) {
+                return true;
+            }
         }
         break;
     default:
@@ -200,6 +205,19 @@ bool ExecuteUnit::dispatch(MInstPtr inst)
         ++m_stats->execute.dispatch_rejected;
     }
     return false;
+}
+
+void ExecuteUnit::squash_rid(const ROBID& rid, i32 ptag)
+{
+    for (u32 i = 0; i < m_alu_num; ++i) {
+        m_alus[i].squash_rid(rid, ptag);
+    }
+    for (u32 i = 0; i < m_agu_num; ++i) {
+        m_agus[i].squash_rid(rid, ptag);
+    }
+    for (u32 i = 0; i < m_std_num; ++i) {
+        m_stds[i].squash_rid(rid, ptag);
+    }
 }
 
 void ExecuteUnit::arbitration() {
