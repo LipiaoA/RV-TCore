@@ -73,12 +73,22 @@ void FPU::R1()
         }
         return false;
     };
+    auto replay = [&]() {
+        inst->fu_pending = false;
+        inst->state = InstState::REPLAY;
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
+    };
     if (inst->rs1.valid && !read_reg(inst->rs1)) {
+        replay();
         return;
     }
     if (inst->rs2.valid && !read_reg(inst->rs2)) {
+        replay();
         return;
     }
+    inst->fu_pending = false;
+    inst->state = InstState::FU_ACTIVE;
     if (inst->rd.valid) {
         wakeup(inst);
     }

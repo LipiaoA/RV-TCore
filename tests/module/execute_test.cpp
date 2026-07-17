@@ -19,6 +19,7 @@
 int main()
 {
     ASyncQueue<RegReq> reg_req_q(32);
+    ASyncQueue<FuAcceptEvent> fu_accept_q(32);
     ASyncQueue<FlushEvent> flush_req_q(8);
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> alu_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> bru_resp_q;
@@ -53,11 +54,27 @@ int main()
     assert(alu.dispatch(alu_inst));
     alu.commit();
     alu.tick();
+    assert(alu_inst->state == InstState::FU_ACTIVE);
     assert(wakeup_bus.size() == 1);
     assert(wakeup_bus[0].valid);
     assert(wakeup_bus[0].type == WAKEUP_BYPASS);
     assert(wakeup_bus[0].ptag == alu_inst->rd.ptag);
     wakeup_bus.clear();
+
+    ALU replay_alu(alu_conf, alu_deps);
+    MInstPtr replay_inst = new MicroOp();
+    replay_inst->valid = true;
+    replay_inst->state = InstState::RENAMED;
+    replay_inst->fu_pending = true;
+    replay_inst->opcode = OP_ADD;
+    replay_inst->type = InstType::INT;
+    replay_inst->rs1.valid = true;
+    replay_inst->rs1.ptag = 20;
+    assert(replay_alu.dispatch(replay_inst));
+    replay_alu.commit();
+    replay_alu.tick();
+    assert(replay_inst->state == InstState::REPLAY);
+    assert(!replay_inst->fu_pending);
 
     BRUDeps bru_deps {};
     bru_deps.rob = &rob;
@@ -79,6 +96,7 @@ int main()
     assert(bru.dispatch(bru_inst));
     bru.commit();
     bru.tick();
+    assert(bru_inst->state == InstState::FU_ACTIVE);
     assert(wakeup_bus.size() == 1);
     assert(wakeup_bus[0].valid);
     assert(wakeup_bus[0].type == WAKEUP_BYPASS);
@@ -150,11 +168,19 @@ int main()
     agu_deps.reg_req_q = &reg_req_q;
     agu_deps.reg_resp_q = &lsu_resp_q;
     agu_deps.reg_bypass_bus = &bypass_q;
+    agu_deps.fu_accept_q = &fu_accept_q;
+    agu_deps.lsu_ld_q = &load_q;
+    agu_deps.lsu_st_q = &store_q;
+    agu_deps.lsu = &lsu;
     STDDeps std_deps {};
     std_deps.rob = &rob;
     std_deps.reg_req_q = &reg_req_q;
     std_deps.reg_resp_q = &lsu_resp_q;
     std_deps.reg_bypass_bus = &bypass_q;
+    std_deps.fu_accept_q = &fu_accept_q;
+    std_deps.lsu_ld_q = &load_q;
+    std_deps.lsu_st_q = &store_q;
+    std_deps.lsu = &lsu;
 
     ExecDeps exec_deps {};
     exec_deps.lsu = &lsu;

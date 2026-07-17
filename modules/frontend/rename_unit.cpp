@@ -356,18 +356,10 @@ void RenameUnit::r2() {
         m_lsu.allocate(inst);
 
         if (inst->type == InstType::STORE) {
-            MInstPtr inst2 = new MicroOp();
-            *inst2 = *inst;
-            inst2->type = InstType::STA;
-            inst2->rs2.valid = false; // rs2 is the data to be stored
-
-            if (!dispatch(inst2)) {
-                delete inst2;
-                assert(false);
-            }
-            inst->type = InstType::STD;
-            inst->rs1 = inst->rs2;
-            inst->rs2.valid = false;
+            inst->sta_state = StorePartState::WAIT_ISSUE;
+            inst->std_state = StorePartState::WAIT_ISSUE;
+            inst->sta_generation = 0;
+            inst->std_generation = 0;
         }
 
 
@@ -493,8 +485,7 @@ bool RenameUnit::can_dispatch(MInstPtr inst) const {
     if (!inst || !inst->valid) {
         return false;
     }
-    size_t need = inst->type == InstType::STORE ? 2 : 1;
-    return m_rename_issue_q.wsize() + need <= m_rename_issue_q.capacity();
+    return m_rename_issue_q.wsize() < m_rename_issue_q.capacity();
 }
 
 void RenameUnit::flush() {

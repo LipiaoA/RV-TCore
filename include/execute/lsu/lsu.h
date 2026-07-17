@@ -180,6 +180,9 @@ public:
     int                                 alloc_store_entry();
     void                                replay(LQEntry& load_entry);
     void                                replay(SQEntry& store_entry);
+    void                                replay_store_part(
+                                            MInstPtr inst,
+                                            StorePart part);
     bool                                checkViolation(uint64_t addr, ROBID rob_idx, u8 byte_mask) const;
 
     SQEntry*                            find_sq_for_std(MInstPtr inst);

@@ -358,9 +358,34 @@ typedef struct {
 } LoadReq;
 
 typedef struct {
+    MInstPtr inst { nullptr };
+    StorePart part { StorePart::NONE };
+    u32 generation { 0 };
+} IssueRequest;
+
+enum class FuAcceptResult {
+    ACCEPTED = 0,
+    REPLAY,
+};
+
+typedef struct {
+    bool valid { false };
+    MInstPtr inst { nullptr };
+    StorePart part { StorePart::NONE };
+    FuAcceptResult result { FuAcceptResult::ACCEPTED };
+    u32 generation { 0 };
+} FuAcceptEvent;
+
+typedef struct {
     bool valid { false };
     MInstPtr inst { nullptr };
 } FUStage;
+
+typedef struct {
+    bool valid { false };
+    bool feedback_sent { false };
+    IssueRequest request {};
+} IssueStage;
 
 struct RatCheckpoint {
     bool valid { false };
@@ -383,6 +408,7 @@ struct ModuleCommQueues {
     ASyncQueue<MInstPtr>*           rename_to_issue{ nullptr };     // Rename 写 -> Dispatch 读
     ASyncQueue<MInstPtr>*           issue_to_execute  { nullptr };  // Issue 写 -> Execute 读
     ASyncQueue<MInstPtr>*           inst_commit_q { nullptr };  // Execute 写 -> Commit/ROB 读
+    ASyncQueue<FuAcceptEvent>*      fu_accept_q { nullptr };  // Execute operand read -> Issue
     ASyncQueue<RegReq>*             rename_to_prf     { nullptr };  // Rename 写 -> PRF 读
 
     /* 各模块的 register request 和 response 队列 */
@@ -523,12 +549,14 @@ typedef struct {
 
 typedef struct {
     ExecuteUnit*                exec { nullptr };
+    LSU*                        lsu { nullptr };
     ROB*                        rob { nullptr };
     ASyncQueue<MInstPtr>*       rename_issue_q { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
     ASyncQueue<RegReq>*         reg_req_q { nullptr };
     ASyncQueue<VecRegReq>*      vec_reg_req_q { nullptr };
     ASyncQueue<TileRegReq>*     tile_reg_req_q { nullptr };
+    ASyncQueue<FuAcceptEvent>*  fu_accept_q { nullptr };
     FlushEvent*                 flush_event { nullptr };
     PerfStats*                  perf_stats { nullptr };
 } IssueDeps;
@@ -565,6 +593,7 @@ typedef struct AGUDeps {
     ASyncQueue<RegReq>*         reg_req_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
+    ASyncQueue<FuAcceptEvent>*  fu_accept_q;
     ROB*                        rob;
     LSU*                        lsu;
 } AGUDeps;
@@ -575,6 +604,7 @@ typedef struct STDDeps {
     ASyncQueue<RegReq>*         reg_req_q { nullptr };
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q { nullptr };
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
+    ASyncQueue<FuAcceptEvent>*  fu_accept_q { nullptr };
     ROB*                        rob { nullptr };
     LSU*                        lsu { nullptr };
 } STDDeps;

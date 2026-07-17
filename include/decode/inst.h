@@ -81,6 +81,18 @@ enum class InstType {
     NUM_INST_TYPES,
 };
 
+enum class StorePart {
+    NONE = 0,
+    STA,
+    STD,
+};
+
+enum class StorePartState {
+    WAIT_ISSUE = 0,
+    WAIT_ACCEPT,
+    ACCEPTED,
+};
+
 enum class InstState {
     NONE = 0,
     RENAMED = 1,
@@ -135,6 +147,11 @@ typedef struct MicroOp {
     u32 ls_width {0};
     bool executed = false;
     bool replay = false;
+    StorePartState sta_state { StorePartState::WAIT_ISSUE };
+    StorePartState std_state { StorePartState::WAIT_ISSUE };
+    u32 sta_generation { 0 };
+    u32 std_generation { 0 };
+    bool fu_pending { false };
     u64 ssid { 0 };
     // checkpoint id
     u64 c_id { 0 };

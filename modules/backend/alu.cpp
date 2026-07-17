@@ -44,9 +44,13 @@ void ALU::fwd_bypass()
         }
     }
     if ((rs1->valid && !rs1->data_available) || (rs2->valid && !rs2->data_available)) {
+        m_pipe[0].inst->fu_pending = false;
+        m_pipe[0].inst->state = InstState::REPLAY;
         m_pipe[0].valid = false;
         m_pipe[0].inst = nullptr;
     } else {
+        m_pipe[0].inst->fu_pending = false;
+        m_pipe[0].inst->state = InstState::FU_ACTIVE;
         WakeupEvent event;
         event.valid = true;
         event.type = WAKEUP_BYPASS;
@@ -115,9 +119,18 @@ void ALU::R1()
             }
         }
     }
+    if ((rs1.valid && rs1.bypass_hint) ||
+        (rs2.valid && rs2.bypass_hint)) {
+        return;
+    }
     if ((rs1.valid && !rs1.data_available) || (rs2.valid && !rs2.data_available)) {
+        inst->fu_pending = false;
+        inst->state = InstState::REPLAY;
         m_pipe[0].valid = false;
         m_pipe[0].inst = nullptr;
+    } else {
+        inst->fu_pending = false;
+        inst->state = InstState::FU_ACTIVE;
     }
 }
 

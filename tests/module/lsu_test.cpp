@@ -16,6 +16,7 @@ namespace {
 
 struct Harness {
     ASyncQueue<RegReq> reg_req_q { 32 };
+    ASyncQueue<FuAcceptEvent> fu_accept_q { 32 };
     ASyncQueue<FlushEvent> flush_req_q { 16 };
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> lsu_resp_q;
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY> bypass_q;
@@ -47,9 +48,6 @@ struct Harness {
         l2.set_mem(&mem);
         dcache.attach_lower(&l2);
         lsu.build();
-        agu.bind_queues(&lsu.store_q(), &lsu.load_q(), &lsu);
-        agu2.bind_queues(&lsu.store_q(), &lsu.load_q(), &lsu);
-        std_fu.bind_lsu(&lsu);
     }
 
     ROBConfig make_rob_config()
@@ -116,6 +114,10 @@ struct Harness {
         deps.reg_req_q = &reg_req_q;
         deps.reg_resp_q = &lsu_resp_q;
         deps.reg_bypass_bus = &bypass_q;
+        deps.fu_accept_q = &fu_accept_q;
+        deps.lsu_ld_q = &load_q;
+        deps.lsu_st_q = &store_q;
+        deps.lsu = &lsu;
         return deps;
     }
 
@@ -126,6 +128,10 @@ struct Harness {
         deps.reg_req_q = &reg_req_q;
         deps.reg_resp_q = &lsu_resp_q;
         deps.reg_bypass_bus = &bypass_q;
+        deps.fu_accept_q = &fu_accept_q;
+        deps.lsu_ld_q = &load_q;
+        deps.lsu_st_q = &store_q;
+        deps.lsu = &lsu;
         return deps;
     }
 
@@ -204,6 +210,7 @@ void run_cycle(Harness& h)
     h.std_fu.tick();
     h.lsu.tick();
     h.sched.tick();
+    h.fu_accept_q.commit();
     h.flush_req_q.commit();
 }
 
@@ -221,29 +228,11 @@ bool run_until_lsu_complete(Harness& h, MInstPtr inst, int max_cycles = 256)
     return false;
 }
 
-bool run_until_std_complete(Harness& h, MInstPtr inst, int max_cycles = 256)
-{
-    for (int i = 0; i < max_cycles; ++i) {
-        run_cycle(h);
-        if (h.std_fu.commit_ready() && h.std_fu.commit_inst() == inst) {
-            return true;
-        }
-    }
-    return false;
-}
-
 void ack_if_front(Harness& h, MInstPtr inst)
 {
     assert(h.lsu.commit_ready());
     assert(h.lsu.commit_inst() == inst);
     h.lsu.commit_ack();
-}
-
-void ack_std(Harness& h, MInstPtr inst)
-{
-    assert(h.std_fu.commit_ready());
-    assert(h.std_fu.commit_inst() == inst);
-    h.std_fu.commit_ack();
 }
 
 void test_agu_waits_for_source_operand()
@@ -295,8 +284,6 @@ void test_store_commit_updates_subsequent_loads()
     assert(h.dispatch(std));
     assert(run_until_lsu_complete(h, sta));
     ack_if_front(h, sta);
-    assert(run_until_std_complete(h, std));
-    ack_std(h, std);
     assert(h.lsu.store_commit_ready(sta->rid));
     h.lsu.commit_store(sta->rid);
 
@@ -412,6 +399,101 @@ void test_lsu_flush_from_rid_clears_matching_load()
     assert(load->state == InstState::FLUSHED);
 }
 
+void test_store_parts_report_operand_accept()
+{
+    Harness h;
+    auto* store = new MicroOp();
+    store->valid = true;
+    store->state = InstState::RENAMED;
+    store->opcode = OP_SD;
+    store->type = InstType::STORE;
+    store->rid = ROBID{5, 0};
+    store->rs1.valid = true;
+    store->rs1.ptag = 11;
+    store->rs2.valid = true;
+    store->rs2.ptag = 12;
+    store->store_id = 101;
+    store->ls_width = 8;
+
+    RegResp addr_resp {};
+    addr_resp.valid = true;
+    addr_resp.ptag = 11;
+    addr_resp.val = 0x1280;
+    h.lsu_resp_q.push_back(addr_resp);
+    RegResp data_resp = addr_resp;
+    data_resp.ptag = 12;
+    data_resp.val = 0xfeedface;
+    h.lsu_resp_q.push_back(data_resp);
+
+    assert(h.lsu.allocate(store));
+    assert(h.agu.dispatch({store, StorePart::STA, 0}));
+    assert(h.std_fu.dispatch({store, StorePart::STD, 0}));
+    run_cycle(h);
+
+    FuAcceptEvent event {};
+    assert(h.fu_accept_q.read(event));
+    assert(event.result == FuAcceptResult::ACCEPTED);
+    assert(event.part == StorePart::STA);
+    assert(h.fu_accept_q.read(event));
+    assert(event.result == FuAcceptResult::ACCEPTED);
+    assert(event.part == StorePart::STD);
+    assert(h.fu_accept_q.empty());
+}
+
+void test_store_operand_miss_reports_replay()
+{
+    Harness h;
+    auto* store = new MicroOp();
+    store->valid = true;
+    store->state = InstState::RENAMED;
+    store->opcode = OP_SD;
+    store->type = InstType::STORE;
+    store->rid = ROBID{6, 0};
+    store->rs2.valid = true;
+    store->rs2.ptag = 13;
+
+    assert(h.std_fu.dispatch({store, StorePart::STD, 4}));
+    run_cycle(h);
+
+    FuAcceptEvent event {};
+    assert(h.fu_accept_q.read(event));
+    assert(event.inst == store);
+    assert(event.part == StorePart::STD);
+    assert(event.result == FuAcceptResult::REPLAY);
+    assert(event.generation == 4);
+}
+
+void test_store_replay_cancels_pending_completion()
+{
+    Harness h;
+    auto* store = new MicroOp();
+    store->valid = true;
+    store->state = InstState::FU_ACTIVE;
+    store->opcode = OP_SD;
+    store->type = InstType::STORE;
+    store->rid = ROBID{7, 0};
+    store->ls_width = 8;
+    assert(h.lsu.allocate(store));
+
+    SQEntry* sq = h.lsu.find_store_by_id(store->store_id);
+    assert(sq != nullptr);
+    sq->addr = 0x1300;
+    sq->addr_ready = true;
+    sq->addr_is_virtual = false;
+    sq->data = 0x1234;
+    sq->data_ready = true;
+    h.lsu.tick();
+    assert(sq->sta_completed);
+    assert(h.lsu.commit_ready());
+
+    h.lsu.replay_store_part(store, StorePart::STD);
+    assert(sq->addr_ready);
+    assert(!sq->data_ready);
+    assert(!sq->sta_completed);
+    assert(sq->state == WAIT_ADDR);
+    assert(!h.lsu.commit_ready());
+}
+
 } // namespace
 
 int main()
@@ -421,5 +503,8 @@ int main()
     test_younger_load_replays_when_older_store_resolves_same_address();
     test_load_lcam_forward_waits_until_cycle_after_execute();
     test_lsu_flush_from_rid_clears_matching_load();
+    test_store_parts_report_operand_accept();
+    test_store_operand_miss_reports_replay();
+    test_store_replay_cancels_pending_completion();
     return EXIT_SUCCESS;
 }

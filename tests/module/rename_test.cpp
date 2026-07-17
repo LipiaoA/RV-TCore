@@ -162,5 +162,36 @@ int main()
     assert(out->rs1.ready);
     assert(out->rd.ptag != 2);
 
+    MInstPtr store = new MicroOp();
+    store->valid = true;
+    store->opcode = OP_SD;
+    store->type = InstType::STORE;
+    store->raw_inst = 0x00313023u;
+    store->pc = 0x2004;
+    store->rs1.valid = true;
+    store->rs1.atag = 2;
+    store->rs2.valid = true;
+    store->rs2.atag = 3;
+    store->ls_width = 8;
+
+    assert(decode_rename_q.write(store));
+    decode_rename_q.tick();
+    rename.tick();
+    rename.tick();
+    rename.tick();
+    dispatch_issue_q.tick();
+
+    assert(dispatch_issue_q.size() == 1);
+    MInstPtr store_out {};
+    assert(dispatch_issue_q.read(store_out));
+    assert(store_out == store);
+    assert(store_out->type == InstType::STORE);
+    assert(store_out->rs1.valid);
+    assert(store_out->rs1.atag == 2);
+    assert(store_out->rs2.valid);
+    assert(store_out->rs2.atag == 3);
+    assert(store_out->sta_state == StorePartState::WAIT_ISSUE);
+    assert(store_out->std_state == StorePartState::WAIT_ISSUE);
+
     return EXIT_SUCCESS;
 }

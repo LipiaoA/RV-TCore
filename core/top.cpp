@@ -69,6 +69,7 @@ Top::~Top() {
     delete_ptr(m_comm_queues.lsu_ld_q);
     delete_ptr(m_comm_queues.lsu_st_q);
     delete_ptr(m_comm_queues.inst_commit_q);
+    delete_ptr(m_comm_queues.fu_accept_q);
     delete_ptr(m_crat);
     delete_ptr(m_vcrat);
     delete_ptr(m_tcrat);
@@ -92,6 +93,7 @@ void Top::build() {
     m_comm_queues.vec_reg_req_q      = new ASyncQueue<VecRegReq>(DEFAULT_QUEUE_CAPACITY);
     m_comm_queues.tile_reg_req_q     = new ASyncQueue<TileRegReq>(DEFAULT_QUEUE_CAPACITY);
     m_comm_queues.inst_commit_q      = new ASyncQueue<MInstPtr>(DEFAULT_QUEUE_CAPACITY);
+    m_comm_queues.fu_accept_q        = new ASyncQueue<FuAcceptEvent>(DEFAULT_QUEUE_CAPACITY);
     m_comm_queues.reg_bypass_bus     = new FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>();
     m_comm_queues.lsu_ld_q           = new std::vector<LQEntry>();
     m_comm_queues.lsu_st_q           = new std::vector<SQEntry>();
@@ -257,6 +259,7 @@ void Top::build() {
     agu_deps.reg_req_q = m_comm_queues.reg_req_q;
     agu_deps.reg_resp_q = m_comm_queues.lsu_resp_q;
     agu_deps.reg_bypass_bus = m_comm_queues.reg_bypass_bus;
+    agu_deps.fu_accept_q = m_comm_queues.fu_accept_q;
     agu_deps.rob = m_rob;
     agu_deps.lsu = m_lsu;
     agu_deps.lsu_ld_q = m_comm_queues.lsu_ld_q;
@@ -266,6 +269,7 @@ void Top::build() {
     std_deps.reg_req_q = m_comm_queues.reg_req_q;
     std_deps.reg_resp_q = m_comm_queues.lsu_resp_q;
     std_deps.reg_bypass_bus = m_comm_queues.reg_bypass_bus;
+    std_deps.fu_accept_q = m_comm_queues.fu_accept_q;
     std_deps.rob = m_rob;
     std_deps.lsu = m_lsu;
     std_deps.lsu_ld_q = m_comm_queues.lsu_ld_q;
@@ -322,6 +326,7 @@ void Top::build() {
 
     IssueDeps issue_deps;
     issue_deps.exec = m_execute;
+    issue_deps.lsu = m_lsu;
     issue_deps.rename_issue_q = m_comm_queues.rename_to_issue;
     issue_deps.rob = m_rob;
     issue_deps.flush_event = m_comm_queues.flush_event;
@@ -329,6 +334,7 @@ void Top::build() {
     issue_deps.reg_req_q = m_comm_queues.reg_req_q;
     issue_deps.vec_reg_req_q = m_comm_queues.vec_reg_req_q;
     issue_deps.tile_reg_req_q = m_comm_queues.tile_reg_req_q;
+    issue_deps.fu_accept_q = m_comm_queues.fu_accept_q;
     issue_deps.perf_stats = &m_perf_stats;
     m_issue = new IssueUnit(issue_conf, issue_deps);
     FlushUnitDeps flush_deps;

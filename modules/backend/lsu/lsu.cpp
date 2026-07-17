@@ -759,6 +759,7 @@ void LSU::sta(SQEntry& st)
     }
     st.state = READY;
     st.sta_completed = true;
+    st.uop->state = InstState::ISSUED;
     m_complete_q.write(st.uop);
     LOG_LEVEL1("LSU STA", "complete store_id:%lu stq:%zu addr:0x%lx paddr:0x%lx",
                st.store_id, st.stq_idx, st.addr, st.pa);
@@ -1392,6 +1393,32 @@ void LSU::replay(SQEntry& store_entry)
                ldst_state_str(store_entry.state));
     store_entry.data_ready = false;
     store_entry.state = WAIT_ADDR;
+}
+
+void LSU::replay_store_part(MInstPtr inst, StorePart part)
+{
+    if (!inst) {
+        return;
+    }
+    SQEntry* store = find_store_by_id(inst->store_id);
+    if (store) {
+        if (part == StorePart::STA) {
+            store->addr_ready = false;
+        } else if (part == StorePart::STD) {
+            store->data_ready = false;
+        }
+        store->sta_completed = false;
+        store->state = WAIT_ADDR;
+    }
+
+    RingQueue<MInstPtr> retained(m_complete_q.capacity());
+    MInstPtr pending {};
+    while (m_complete_q.pop(pending)) {
+        if (pending != inst) {
+            retained.write(pending);
+        }
+    }
+    m_complete_q = std::move(retained);
 }
 
 void LSU::flush(const FlushEvent& event)

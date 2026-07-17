@@ -67,11 +67,21 @@ void VectorUnit::R1()
     VecReg vs1_reg;
     VecReg vs2_reg;
     if (inst->vs1.valid && !read_vec(inst->vs1, vs1_reg)) {
+        inst->fu_pending = false;
+        inst->state = InstState::REPLAY;
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
         return;
     }
     if (inst->vs2.valid && !read_vec(inst->vs2, vs2_reg)) {
+        inst->fu_pending = false;
+        inst->state = InstState::REPLAY;
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
         return;
     }
+    inst->fu_pending = false;
+    inst->state = InstState::FU_ACTIVE;
     if (inst->vd.valid) {
         wakeup(inst);
     }

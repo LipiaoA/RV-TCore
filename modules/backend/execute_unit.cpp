@@ -140,63 +140,100 @@ void ExecuteUnit::commit()
 
 bool ExecuteUnit::dispatch(MInstPtr inst)
 {
-    auto dispatch_round_robin = [&](auto& fus, u32 count, u32& next) {
+    return dispatch({inst, StorePart::NONE, 0});
+}
+
+bool ExecuteUnit::dispatch(const IssueRequest& request)
+{
+    if (!request.inst) {
+        return false;
+    }
+    bool accepted = request.part == StorePart::NONE
+        ? dispatch_inst(request.inst)
+        : dispatch_store(request);
+    if (m_stats) {
+        if (accepted) {
+            ++m_stats->execute.dispatch_accepted;
+        } else {
+            ++m_stats->execute.dispatch_rejected;
+        }
+    }
+    return accepted;
+}
+
+bool ExecuteUnit::dispatch_store(const IssueRequest& request)
+{
+    auto dispatch_request = [&](auto& fus, u32 count, u32& next) {
         for (u32 n = 0; n < count; ++n) {
             u32 idx = (next + n) % count;
-            if (fus[idx].dispatch(inst)) {
+            if (fus[idx].dispatch(request)) {
                 next = (idx + 1) % count;
-                if (m_stats) {
-                    ++m_stats->execute.dispatch_accepted;
-                }
                 return true;
             }
         }
         return false;
     };
+    if (request.part == StorePart::STA) {
+        return dispatch_request(m_agus, m_agu_num, m_next_agu);
+    }
+    if (request.part == StorePart::STD) {
+        return dispatch_request(m_stds, m_std_num, m_next_std);
+    }
+    return false;
+}
 
+bool ExecuteUnit::dispatch_inst(MInstPtr inst)
+{
+    auto dispatch_fu = [&](auto& fus, u32 count, u32& next) {
+        for (u32 n = 0; n < count; ++n) {
+            u32 idx = (next + n) % count;
+            if (fus[idx].dispatch(inst)) {
+                next = (idx + 1) % count;
+                return true;
+            }
+        }
+        return false;
+    };
     switch (inst->type) {
     case InstType::INT:
-        if (dispatch_round_robin(m_alus, m_alu_num, m_next_alu)) {
+        if (dispatch_fu(m_alus, m_alu_num, m_next_alu)) {
             return true;
         }
         break;
     case InstType::BRANCH:
-        if (dispatch_round_robin(m_brus, m_bru_num, m_next_bru)) {
+        if (dispatch_fu(m_brus, m_bru_num, m_next_bru)) {
             return true;
         }
         break;
     case InstType::FP:
-        if (dispatch_round_robin(m_fpus, m_fpu_num, m_next_fpu)) {
+        if (dispatch_fu(m_fpus, m_fpu_num, m_next_fpu)) {
             return true;
         }
         break;
     case InstType::VECTOR:
-        if (dispatch_round_robin(m_vpus, m_vpu_num, m_next_vpu)) {
+        if (dispatch_fu(m_vpus, m_vpu_num, m_next_vpu)) {
             return true;
         }
         break;
     case InstType::TENSOR:
-        if (dispatch_round_robin(m_tpus, m_tpu_num, m_next_tpu)) {
+        if (dispatch_fu(m_tpus, m_tpu_num, m_next_tpu)) {
             return true;
         }
         break;
     case InstType::STA:
     case InstType::STORE:
     case InstType::LOAD:
-        if (dispatch_round_robin(m_agus, m_agu_num, m_next_agu)) {
+        if (dispatch_fu(m_agus, m_agu_num, m_next_agu)) {
             return true;
         }
         break;
     case InstType::STD:
-        if (dispatch_round_robin(m_stds, m_std_num, m_next_std)) {
+        if (dispatch_fu(m_stds, m_std_num, m_next_std)) {
             return true;
         }
         break;
     default:
         break;
-    }
-    if (m_stats) {
-        ++m_stats->execute.dispatch_rejected;
     }
     return false;
 }
@@ -245,6 +282,7 @@ void ExecuteUnit::arbitration() {
             break;
         }
         if (cand.inst && m_inst_commit_q.write(cand.inst)) {
+            cand.inst->state = InstState::ISSUED;
             cand.ack();
             if (m_stats) {
                 ++m_stats->execute.completed_insts;

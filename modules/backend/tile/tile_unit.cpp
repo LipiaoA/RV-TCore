@@ -67,11 +67,21 @@ void TileUnit::R1()
     TileReg ts1_reg;
     TileReg ts2_reg;
     if (inst->ts1.valid && !read_tile(inst->ts1, ts1_reg)) {
+        inst->fu_pending = false;
+        inst->state = InstState::REPLAY;
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
         return;
     }
     if (inst->ts2.valid && !read_tile(inst->ts2, ts2_reg)) {
+        inst->fu_pending = false;
+        inst->state = InstState::REPLAY;
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
         return;
     }
+    inst->fu_pending = false;
+    inst->state = InstState::FU_ACTIVE;
     if (inst->td.valid) {
         wakeup(inst);
     }

@@ -33,6 +33,7 @@ int main()
     ASyncQueue<RegReq> reg_req_q(32);
     ASyncQueue<VecRegReq> vec_reg_req_q(32);
     ASyncQueue<TileRegReq> tile_reg_req_q(32);
+    ASyncQueue<FuAcceptEvent> fu_accept_q(32);
     ASyncQueue<MInstPtr> inst_commit_q(32);
     ASyncQueue<FlushEvent> flush_req_q(32);
     FlushEvent flush_event {};
@@ -105,11 +106,13 @@ int main()
 
     IssueDeps deps {};
     deps.exec = &execute;
+    deps.lsu = &lsu;
     deps.rob = &rob;
     deps.rename_issue_q = &rename_issue_q;
     deps.reg_req_q = &reg_req_q;
     deps.vec_reg_req_q = &vec_reg_req_q;
     deps.tile_reg_req_q = &tile_reg_req_q;
+    deps.fu_accept_q = &fu_accept_q;
     deps.wakeup_bus = &wakeup_bus;
     deps.flush_event = &flush_event;
 
@@ -186,9 +189,12 @@ int main()
 
     issue_busy.tick();
     issue_busy.commit();
-    assert(reg_req_q.read(req));
+    issue_busy.tick();
+    issue_busy.commit();
     assert(reg_req_q.read(req));
     assert(reg_req_q.empty());
+    assert(inst_a->fu_pending);
+    assert(inst_a->state == InstState::RENAMED);
 
     issue_busy.tick();
     issue_busy.commit();
@@ -198,7 +204,12 @@ int main()
     fp_conf.int_issue_width = 0;
     fp_conf.ls_issue_width = 0;
     fp_conf.fp_issue_width = 1;
-    deps.exec = &execute;
+    ExecConfig fp_exec_conf = exec_conf;
+    fp_exec_conf.alu_num = 0;
+    fp_exec_conf.fpu_num = 1;
+    fp_exec_conf.fpu_conf.stages = 2;
+    ExecuteUnit execute_fp(fp_exec_conf, exec_deps);
+    deps.exec = &execute_fp;
     IssueUnit issue_fp(fp_conf, deps);
     issue_fp.build();
 
@@ -216,12 +227,120 @@ int main()
 
     issue_fp.tick();
     issue_fp.commit();
+    issue_fp.tick();
+    issue_fp.commit();
     assert(reg_req_q.read(req));
     assert(req.valid);
     assert(!req.write);
     assert(req.ptag == fp_inst->rs1.ptag);
     assert(req.fu == FuType::FPU);
     assert(reg_req_q.empty());
+
+    AGUDeps agu_deps {};
+    agu_deps.lsu_st_q = &store_q;
+    agu_deps.lsu_ld_q = &load_q;
+    agu_deps.reg_req_q = &reg_req_q;
+    agu_deps.reg_resp_q = &lsu_resp_q;
+    agu_deps.reg_bypass_bus = &bypass_q;
+    agu_deps.fu_accept_q = &fu_accept_q;
+    agu_deps.rob = &rob;
+    agu_deps.lsu = &lsu;
+
+    STDDeps std_deps {};
+    std_deps.lsu_st_q = &store_q;
+    std_deps.lsu_ld_q = &load_q;
+    std_deps.reg_req_q = &reg_req_q;
+    std_deps.reg_resp_q = &lsu_resp_q;
+    std_deps.reg_bypass_bus = &bypass_q;
+    std_deps.fu_accept_q = &fu_accept_q;
+    std_deps.rob = &rob;
+    std_deps.lsu = &lsu;
+
+    ExecConfig store_exec_conf {};
+    store_exec_conf.alu_num = 0;
+    store_exec_conf.bru_num = 0;
+    store_exec_conf.fpu_num = 0;
+    store_exec_conf.agu_num = 1;
+    store_exec_conf.std_num = 1;
+    store_exec_conf.agu_conf.stages = 2;
+    store_exec_conf.std_conf.stages = 2;
+    exec_deps.agu_deps = &agu_deps;
+    exec_deps.std_deps = &std_deps;
+    ExecuteUnit store_execute(store_exec_conf, exec_deps);
+
+    IssueConfig store_conf {};
+    store_conf.int_issue_width = 0;
+    store_conf.ls_issue_width = 2;
+    deps.exec = &store_execute;
+    IssueUnit store_issue(store_conf, deps);
+
+    MInstPtr store = new MicroOp();
+    store->valid = true;
+    store->state = InstState::RENAMED;
+    store->opcode = OP_SD;
+    store->type = InstType::STORE;
+    store->rs1.valid = true;
+    store->rs1.ready = true;
+    store->rs1.ptag = 41;
+    store->rs2.valid = true;
+    store->rs2.ready = true;
+    store->rs2.ptag = 42;
+    store->rid = ROBID{3, 0};
+
+    assert(rename_issue_q.write(store));
+    rename_issue_q.tick();
+    store_issue.tick();
+    store_issue.tick();
+    store_issue.commit();
+    assert(store->sta_state == StorePartState::WAIT_ACCEPT);
+    assert(store->std_state == StorePartState::WAIT_ACCEPT);
+    assert(store->state == InstState::RENAMED);
+    assert(reg_req_q.read(req));
+    assert(req.ptag == store->rs1.ptag);
+    assert(req.fu == FuType::AGU);
+    assert(reg_req_q.read(req));
+    assert(req.ptag == store->rs2.ptag);
+    assert(req.fu == FuType::STD);
+    assert(reg_req_q.empty());
+
+    FuAcceptEvent sta_accept {};
+    sta_accept.valid = true;
+    sta_accept.inst = store;
+    sta_accept.part = StorePart::STA;
+    sta_accept.result = FuAcceptResult::ACCEPTED;
+    sta_accept.generation = store->sta_generation;
+    assert(fu_accept_q.write(sta_accept));
+    fu_accept_q.tick();
+    store_issue.tick();
+    assert(store->sta_state == StorePartState::ACCEPTED);
+    assert(store->std_state == StorePartState::WAIT_ACCEPT);
+    assert(store->state != InstState::FU_ACTIVE);
+
+    FuAcceptEvent std_accept = sta_accept;
+    std_accept.part = StorePart::STD;
+    std_accept.generation = store->std_generation;
+    assert(fu_accept_q.write(std_accept));
+    fu_accept_q.tick();
+    store_issue.tick();
+    assert(store->sta_state == StorePartState::ACCEPTED);
+    assert(store->std_state == StorePartState::ACCEPTED);
+    assert(store->state == InstState::FU_ACTIVE);
+
+    FuAcceptEvent std_replay = std_accept;
+    std_replay.result = FuAcceptResult::REPLAY;
+    assert(fu_accept_q.write(std_replay));
+    fu_accept_q.tick();
+    store_issue.tick();
+    assert(store->sta_state == StorePartState::ACCEPTED);
+    assert(store->std_state == StorePartState::WAIT_ISSUE);
+    assert(store->rs2.ready);
+    assert(store->state == InstState::REPLAY);
+
+    assert(fu_accept_q.write(std_accept));
+    fu_accept_q.tick();
+    store_issue.tick();
+    assert(store->std_state == StorePartState::WAIT_ISSUE);
+    assert(store->state == InstState::REPLAY);
 
     return EXIT_SUCCESS;
 }

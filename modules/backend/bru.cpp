@@ -41,13 +41,19 @@ void BRU::fwd_bypass()
             if (resp.valid && resp.ptag == src->ptag) {
                 src->val = resp.val;
                 src->bypass_ready = true;
+                src->data_available = true;
                 break;
             }
         }
     }
     if ((rs1->valid && !rs1->data_available) || (rs2->valid && !rs2->data_available)) {
+        m_pipe[0].inst->fu_pending = false;
+        m_pipe[0].inst->state = InstState::REPLAY;
         m_pipe[0].valid = false;
         m_pipe[0].inst = nullptr;
+    } else {
+        m_pipe[0].inst->fu_pending = false;
+        m_pipe[0].inst->state = InstState::FU_ACTIVE;
     }
 }
 
@@ -110,7 +116,7 @@ void BRU::R1()
         if (!src->valid || src->bypass_hint) {
             continue;
         }
-        for (const auto& resp : m_reg_bypass_bus) {
+        for (const auto& resp : m_reg_resp_q) {
             if (resp.valid && resp.ptag == src->ptag) {
                 src->val = resp.val;
                 src->bypass_ready = true;
@@ -119,6 +125,20 @@ void BRU::R1()
             }
         }
     }
+    if ((inst->rs1.valid && inst->rs1.bypass_hint) ||
+        (inst->rs2.valid && inst->rs2.bypass_hint)) {
+        return;
+    }
+    if ((inst->rs1.valid && !inst->rs1.data_available) ||
+        (inst->rs2.valid && !inst->rs2.data_available)) {
+        inst->fu_pending = false;
+        inst->state = InstState::REPLAY;
+        m_pipe[0].valid = false;
+        m_pipe[0].inst = nullptr;
+        return;
+    }
+    inst->fu_pending = false;
+    inst->state = InstState::FU_ACTIVE;
 
     m_pred_taken= branch_taken(inst->opcode, inst->rs1.val, inst->rs2.val);
     if (inst->rd.valid) {

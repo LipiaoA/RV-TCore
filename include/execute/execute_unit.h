@@ -31,9 +31,13 @@ public:
     void                                build() override;
     void                                reset() override;
 
+    bool                                dispatch(const IssueRequest& request);
     bool                                dispatch(MInstPtr inst);
 
 private:
+    bool                                dispatch_store(
+                                            const IssueRequest& request);
+    bool                                dispatch_inst(MInstPtr inst);
     void                                arbitration();
     void                                flush();
 
