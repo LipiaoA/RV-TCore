@@ -68,25 +68,11 @@ void IssueUnit::apply_replay_to_inst(MInstPtr inst, i32 ptag, bool kill_sta, boo
             inst->sta_iss = false;
             inst->sta_done = false;
             inst->addr_ready = false;
-            // if (inst->rs1.valid) {
-            //     inst->rs1.ready = false;
-            //     inst->rs1.bypass_hint = false;
-            //     inst->rs1.bypass_ready = false;
-            //     inst->rs1.data_available = false;
-            //     inst->rs1.speculative_child_mask = 0;
-            // }
         }
         if (kill_std) {
             inst->std_iss = false;
             inst->std_done = false;
             inst->data_ready = false;
-            // if (inst->rs2.valid) {
-            //     inst->rs2.ready = false;
-            //     inst->rs2.bypass_hint = false;
-            //     inst->rs2.bypass_ready = false;
-            //     inst->rs2.data_available = false;
-            //     inst->rs2.speculative_child_mask = 0;
-            // }
         }
         inst->store_issue_half = StoreIssueHalf::NONE;
         inst->state = InstState::REPLAY;
@@ -131,19 +117,20 @@ void IssueUnit::apply_replay_to_inst(MInstPtr inst, i32 ptag, bool kill_sta, boo
 
 void IssueUnit::handle_dep_kill(const WakeupEvent& event)
 {
-    std::unordered_set<i32> kill_ptags;
+    std::queue<i32> kill_ptags_q;
+    std::unordered_set<i32> killed_ptags_set;
     if (event.ptag >= 0) {
-        kill_ptags.insert(event.ptag);
-        // if (m_regfile) {
-        //     m_regfile->set_busy(event.ptag);
-        // }
+        kill_ptags_q.push(event.ptag);
+        killed_ptags_set.insert(event.ptag);
     }
 
     auto replay_iq_inst = [&](MInstPtr inst, bool& grew) {
         if (!inst || !inst->valid) {
             return;
         }
-        for (i32 ptag : kill_ptags) {
+        while (!kill_ptags_q.empty()) {
+            i32 ptag = kill_ptags_q.front();
+            kill_ptags_q.pop();
             const bool hit_rs1 = src_matches_ptag(inst->rs1, ptag);
             const bool hit_rs2 = src_matches_ptag(inst->rs2, ptag);
             if (!hit_rs1 && !hit_rs2) {
@@ -154,26 +141,14 @@ void IssueUnit::handle_dep_kill(const WakeupEvent& event)
                 if (!mask_hit) {
                     continue;
                 }
-                // if ((inst->rs1.speculative_child_mask & event.speculative_mask) != 0) {
-                //     inst->rs1.ready = false;
-                //     inst->rs1.bypass_hint = false;
-                //     inst->rs1.bypass_ready = false;
-                //     inst->rs1.data_available = false;
-                //     inst->rs1.speculative_child_mask = 0;
-                // }
-                // if ((inst->rs2.speculative_child_mask & event.speculative_mask) != 0) {
-                //     inst->rs2.ready = false;
-                //     inst->rs2.bypass_hint = false;
-                //     inst->rs2.bypass_ready = false;
-                //     inst->rs2.data_available = false;
-                //     inst->rs2.speculative_child_mask = 0;
-                // }
+                assert(false);
                 inst->state = InstState::REPLAY;
                 m_exec.squash_rid(inst->rid, ptag);
                 m_rob.mark_not_ready(inst->rid);
                 if (m_regfile && inst->rd.valid && inst->rd.ptag >= 0) {
                     m_regfile->set_busy(inst->rd.ptag);
-                    if (kill_ptags.insert(inst->rd.ptag).second) {
+                    if (killed_ptags_set.insert(inst->rd.ptag).second) {
+                        kill_ptags_q.push(inst->rd.ptag);
                         grew = true;
                     }
                 }
@@ -181,8 +156,9 @@ void IssueUnit::handle_dep_kill(const WakeupEvent& event)
             }
             apply_replay_to_inst(inst, ptag, hit_rs1, hit_rs2);
             if (inst->rd.valid && inst->rd.ptag >= 0) {
-                if (kill_ptags.insert(inst->rd.ptag).second) {
+                if (killed_ptags_set.insert(inst->rd.ptag).second) {
                     grew = true;
+                    kill_ptags_q.push(inst->rd.ptag);
                 }
             }
         }
@@ -210,7 +186,7 @@ void IssueUnit::handle_dep_kill(const WakeupEvent& event)
             replay_iq_inst(cand.inst, grew);
         }
 
-        // 2C: ROB 扫描闭包，3A: 仅回灌不在 IQ 的
+        // ROB 扫描闭包，仅回灌不在 IQ 的
         std::vector<MInstPtr> to_requeue;
         m_rob.for_each([&](RobEntry& entry) {
             MInstPtr inst = entry.inst;
@@ -223,7 +199,7 @@ void IssueUnit::handle_dep_kill(const WakeupEvent& event)
             bool hit = false;
             bool kill_sta = false;
             bool kill_std = false;
-            for (i32 ptag : kill_ptags) {
+            for (i32 ptag : killed_ptags_set) {
                 if (src_matches_ptag(inst->rs1, ptag)) {
                     hit = true;
                     kill_sta = true;
@@ -239,14 +215,14 @@ void IssueUnit::handle_dep_kill(const WakeupEvent& event)
             if (inst->type == InstType::STORE) {
                 apply_replay_to_inst(inst, -1, kill_sta, kill_std);
             } else {
-                for (i32 ptag : kill_ptags) {
+                for (i32 ptag : killed_ptags_set) {
                     if (src_matches_ptag(inst->rs1, ptag) || src_matches_ptag(inst->rs2, ptag)) {
                         apply_replay_to_inst(inst, ptag, false, false);
                     }
                 }
             }
             if (inst->rd.valid && inst->rd.ptag >= 0) {
-                if (kill_ptags.insert(inst->rd.ptag).second) {
+                if (killed_ptags_set.insert(inst->rd.ptag).second) {
                     if (m_regfile) {
                         m_regfile->set_busy(inst->rd.ptag);
                     }

@@ -9,27 +9,33 @@
 
 #### 1 TODO：
 
-##### 1.1 Fetch Unit 设计&实现&验证 - OPEN - 80%
+##### 1.1 Fetch Unit 设计&实现&验证 - OPEN - 100%
 
-##### 1.2 Decode Unit 实现 - OPEN-50%
+##### 1.2 Decode Unit 实现 - OPEN-100%
 
-##### 1.3 Rename Unit 实现 - OPEN-50%
+##### 1.3 Rename Unit 实现 - OPEN-100%
 
 ##### ~~1.4 Dispatch Unit 实现 - DELETE~~
 
-##### 1.5 Issue Unit 实现 - OPEN-50%
+##### 1.5 Issue Unit 实现 - OPEN-100%
 
-##### 1.6 Exec Unit 实现 - OPEN-50%
+##### 1.6 Exec Unit 实现 - OPEN-100%
 
-##### 1.7 Commit Unit 实现 - OPEN-50%
+##### 1.7 Commit Unit 实现 - OPEN-100%
 
 ##### 1.8 Function Model 实现 - PENDING
 
 
 
+#### 20260802
+
+检查 推测唤醒replay机制，看是否存在冗余情况。
+
+
+
 #### 20260726
 
-调通第一个ELF。
+调通第一个ELF。主要涉及到指令 wakeup 和 replay情况处理，LSU中暂时没做推测唤醒。
 
 
 
