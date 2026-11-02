@@ -16,6 +16,7 @@
 # debug information files
 build/*
 bin/*
+run/*
 .vscode/*
 *.bkp
 .specstory/*
