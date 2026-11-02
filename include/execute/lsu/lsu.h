@@ -17,6 +17,7 @@
 #include "rob/rob.h"
 #include "util.h"
 #include "config.h"
+#include "perf/perf_def.h"
 
 static const int SSIT_SIZE = 1024;
 static const int LFST_SIZE = 1024;
@@ -288,6 +289,7 @@ private:
     std::vector<bool>                   m_p1_block_load_mask;
     bool                                m_mem_port_busy { false };
     bool                                m_tlb_port_busy { false };
+    PerfStats&                          m_stats;
 };
 
 #endif

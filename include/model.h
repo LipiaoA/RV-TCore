@@ -8,6 +8,7 @@
 #include "top.h"
 #include "peripheral.h"
 #include "func/func_model.h"
+#include "perf/topdown.h"
 
 class Model {
 public:
@@ -20,7 +21,7 @@ public:
     bool                                build();
     void                                reset();
     void                                run();
-    const PerfStats&                    perf_stats() const;
+    PerfStats*                          perf_stats();
 
 private:
     u64                                 m_entry;
@@ -31,6 +32,7 @@ private:
     LogSystem                           *m_log;
     Top                                 *m_top;
     FuncModel                           *m_ref { nullptr };
+    Topdown                             *m_topdown;
 };
 
 #endif

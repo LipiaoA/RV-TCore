@@ -7,6 +7,7 @@
 #include "intf.h"
 #include "module_comm.h"
 #include "config.h"
+#include "perf/perf_def.h"
 
 class ROB;
 class RenameUnit;
@@ -51,7 +52,7 @@ private:
     std::vector<RatCheckpoint>&         m_checkpoints;
     std::deque<MInstPtr>                m_pending_writebacks;
     LSU&                                m_lsu;
-    PerfStats*                          m_stats { nullptr };
+    PerfStats&                          m_stats;
 };
 
 #endif

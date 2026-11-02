@@ -9,6 +9,7 @@ FPU::FPU(const FPUConfig& conf, const FPUDeps& deps)
     , m_wakeup_bus(*deps.wakeup_bus)
     , m_reg_resp_q(*deps.reg_resp_q)
     , m_reg_bypass_bus(*deps.reg_bypass_bus)
+    , m_stats(*deps.perf_stats)
 {
     assert(m_stages >= 2 && m_stages <= static_cast<i32>(MAX_STAGES));
     for (i32 i = 0; i < m_stages; i++) {
@@ -29,10 +30,18 @@ bool FPU::accept() const
 bool FPU::dispatch(const MInstPtr inst)
 {
     if (!accept() || !inst) {
+        if (m_stats.perf()) {
+            u32 ftyp = static_cast<size_t>(m_fu_type);
+            ++m_stats.fu[ftyp][m_idx].rejected_uops;
+        }
         return false;
     }
     m_input_latch.inst = inst;
     m_input_latch.valid = true;
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        ++m_stats.fu[ftyp][m_idx].accepted_uops;
+    }
     return true;
 }
 
@@ -140,6 +149,10 @@ void FPU::commit_ack()
 {
     m_commit_latch.valid = false;
     m_commit_latch.inst = nullptr;
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        ++m_stats.fu[ftyp][m_idx].completed_uops;
+    }
 }
 
 void FPU::flush(const FlushEvent& event)

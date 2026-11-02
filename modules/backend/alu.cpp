@@ -10,6 +10,7 @@ ALU::ALU(const ALUConfig& conf, const ALUDeps& deps)
     , m_wakeup_bus(*deps.wakeup_bus)
     , m_reg_resp_q(*deps.reg_resp_q)
     , m_reg_bypass_bus(*deps.reg_bypass_bus)
+    , m_stats(*deps.perf_stats)
 {
     assert(m_stages == 2);
     for (i32 i = 0; i < m_stages; i++) {
@@ -85,12 +86,21 @@ bool ALU::accept() const
 
 bool ALU::dispatch(const MInstPtr inst)
 {
-    if (!accept() || !inst)
+    if (!accept() || !inst) {
+        if (m_stats.perf()) {
+            u32 ftyp = static_cast<size_t>(m_fu_type);
+            ++m_stats.fu[ftyp][m_idx].rejected_uops;
+        }
         return false;
+    }
     m_input_latch.inst = inst;
     m_input_latch.valid = true;
     if (inst->rd.valid) {
         wakeup(inst);
+    }
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        ++m_stats.fu[ftyp][m_idx].accepted_uops;
     }
     return true;
 }
@@ -115,7 +125,8 @@ void ALU::R1()
             }
         }
     }
-    if ((rs1.valid && !rs1.data_available && !rs1.bypass_hint) || (rs2.valid && !rs2.data_available && !rs2.bypass_hint)) {
+    if ((rs1.valid && !rs1.data_available && !rs1.bypass_hint) ||
+        (rs2.valid && !rs2.data_available && !rs2.bypass_hint)) {
         m_pipe[0].valid = false;
         m_pipe[0].inst = nullptr;
     }
@@ -257,6 +268,10 @@ void ALU::commit_ack()
 {
     m_commit_latch.valid = false;
     m_commit_latch.inst = nullptr;
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        ++m_stats.fu[ftyp][m_idx].completed_uops;
+    }
 }
 
 void ALU::dump_states() const

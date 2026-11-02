@@ -19,6 +19,7 @@
 #include "regfile_unit.h"
 #include "vregfile_unit.h"
 #include "tregfile_unit.h"
+#include "perf/topdown.h"
 
 Top::Top(const TCoreConfig& config) : m_config(config) {
     init();
@@ -133,7 +134,9 @@ void Top::build() {
     m_vcrat             =   new std::array<int, RV_VREG_SIZE>();
     m_tcrat             =   new std::array<int, RV_TILE_SIZE>();
     m_checkpoints       =   new std::vector<RatCheckpoint>();
-
+    m_perf_stats        =   new PerfStats();
+    m_topdown           =   new Topdown(*m_perf_stats);
+    m_perf_stats->stats_level = 1;
     m_crat->fill(0);
     (*m_crat)[2] = 1; // x2/sp uses a dedicated initial physical register.
     for (u32 i = 0; i < RV_VREG_SIZE; ++i) {
@@ -167,7 +170,7 @@ void Top::build() {
     fetch_deps.bpu = m_bpu;
     fetch_deps.fetch_decode_q = m_comm_queues.fetch_to_decode;
     fetch_deps.flush_event = m_comm_queues.flush_event;
-    fetch_deps.perf_stats = &m_perf_stats;
+    fetch_deps.perf_stats = m_perf_stats;
     m_fetch = new FetchUnit(fetch_conf, fetch_deps);
 
     DecodeDeps decode_deps;
@@ -215,6 +218,7 @@ void Top::build() {
     lsu_deps.wakeup_bus = m_comm_queues.wakeup_bus;
     lsu_deps.lsu_ld_q = m_comm_queues.lsu_ld_q;
     lsu_deps.lsu_st_q = m_comm_queues.lsu_st_q;
+    lsu_deps.perf_stats = m_perf_stats;
     m_comm_queues.lsu_ld_q->resize(lsu_conf.load_q_size);
     m_comm_queues.lsu_st_q->resize(lsu_conf.store_q_size);
 
@@ -233,7 +237,7 @@ void Top::build() {
     rename_deps.vcrat = m_vcrat;
     rename_deps.tcrat = m_tcrat;
     rename_deps.checkpoints = m_checkpoints;
-    rename_deps.perf_stats = &m_perf_stats;
+    rename_deps.perf_stats = m_perf_stats;
     m_rename = new RenameUnit(rename_conf, rename_deps);
 
     CommitDeps commit_deps;
@@ -250,7 +254,7 @@ void Top::build() {
     commit_deps.tcrat = m_tcrat;
     commit_deps.checkpoints = m_checkpoints;
     commit_deps.lsu = m_lsu;
-    commit_deps.perf_stats = &m_perf_stats;
+    commit_deps.perf_stats = m_perf_stats;
     m_commit = new CommitUnit(commit_conf, commit_deps);
 
     AGUDeps agu_deps;
@@ -261,6 +265,7 @@ void Top::build() {
     agu_deps.lsu = m_lsu;
     agu_deps.lsu_ld_q = m_comm_queues.lsu_ld_q;
     agu_deps.lsu_st_q = m_comm_queues.lsu_st_q;
+    agu_deps.perf_stats = m_perf_stats;
 
     STDDeps std_deps;
     std_deps.reg_req_q = m_comm_queues.reg_req_q;
@@ -270,17 +275,22 @@ void Top::build() {
     std_deps.lsu = m_lsu;
     std_deps.lsu_ld_q = m_comm_queues.lsu_ld_q;
     std_deps.lsu_st_q = m_comm_queues.lsu_st_q;
+    std_deps.perf_stats = m_perf_stats;
 
     ExecDeps exec_deps;
     exec_deps.flush_event = m_comm_queues.flush_event;
     exec_deps.inst_commit_q = m_comm_queues.inst_commit_q;
     exec_deps.rob = m_rob;
+    exec_deps.perf_stats = m_perf_stats;
+
     ALUDeps alu_deps;
     alu_deps.reg_req_q = m_comm_queues.reg_req_q;
     alu_deps.reg_resp_q = m_comm_queues.alu_resp_q;
     alu_deps.reg_bypass_bus = m_comm_queues.reg_bypass_bus;
     alu_deps.wakeup_bus = m_comm_queues.wakeup_bus;
     alu_deps.rob = m_rob;
+    alu_deps.perf_stats = m_perf_stats;
+
     BRUDeps bru_deps;
     bru_deps.reg_req_q = m_comm_queues.reg_req_q;
     bru_deps.reg_resp_q = m_comm_queues.bru_resp_q;
@@ -288,6 +298,7 @@ void Top::build() {
     bru_deps.reg_bypass_bus = m_comm_queues.reg_bypass_bus;
     bru_deps.wakeup_bus = m_comm_queues.wakeup_bus;
     bru_deps.rob = m_rob;
+    bru_deps.perf_stats = m_perf_stats;
 
     FPUDeps fpu_deps;
     fpu_deps.reg_req_q = m_comm_queues.reg_req_q;
@@ -296,16 +307,21 @@ void Top::build() {
     fpu_deps.flush_event = m_comm_queues.flush_event;
     fpu_deps.rob = m_rob;
     fpu_deps.wakeup_bus = m_comm_queues.wakeup_bus;
+    fpu_deps.perf_stats = m_perf_stats;
+
     VectorDeps vector_deps;
     vector_deps.rob = m_rob;
     vector_deps.vec_reg_req_q = m_comm_queues.vec_reg_req_q;
     vector_deps.vpu_resp_q = m_comm_queues.vpu_resp_q;
     vector_deps.wakeup_bus = m_comm_queues.wakeup_bus;
+    vector_deps.perf_stats = m_perf_stats;
+
     TileDeps tile_deps;
     tile_deps.rob = m_rob;
     tile_deps.tile_reg_req_q = m_comm_queues.tile_reg_req_q;
     tile_deps.tpu_resp_q = m_comm_queues.tpu_resp_q;
     tile_deps.wakeup_bus = m_comm_queues.wakeup_bus;
+    tile_deps.perf_stats = m_perf_stats;
     exec_deps.alu_deps = &alu_deps;
     exec_deps.bru_deps = &bru_deps;
     exec_deps.agu_deps = &agu_deps;
@@ -316,7 +332,6 @@ void Top::build() {
     exec_deps.tile_deps = &tile_deps;
     exec_deps.flush_event = m_comm_queues.flush_event;
     exec_deps.lsu = m_lsu;
-    exec_deps.perf_stats = &m_perf_stats;
 
     m_execute = new ExecuteUnit(exec_conf, exec_deps);
 
@@ -331,12 +346,12 @@ void Top::build() {
     issue_deps.tile_reg_req_q = m_comm_queues.tile_reg_req_q;
     issue_deps.regfile = m_regfile;
     issue_deps.lsu = m_lsu;
-    issue_deps.perf_stats = &m_perf_stats;
+    issue_deps.perf_stats = m_perf_stats;
     m_issue = new IssueUnit(issue_conf, issue_deps);
     FlushUnitDeps flush_deps;
     flush_deps.flush_event = m_comm_queues.flush_event;
     flush_deps.flush_req_q = m_comm_queues.flush_req_q;
-    flush_deps.perf_stats = &m_perf_stats;
+    flush_deps.perf_stats = m_perf_stats;
     m_flush = new FlushUnit(flush_conf, flush_deps);
 }
 
@@ -355,6 +370,6 @@ CoreDeps Top::get_core_deps() {
     deps.flush   = m_flush;
     deps.rob     = m_rob;
     deps.flush_event = m_comm_queues.flush_event;
-    deps.perf_stats = &m_perf_stats;
+    deps.perf_stats = m_perf_stats;
     return deps;
 }

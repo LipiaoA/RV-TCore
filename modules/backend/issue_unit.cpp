@@ -5,7 +5,7 @@
 #include "execute/execute_unit.h"
 #include "execute/lsu/lsu.h"
 #include "regfile_unit.h"
-#include "perf/perf_stats.h"
+#include "perf/perf_def.h"
 
 namespace {
 
@@ -23,7 +23,7 @@ IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
       m_rename_issue_q(*deps.rename_issue_q),
       m_flush_event(*deps.flush_event),
       m_reg_req_q(*deps.reg_req_q),
-      m_stats(deps.perf_stats),
+      m_stats(*deps.perf_stats),
       m_int_issue_width(conf.int_issue_width),
       m_ls_issue_width(conf.ls_issue_width),
       m_fp_issue_width(conf.fp_issue_width),
@@ -432,8 +432,8 @@ void IssueUnit::select()
             continue;
         }
         m_select_buffer.emplace_back(cand);
-        if (m_stats) {
-            ++m_stats->issue.selected_insts;
+        if (m_stats.perf()) {
+            ++m_stats.issue.selected_insts;
         }
         ++sel;
     }
@@ -444,8 +444,8 @@ void IssueUnit::select()
             continue;
         }
         m_select_buffer.emplace_back(cand);
-        if (m_stats) {
-            ++m_stats->issue.selected_insts;
+        if (m_stats.perf()) {
+            ++m_stats.issue.selected_insts;
         }
         ++sel;
     }
@@ -456,8 +456,8 @@ void IssueUnit::select()
             continue;
         }
         m_select_buffer.emplace_back(cand);
-        if (m_stats) {
-            ++m_stats->issue.selected_insts;
+        if (m_stats.perf()) {
+            ++m_stats.issue.selected_insts;
         }
         ++sel;
     }
@@ -468,8 +468,8 @@ void IssueUnit::select()
             continue;
         }
         m_select_buffer.emplace_back(cand);
-        if (m_stats) {
-            ++m_stats->issue.selected_insts;
+        if (m_stats.perf()) {
+            ++m_stats.issue.selected_insts;
         }
         ++sel;
     }
@@ -480,8 +480,8 @@ void IssueUnit::select()
             continue;
         }
         m_select_buffer.emplace_back(cand);
-        if (m_stats) {
-            ++m_stats->issue.selected_insts;
+        if (m_stats.perf()) {
+            ++m_stats.issue.selected_insts;
         }
         ++sel;
     }
@@ -489,7 +489,7 @@ void IssueUnit::select()
 
 void IssueUnit::issue()
 {
-    bool fu_busy_cycle = false;
+    u64 fu_busy = 0;
     std::string st_half = "None";
 
     retire_executed(m_int_q);
@@ -497,6 +497,11 @@ void IssueUnit::issue()
     retire_executed(m_fp_q);
     retire_executed(m_vec_q);
     retire_executed(m_tensor_q);
+    if ((!m_int_q.empty() && !m_ls_q.empty() && m_fp_q.empty() && m_select_buffer.empty())) {
+        if (m_stats.perf()) {
+            ++m_stats.issue.no_ready_inst_cycles;
+        }
+    }
 
     for (auto& cand : m_select_buffer) {
         auto& inst = cand.inst;
@@ -516,12 +521,12 @@ void IssueUnit::issue()
         st_half = "None";
         inst->store_issue_half = cand.store_half;
         bool ret = m_exec.dispatch(inst);
-        if (m_stats && ret) {
-            ++m_stats->issue.issued_insts;
+        if (m_stats.perf() && ret) {
+            ++m_stats.issue.issued_insts;
         }
         if (!ret) {
             inst->store_issue_half = StoreIssueHalf::NONE;
-            fu_busy_cycle = true;
+            ++fu_busy;
         } else {
             if (inst->type == InstType::STORE) {
                 if (cand.store_half == StoreIssueHalf::STA) {
@@ -558,9 +563,15 @@ void IssueUnit::issue()
                 } else if (cand.store_half == StoreIssueHalf::STD) {
                     EmitSrcRead(inst, inst->rs2, 1);
                 }
-            } else {
+            } else if (inst->type == InstType::INT ||
+                       inst->type == InstType::BRANCH ||
+                       inst->type == InstType::FP ||
+                       inst->type == InstType::LOAD ||
+                       inst->type == InstType::STORE) {
                 EmitSrcRead(inst, inst->rs1, 1);
                 EmitSrcRead(inst, inst->rs2, 2);
+            } else {
+                assert(false);
             }
         }
 
@@ -575,8 +586,8 @@ void IssueUnit::issue()
     }
     m_select_buffer.clear();
     clean_bypass_hint();
-    if (fu_busy_cycle && m_stats) {
-        ++m_stats->issue.fu_busy_stall_cycles;
+    if (m_stats.perf()) {
+        m_stats.issue.fu_busy_count += fu_busy;
     }
 }
 
@@ -650,9 +661,6 @@ void IssueUnit::requeue_from_rob(MInstPtr inst)
     } else {
         m_int_q.emplace_back(inst);
     }
-    if (m_stats) {
-        ++m_stats->issue.enqueued_insts;
-    }
     LOG_LEVEL1("IssueUnit", "requeue from ROB pc:0x%lx type:%s rid:%s%u",
                inst->pc, inst_type_str(inst->type),
                inst->rid.direct ? "--" : "++", inst->rid.idx);
@@ -679,9 +687,6 @@ void IssueUnit::async() {
         } else {
             m_int_q.emplace_back(inst);
         }
-        if (m_stats) {
-            ++m_stats->issue.enqueued_insts;
-        }
     }
     return;
 }
@@ -695,8 +700,8 @@ void IssueUnit::flush() {
         for (auto inst : q) {
             if (m_rob.is_older_than(m_flush_event.rid, inst->rid)) {
                 inst->valid = false;
-                if (m_stats) {
-                    ++m_stats->issue.flushed_insts;
+                if (m_stats.perf()) {
+                    ++m_stats.issue.flushed_insts;
                 }
             } else {
                 tmp_q.emplace_back(inst);
@@ -720,17 +725,14 @@ void IssueUnit::flush() {
                     kept.push_back(cand);
                 } else if (cand.inst) {
                     cand.inst->valid = false;
-                    if (m_stats) {
-                        ++m_stats->issue.flushed_insts;
-                    }
                 }
             }
             m_select_buffer.swap(kept);
         }
         m_rename_issue_q.flush_if([&](const MInstPtr& inst) {
             bool flushed = m_rob.is_older_than(m_flush_event.rid, inst->rid);
-            if (flushed && m_stats) {
-                ++m_stats->issue.flushed_insts;
+            if (flushed && m_stats.perf()) {
+                ++m_stats.issue.flushed_insts;
             }
             return flushed;
         });

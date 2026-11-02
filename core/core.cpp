@@ -13,7 +13,7 @@
 #include "branch_predictor.h"
 #include "log.h"
 #include "flush_unit.h"
-#include "perf/perf_stats.h"
+#include "perf/perf_def.h"
 
 Core::Core(const CoreDeps &deps)
  : m_fetch(*deps.fetch),
@@ -29,18 +29,22 @@ Core::Core(const CoreDeps &deps)
    m_flush(*deps.flush),
    m_rob(*deps.rob),
    m_flush_event(*deps.flush_event),
-   m_stats(deps.perf_stats)
+   m_stats(*deps.perf_stats)
 { }
 
 Core::~Core() { }
 
 void Core::tick() {
-    if (m_stats) {
-        ++m_stats->cycles;
+    if (m_stats.perf()) {
+        ++m_stats.cycles;
     }
     /* 上一拍产生的flush 在当前拍仲裁后 同时被其它组件看到 */
     m_flush.tick();
     if (m_flush_event.valid) {
+        if (m_flush_event.type == FlushType::STOP) {
+            m_exit = true;
+            return;
+        }
         m_rob.flush(m_flush_event);
     }
     m_fetch.tick();

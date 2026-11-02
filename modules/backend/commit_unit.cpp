@@ -4,7 +4,6 @@
 #include <cstddef>
 
 #include "instr_trace.h"
-#include "perf/perf_stats.h"
 #include "rob/rob.h"
 #include "rename/rename_unit.h"
 #include "execute/lsu/lsu.h"
@@ -35,7 +34,7 @@ CommitUnit::CommitUnit(const CommitConfig& conf, const CommitDeps& deps)
     , m_tcrat(*deps.tcrat)
     , m_checkpoints(*deps.checkpoints)
     , m_lsu(*deps.lsu)
-    , m_stats(deps.perf_stats)
+    , m_stats(*deps.perf_stats)
 {}
 
 void CommitUnit::build()
@@ -109,8 +108,8 @@ void CommitUnit::inst_resolve() {
             }
             inst->state = InstState::EXECUTED;
             m_rob.mark_ready(inst->rid, inst->rd.valid ? inst->rd.val : 0);
-            if (m_stats) {
-                ++m_stats->commit.resolved_insts;
+            if (m_stats.perf()) {
+                ++m_stats.commit.resolved_insts;
             }
             LOG_LEVEL1("CommitUnit", "pc: 0x%lx, inst: %s type:%s resolved, rid:%s%u", inst->pc,
                         inst->inst_name.c_str(), inst_type_str(inst->type),
@@ -121,8 +120,8 @@ void CommitUnit::inst_resolve() {
 
 void CommitUnit::inst_commit() {
     if (m_rob.empty()) {
-        if (m_stats) {
-            ++m_stats->commit.empty_cycles;
+        if (m_stats.perf()) {
+            ++m_stats.commit.rob_empty_cycles;
         }
         return;
     }
@@ -132,8 +131,8 @@ void CommitUnit::inst_commit() {
             && entry->inst->state == InstState::EXECUTED) {
             if (entry->inst->type == InstType::STORE &&
                 !m_lsu.store_commit_ready(entry->inst->rid)) {
-                if (i == 0 && m_stats) {
-                    ++m_stats->commit.head_not_ready_cycles;
+                if (i == 0 && m_stats.perf()) {
+                    ++m_stats.commit.head_not_ready_cycles;
                 }
                 break;
             }
@@ -154,6 +153,9 @@ void CommitUnit::inst_commit() {
                            entry->inst->pc, entry->inst->exception_cause, entry->inst->exception_tval);
             }
             entry->inst->state = InstState::RETIRED;
+            if (m_stats.perf()) {
+                ++m_stats.commit.retired_insts;
+            }
             auto committed = m_rob.commit_head();
             if (!committed) {
                 break;
@@ -164,9 +166,7 @@ void CommitUnit::inst_commit() {
                 // gererate exception response
                 assert(false);
             }
-            if (m_stats) {
-                ++m_stats->commit.retired_insts;
-            }
+
             if (!committed->inst->fetch_fault) {
                 std::string rid_str = committed->inst->rid.direct ? "--" : "++";
                 u32 r_idx = committed->inst->rid.idx;
@@ -178,16 +178,28 @@ void CommitUnit::inst_commit() {
                 if (!VeriRef::instance().check_retire(*committed->inst, &mem_info)) {
                     LOG_LEVEL1("CommitUnit", "ref model mismatch at pc: 0x%lx inst: %s",
                                committed->inst->pc, committed->inst->inst_name.c_str());
-                    exit(1);
+                    FlushEvent event;
+                    event.valid = true;
+                    event.type = FlushType::STOP;
+                    event.source = FlushSource::COMMIT;
+                    event.scope = FlushScope::ALL;
+                    m_flush_req_q.write(event);
+                    break;
                 }
             }
             if (isa::is_ecall(committed->inst->opcode)) {
                 LOG_LEVEL1("CommitUnit", "ecall pc: 0x%lx", committed->inst->pc);
-                exit(committed->inst->rd.val);
+                FlushEvent event;
+                event.valid = true;
+                event.type = FlushType::STOP;
+                event.source = FlushSource::COMMIT;
+                event.scope = FlushScope::ALL;
+                m_flush_req_q.write(event);
+                break;
             }
         } else {
-            if (i == 0 && m_stats) {
-                ++m_stats->commit.head_not_ready_cycles;
+            if (i == 0 && m_stats.perf()) {
+                ++m_stats.commit.head_not_ready_cycles;
             }
             break;
         }

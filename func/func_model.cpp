@@ -231,7 +231,6 @@ bool FuncModel::step(RefInstRecord* record_out)
         return false;
     }
     m_next_pc = m_arch.pc + 4;
-    std::cout << "func model step pc: 0x" << std::hex << m_arch.pc << std::dec << std::endl;
     MicroOp uop {};
     if (!fetch_dec(uop)) {
         return false;

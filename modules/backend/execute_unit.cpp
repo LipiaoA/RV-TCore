@@ -1,5 +1,5 @@
 #include "execute_unit.h"
-#include "perf/perf_stats.h"
+#include "perf/perf_def.h"
 
 #include <algorithm>
 #include <functional>
@@ -25,7 +25,7 @@ ExecuteUnit::ExecuteUnit(const ExecConfig& conf, const ExecDeps& deps)
      m_flush_event(*deps.flush_event),
      m_rob(*deps.rob),
      m_reg_bypass_bus(*deps.alu_deps->reg_bypass_bus),
-     m_stats(deps.perf_stats)
+     m_stats(*deps.perf_stats)
 {
     ALUDeps *alu_deps = deps.alu_deps;
     FPUDeps *fpu_deps = deps.fpu_deps;
@@ -37,30 +37,51 @@ ExecuteUnit::ExecuteUnit(const ExecConfig& conf, const ExecDeps& deps)
     if (m_alu_num > 0) {
         assert(alu_deps);
         m_alus.init(m_alu_num, m_alu_conf, *alu_deps);
+        for (u32 i = 0; i < m_alu_num; ++i) {
+            m_alus[i].set_idx(i);
+        }
     }
     if (m_fpu_num > 0) {
         assert(fpu_deps);
         m_fpus.init(m_fpu_num, m_fpu_conf, *fpu_deps);
+        for (u32 i = 0; i < m_fpu_num; ++i) {
+            m_fpus[i].set_idx(i);
+        }
     }
     if (m_vpu_num > 0) {
         assert(vector_deps);
         m_vpus.init(m_vpu_num, conf.vector_conf, *vector_deps);
+        for (u32 i = 0; i < m_vpu_num; ++i) {
+            m_vpus[i].set_idx(i);
+        }
     }
     if (m_tpu_num > 0) {
         assert(tile_deps);
         m_tpus.init(m_tpu_num, conf.tile_conf, *tile_deps);
+        for (u32 i = 0; i < m_tpu_num; ++i) {
+            m_tpus[i].set_idx(i);
+        }
     }
     if (m_bru_num > 0) {
         assert(bru_deps);
         m_brus.init(m_bru_num, m_bru_conf, *bru_deps);
+        for (u32 i = 0; i < m_bru_num; ++i) {
+            m_brus[i].set_idx(i);
+        }
     }
     if (m_agu_num > 0) {
         assert(agu_deps);
         m_agus.init(m_agu_num, m_agu_conf, *agu_deps);
+        for (u32 i = 0; i < m_agu_num; ++i) {
+            m_agus[i].set_idx(i);
+        }
     }
     if (m_std_num > 0) {
         assert(std_deps);
         m_stds.init(m_std_num, m_std_conf, *std_deps);
+        for (u32 i = 0; i < m_std_num; ++i) {
+            m_stds[i].set_idx(i);
+        }
     }
     m_lsu.build();
 }
@@ -145,9 +166,6 @@ bool ExecuteUnit::dispatch(MInstPtr inst)
             u32 idx = (next + n) % count;
             if (fus[idx].dispatch(inst)) {
                 next = (idx + 1) % count;
-                if (m_stats) {
-                    ++m_stats->execute.dispatch_accepted;
-                }
                 return true;
             }
         }
@@ -200,9 +218,6 @@ bool ExecuteUnit::dispatch(MInstPtr inst)
         break;
     default:
         break;
-    }
-    if (m_stats) {
-        ++m_stats->execute.dispatch_rejected;
     }
     return false;
 }
@@ -265,10 +280,6 @@ void ExecuteUnit::arbitration() {
         }
         if (cand.inst && m_inst_commit_q.write(cand.inst)) {
             cand.ack();
-            if (m_stats) {
-                ++m_stats->execute.completed_insts;
-                ++m_stats->execute.writeback_insts;
-            }
             ++committed;
         }
     }
@@ -303,9 +314,6 @@ void ExecuteUnit::flush() {
     m_inst_commit_q.flush_if([&](const MInstPtr& inst) {
         bool flushed = m_flush_event.scope == FlushScope::ALL ||
                        m_rob.is_older_than(m_flush_event.rid, inst->rid);
-        if (flushed && m_stats) {
-            ++m_stats->execute.flushed_insts;
-        }
         return flushed;
     });
 }

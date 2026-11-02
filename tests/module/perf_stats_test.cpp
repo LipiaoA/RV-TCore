@@ -2,7 +2,7 @@
 #include <cstdlib>
 #include <string>
 
-#include "perf/perf_stats.h"
+#include "perf/perf.h"
 
 int main()
 {

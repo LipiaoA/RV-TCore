@@ -12,7 +12,7 @@
 #include "decode/decode_unit.h"
 #include "icache/dcache.h"
 #include "log.h"
-#include "perf/perf_stats.h"
+#include "perf/perf_def.h"
 #include "util/util.h"
 #include "isa/decode.h"
 
@@ -23,7 +23,7 @@ FetchUnit::FetchUnit(const FetchConfig &conf, const IFetchDeps& deps)
     , m_bpu(*deps.bpu)
     , m_fetch_decode_q(*deps.fetch_decode_q)
     , m_flush_event(*deps.flush_event)
-    , m_stats(deps.perf_stats)
+    , m_stats(*deps.perf_stats)
     , m_fetch_width(conf.fetch_width)
     , m_group_size(conf.group_size)
     , m_bank_size(conf.bank_size)
@@ -155,6 +155,9 @@ void FetchUnit::fetch0()
 
     if (has_redirect()) {
         clear_inflight();
+        if (m_stats.perf()) {
+            ++m_stats.frontend.redirect_count;
+        }
     }
 
     FetchBundle bundle {};
@@ -246,9 +249,6 @@ void FetchUnit::fetch2()
         if (!line_match) {
             resp = m_icache.read_line(b.vpc);
             if (!resp.valid || resp.epoch != b.epoch) {
-                if (m_stats) {
-                    ++m_stats->frontend.icache_wait_cycles;
-                }
                 return;
             }
         }
@@ -307,9 +307,6 @@ void FetchUnit::fetch2()
         }
         m_state[F2].valid = false;
     } else {
-        if (m_stats) {
-            ++m_stats->frontend.icache_wait_cycles;
-        }
         return;
     }
 
@@ -462,8 +459,8 @@ void FetchUnit::fetch5()
         return;
     }
     if (m_fetch_decode_q.full()) {
-        if (m_stats) {
-            ++m_stats->frontend.decode_queue_full_cycles;
+        if (m_stats.perf()) {
+            ++m_stats.frontend.fetch_stall_cycles;
         }
         return;
     }
@@ -473,13 +470,9 @@ void FetchUnit::fetch5()
     if (!wrote) {
         return;
     }
-    if (m_stats) {
-        ++m_stats->frontend.fetch_packets;
-        for (const auto& inst : m_f5_pkt.data.insts) {
-            if (inst.valid) {
-                ++m_stats->frontend.fetch_insts;
-            }
-        }
+    if (m_stats.perf()) {
+        ++m_stats.frontend.fetch_packets;
+        m_stats.frontend.fetch_insts += m_f5_pkt.data.insts.size();
     }
     m_f4_pkt.clear();
     m_state[F5].valid = false;
@@ -541,23 +534,19 @@ void FetchUnit::flush()
     case FlushType::LOAD_REPLAY:
     case FlushType::FENCE:
     case FlushType::BRANCH_MISPRED: {
-        if (m_stats) {
-            m_stats->frontend.flushed_insts += m_inst_buffer.size();
-            auto count_pkt = [](const pipe_reg_t<FetchPacket>& pkt) {
-                u64 count = 0;
+        if (m_stats.perf()) {
+            m_stats.frontend.branch_mispredict_count +=
+                ((m_flush_event.type == FlushType::BRANCH_MISPRED) ? 1 : 0);
+            m_stats.frontend.flushed_insts += m_inst_buffer.size();
+            auto count_pkt = [&](const pipe_reg_t<FetchPacket>& pkt) -> i32 {
                 if (!pkt.valid) {
-                    return count;
+                    return 0;
                 }
-                for (const auto& inst : pkt.data.insts) {
-                    if (inst.valid) {
-                        ++count;
-                    }
-                }
-                return count;
+                return pkt.data.insts.size();
             };
-            m_stats->frontend.flushed_insts += count_pkt(m_f3_pkt);
-            m_stats->frontend.flushed_insts += count_pkt(m_f4_pkt);
-            m_stats->frontend.flushed_insts += count_pkt(m_f5_pkt);
+            m_stats.frontend.flushed_insts += count_pkt(m_f3_pkt);
+            m_stats.frontend.flushed_insts += count_pkt(m_f4_pkt);
+            m_stats.frontend.flushed_insts += count_pkt(m_f5_pkt);
         }
         m_redirect_pc[RESET_PC].valid = true;
         m_redirect_pc[RESET_PC].pc = m_flush_event.redirect_pc;
@@ -586,9 +575,6 @@ void FetchUnit::flush()
         m_fetch_decode_q.for_each_mut([&](FetchPacket& pkt) {
             if (pkt.fetch_fault) {
                 if (pkt.fault_fetch_id > m_flush_event.fetch_id) {
-                    if (m_stats) {
-                        ++m_stats->frontend.flushed_insts;
-                    }
                     pkt.fetch_fault = false;
                     return false;
                 }
@@ -599,9 +585,6 @@ void FetchUnit::flush()
                 if (!fi.valid)
                     continue;
                 if (fi.fetch_id > m_flush_event.fetch_id) {
-                    if (m_stats) {
-                        ++m_stats->frontend.flushed_insts;
-                    }
                     fi.valid = false;
                     pkt.valid_mask &= ~(1u << i);
                     pkt.br_mask    &= ~(1u << i);

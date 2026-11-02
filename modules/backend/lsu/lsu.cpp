@@ -79,7 +79,8 @@ LSU::LSU(const LSUConfig& conf, const LSUDeps& deps)
       m_conf(conf),
       m_issue_width(conf.issue_width),
       m_load_q_size(conf.load_q_size),
-      m_store_q_size(conf.store_q_size)
+      m_store_q_size(conf.store_q_size),
+      m_stats(*deps.perf_stats)
 {
     m_idx = LSU::lsu_idx++;
     m_ld_id = 0;

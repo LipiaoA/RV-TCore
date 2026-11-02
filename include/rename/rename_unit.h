@@ -79,7 +79,7 @@ private:
     std::vector<RatCheckpoint>&         m_checkpoints;
 
     FlushEvent&                         m_flush_event;
-    PerfStats*                          m_stats { nullptr };
+    PerfStats&                          m_stats;
 
     std::array<i32, RV_GPR_SIZE>        m_rat;
     std::array<i32, RV_VREG_SIZE>       m_vrat;

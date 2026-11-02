@@ -30,6 +30,8 @@ typedef struct MemResp {
     u64 epoch { 0 };
 } MemResp;
 
+typedef struct CacheStats { u64 accesses=0, hits=0, misses=0, total_latency=0; } CacheStats;
+
 class GCache {
     struct PendingStore {
         StoreReq req;
@@ -45,7 +47,6 @@ class GCache {
         std::vector<SimpleFuture<MemResp>> promises;
         std::vector<PendingStore> pending_stores;
     };
-    typedef struct Stats { u64 accesses=0, hits=0, misses=0, total_latency=0; } Stats;
 
 public:
     GCache(CycleScheduler *sched, const CacheConfig &cfg);
@@ -56,7 +57,7 @@ public:
     void                                register_upper(GCache* up);
 
     // Stats
-    Stats                               get_stats() const { return m_stats; }
+    CacheStats                               get_stats() const { return m_stats; }
 
     // async fetch returns future completing with data; records latency into stats when fulfilled
     SimpleFuture<MemResp>               fetch_line_async(MemReq req);
@@ -71,6 +72,7 @@ public:
     void                                invalidate_line(u64 line_addr);
     virtual std::vector<u8>             on_lower_fetch(u64 line_addr);
     void                                set_mem(Memory* mem);
+    void                                set_perf() { if (!m_perf) { m_perf = true; m_stats = CacheStats(); }}
 
 protected:
 
@@ -120,7 +122,8 @@ protected:
 
     u64                                                             m_tick = 1;
     PseudoLRU                                                       m_global_plru;
-    Stats                                                           m_stats;
+    CacheStats                                                      m_stats;
+    bool                                                            m_perf { false };
     mutable std::mutex                                              m_stats_mtx;
     std::string                                                     m_name;
     Memory*                                                         m_mem;

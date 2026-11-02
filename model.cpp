@@ -11,7 +11,7 @@ bool Model::build() {
     m_top = new Top(TCoreConfig::get_instance());
     m_top->build();
     m_mem = m_top->get_mem();
-
+    m_topdown = m_top->get_topdown();
     m_mem->add_segment(STACK_POINTER - STACK_SIZE, STACK_SIZE);
     m_mem->store64(STACK_POINTER - 8, 0x1);
 
@@ -26,7 +26,7 @@ bool Model::build() {
 
     m_log = &LogSystem::instance();
     m_log->set_level(LogLevel::LEVEL3);
-    m_log->add_writer(std::make_shared<ConsoleSink>());
+    // m_log->add_writer(std::make_shared<ConsoleSink>());
     m_log->add_writer(std::make_shared<FileSink>("system.log"));
     g_max_cycles = 5000;
     return true;
@@ -46,10 +46,12 @@ void Model::run() {
             break;
         }
     }
+    m_topdown->analyze();
+    m_topdown->report();
     return;
 }
 
-const PerfStats& Model::perf_stats() const
+PerfStats* Model::perf_stats()
 {
     return m_top->perf_stats();
 }

@@ -1,11 +1,11 @@
 #include "flush_unit.h"
-#include "perf/perf_stats.h"
+#include "perf/perf_def.h"
 
 FlushUnit::FlushUnit(const FlushUnitConfig& conf, const FlushUnitDeps& deps)
     : m_width(conf.width)
     , m_flush_event(*deps.flush_event)
     , m_flush_req_q(*deps.flush_req_q)
-    , m_stats(deps.perf_stats)
+    , m_stats(*deps.perf_stats)
 {
 }
 
@@ -19,6 +19,7 @@ struct FlushTypeHash {
 void FlushUnit::tick()
 {
     static const std::unordered_map<FlushType, int, FlushTypeHash> priority = {
+        {FlushType::STOP,           110},
         {FlushType::MACHINE_CHECK,  100},
         {FlushType::DEBUG,          90},
         {FlushType::EXCEPTION,      80},
@@ -37,8 +38,8 @@ void FlushUnit::tick()
         if (!ret || !event.valid) {
             continue;
         }
-        if (m_stats) {
-            ++m_stats->flush.requests;
+        if (m_stats.perf()) {
+            ++m_stats.flush.requests;
         }
         auto it = priority.find(event.type);
         assert (it != priority.end());
@@ -47,9 +48,10 @@ void FlushUnit::tick()
             m_flush_event = event;
         }
     }
-    if (m_flush_event.valid && m_stats) {
-        ++m_stats->flush.events;
-        ++m_stats->flush.by_type[static_cast<size_t>(m_flush_event.type)];
+    if (m_flush_event.valid && m_stats.perf()) {
+        size_t typ = static_cast<size_t>(m_flush_event.type);
+        ++m_stats.flush.events;
+        ++m_stats.flush.by_type[typ];
     }
 }
 

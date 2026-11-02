@@ -12,7 +12,9 @@ BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
       m_flush_req_q(*deps.flush_req_q),
       m_wakeup_bus(*deps.wakeup_bus),
       m_reg_resp_q(*deps.reg_resp_q),
-      m_reg_bypass_bus(*deps.reg_bypass_bus)
+      m_reg_bypass_bus(*deps.reg_bypass_bus),
+      m_stats(*deps.perf_stats)
+
 {
     assert(m_stages == 2);
     for (i32 i = 0; i < m_stages; i++) {

@@ -24,6 +24,7 @@ enum class FuType {
     FPU,
     VPU,
     TPU,
+    NUM_FU_TYPES,
 };
 
 struct FetchInst {
@@ -543,6 +544,7 @@ typedef struct {
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q { nullptr };
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } ALUDeps;
 
 typedef struct {
@@ -552,6 +554,7 @@ typedef struct {
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_resp_q { nullptr };
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } BRUDeps;
 
 typedef struct {
@@ -561,6 +564,7 @@ typedef struct {
     FlushEvent*                 flush_event { nullptr };
     ROB*                        rob { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } FPUDeps;
 
 typedef struct AGUDeps {
@@ -571,6 +575,7 @@ typedef struct AGUDeps {
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus;
     ROB*                        rob;
     LSU*                        lsu;
+    PerfStats*                  perf_stats { nullptr };
 } AGUDeps;
 
 typedef struct STDDeps {
@@ -581,6 +586,7 @@ typedef struct STDDeps {
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
     ROB*                        rob { nullptr };
     LSU*                        lsu { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } STDDeps;
 
 typedef struct {
@@ -602,6 +608,7 @@ typedef struct {
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
     std::vector<LQEntry>*       lsu_ld_q { nullptr };
     std::vector<SQEntry>*       lsu_st_q { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } LSUDeps;
 
 typedef struct {
@@ -609,6 +616,7 @@ typedef struct {
     ASyncQueue<VecRegReq>*      vec_reg_req_q { nullptr };
     FixedArray<VecRegResp, MAX_REGISTER_REQ_CAPACITY>*       vpu_resp_q { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } VectorDeps;
 
 typedef struct {
@@ -616,6 +624,7 @@ typedef struct {
     ASyncQueue<TileRegReq>*     tile_reg_req_q { nullptr };
     FixedArray<TileRegResp, MAX_REGISTER_REQ_CAPACITY>*      tpu_resp_q { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } TileDeps;
 
 typedef struct {

@@ -6,6 +6,15 @@
 #include "module_comm.h"
 #include <cassert>
 
+/*
+ * TPRF is a tile register file.
+ * It is a 2D array of tile registers.
+ * The tile registers are indexed by a physical index.
+ * The physical index is the index of the tile register in the TPRF.
+ * The physical index is also the index of the tile register in the RAT.
+ * The physical index is also the index of the tile register in the RS.
+ */
+
 class TPRF {
 public:
     TPRF(u32 phys_size, u32 rows, u32 cols, u32 elem_bits);

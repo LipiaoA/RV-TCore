@@ -2,7 +2,7 @@
 #include "rob/rob.h"
 #include "issue/issue_unit.h"
 #include "isa/opcode.h"
-#include "perf/perf_stats.h"
+#include "perf/perf_def.h"
 #include "regfile_unit.h"
 #include "vregfile_unit.h"
 #include "tregfile_unit.h"
@@ -47,7 +47,7 @@ RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
     , m_tcrat(*deps.tcrat)
     , m_checkpoints(*deps.checkpoints)
     , m_flush_event(*deps.flush_event)
-    , m_stats(deps.perf_stats)
+    , m_stats(*deps.perf_stats)
     , m_rename_width(conf.width)
     , m_prf_capacity(conf.prf_capacity)
     , m_vprf_capacity(conf.vprf_capacity)
@@ -77,8 +77,8 @@ void RenameUnit::r0() {
             ++n;
             continue;
         }
-        if (m_stats) {
-            ++m_stats->rename.input_insts;
+        if (m_stats.perf()) {
+            ++m_stats.rename.input_insts;
         }
         LOG_LEVEL1("RenameUnit R0", "r0 pc:0x%lx, inst: %s", inst->pc, inst->inst_name.c_str());
         m_r1_buf.push_back(inst);
@@ -273,8 +273,8 @@ void RenameUnit::r1() {
 
         if (!inst->fetch_fault) {
             if (needs_gpr_free_entry(inst) && m_free_list.empty()) {
-                if (m_stats) {
-                    ++m_stats->rename.free_list_stall_cycles;
+                if (m_stats.perf()) {
+                    ++m_stats.rename.free_list_stall_cycles;
                 }
                 m_r1_buf.push_front(inst);
                 LOG_LEVEL1("RenameUnit R1", "r1 pc:0x%lx, inst: %s, free list stall",
@@ -317,8 +317,8 @@ void RenameUnit::r1() {
             }
         }
 
-        if (m_stats) {
-            ++m_stats->rename.renamed_insts;
+        if (m_stats.perf()) {
+            ++m_stats.rename.renamed_insts;
         }
         inst->state = InstState::RENAMED;
         m_r2_buf.push_back(inst);
@@ -337,8 +337,8 @@ void RenameUnit::r2() {
 
         const u32 rob_need = 1;
         if (!m_rob.has_space(rob_need)) {
-            if (m_stats) {
-                ++m_stats->rename.rob_full_stall_cycles;
+            if (m_stats.perf()) {
+                ++m_stats.rename.rob_full_stall_cycles;
             }
             break;
         }
@@ -382,6 +382,9 @@ void RenameUnit::r2() {
         if (!dispatch(inst)) {
             m_r2_buf.push_front(inst);
             assert(false);
+        }
+        if (m_stats.perf()) {
+            ++m_stats.rename.dispatched_insts;
         }
         save_branch_checkpoint(inst);
         m_r2_buf.pop_front();
@@ -508,9 +511,6 @@ void RenameUnit::commit() {
 bool RenameUnit::dispatch(MInstPtr inst)
 {
     if (m_rename_issue_q.write(inst)) {
-        if (m_stats) {
-            ++m_stats->rename.dispatched_insts;
-        }
         return true;
     }
     return false;
@@ -527,11 +527,11 @@ void RenameUnit::flush() {
     if (!m_flush_event.valid) {
         return;
     }
-    if (m_stats) {
-        m_stats->rename.flushed_insts += m_r1_buf.size() + m_r2_buf.size();
+    if (m_stats.perf()) {
+        m_stats.rename.flushed_insts += m_r1_buf.size() + m_r2_buf.size();
         m_rename_issue_q.for_each([&](const MInstPtr& inst) {
             if (inst && inst->valid) {
-                ++m_stats->rename.flushed_insts;
+                ++m_stats.rename.flushed_insts;
             }
         });
     }

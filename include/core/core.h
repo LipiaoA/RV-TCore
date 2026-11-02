@@ -44,7 +44,7 @@ private:
     FlushUnit&                              m_flush;
     ROB&                                    m_rob;
     FlushEvent&                             m_flush_event;
-    PerfStats*                              m_stats { nullptr };
+    PerfStats&                              m_stats;
     bool                                    m_exit { false };
 };
 

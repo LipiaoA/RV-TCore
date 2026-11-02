@@ -16,6 +16,7 @@ AGU::AGU(const AGUConfig& conf, const AGUDeps& deps)
     , m_reg_bypass_bus(*deps.reg_bypass_bus)
     , m_rob(*deps.rob)
     , m_lsu(*deps.lsu)
+    , m_stats(*deps.perf_stats)
 {
     assert(m_stages >= 2 && m_stages <= static_cast<i32>(MAX_STAGES));
     for (i32 i = 0; i < static_cast<i32>(MAX_STAGES); i++) {
@@ -66,10 +67,18 @@ bool AGU::accept() const
 bool AGU::dispatch(MInstPtr inst)
 {
     if (!accept() || !inst) {
+        if (m_stats.perf()) {
+            u32 ftyp = static_cast<size_t>(m_fu_type);
+            ++m_stats.fu[ftyp][m_idx].rejected_uops;
+        }
         return false;
     }
     m_input_latch.inst = inst;
     m_input_latch.valid = true;
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        ++m_stats.fu[ftyp][m_idx].accepted_uops;
+    }
     return true;
 }
 

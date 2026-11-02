@@ -5,6 +5,7 @@
 #include "tools/intf.h"
 #include "config.h"
 #include "rob/rob.h"
+#include "perf/perf_def.h"
 
 class ExecuteUnit;
 
@@ -28,6 +29,10 @@ public:
 
     void                                    flush(const FlushEvent& event);
     void                                    reset();
+
+    void                                    set_idx(u32 idx) {m_idx = idx;}
+    u32                                     get_idx() const {return m_idx;}
+    FuType                                  get_fu_type() const {return m_fu_type;}
 
 private:
     void                                    R1();
@@ -59,6 +64,8 @@ private:
 
     u32                                     m_idx { 0 };
     static u32                              bru_idx;
+    FuType                                  m_fu_type { FuType::BRU };
+    PerfStats&                              m_stats;
 };
 
 #endif

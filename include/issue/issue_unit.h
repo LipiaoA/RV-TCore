@@ -59,7 +59,7 @@ private:
     std::vector<IssueCand>              m_select_buffer;
     RegFileUnit*                        m_regfile { nullptr };
     LSU*                                m_lsu { nullptr };
-    PerfStats*                          m_stats { nullptr };
+    PerfStats&                          m_stats;
 
     size_t                              m_int_issue_width  { 4 };
     size_t                              m_ls_issue_width   { 2 };
