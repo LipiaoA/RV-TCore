@@ -285,6 +285,28 @@ void ExecuteUnit::arbitration() {
     }
 }
 
+const FuStates& ExecuteUnit::get_fu_states()
+{
+    u32 count = 0;
+    auto count_available = [&](auto& fu, u32 num) {
+        u32 count = 0;
+        for (u32 i = 0; i < num; ++i) {
+            if (fu[i].accept()) {
+                ++count;
+            }
+        }
+        return count;
+    };
+    m_fu_states.alu_aval = count_available(m_alus, m_alu_num);
+    m_fu_states.fpu_aval = count_available(m_fpus, m_fpu_num);
+    m_fu_states.bru_aval = count_available(m_brus, m_bru_num);
+    m_fu_states.agu_aval = count_available(m_agus, m_agu_num);
+    m_fu_states.std_aval = count_available(m_stds, m_std_num);
+    m_fu_states.vpu_aval = count_available(m_vpus, m_vpu_num);
+    m_fu_states.tpu_aval = count_available(m_tpus, m_tpu_num);
+    return m_fu_states;
+}
+
 void ExecuteUnit::flush() {
     if (!m_flush_event.valid) {
         return;

@@ -2,6 +2,7 @@
 #define TOPDOWN_H
 
 #include "perf/perf_def.h"
+#include "config.h"
 
 /*
  * @brief Topdown performance analyzer
@@ -63,14 +64,18 @@ typedef struct TopdownRes {
 
 class Topdown {
 public:
-    explicit Topdown(PerfStats &stats);
+    explicit Topdown(PerfStats &stats, const TCoreConfig& config);
     ~Topdown();
 
     void                        analyze();
     void                        report();
+
+    void                        print_results();
+    void                        print_stats();
 private:
     PerfStats&                  m_stats;
     TopdownRes                  m_res;
+    const TCoreConfig&          m_core_config;
 };
 
 #endif // TOPDOWN_H

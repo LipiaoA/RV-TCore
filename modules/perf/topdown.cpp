@@ -31,7 +31,7 @@ std::string fmt_u64(u64 value)
 std::string fmt_f64(double value)
 {
     std::ostringstream oss;
-    oss << std::fixed << std::setprecision(4) << value;
+    oss << std::fixed << std::setprecision(2) << value;
     return oss.str();
 }
 
@@ -52,6 +52,16 @@ void print_kv(const std::string& title, const std::string& value, int indent = 0
 void print_kv(const std::string& title, u64 value, int indent = 0)
 {
     print_kv(title, fmt_u64(value), indent);
+}
+
+void print_kv(const std::string& title, f64 value, int indent = 0)
+{
+    print_kv(title, fmt_f64(value), indent);
+}
+
+void print_pct(const std::string& title, f64 ratio, int indent = 0)
+{
+    print_kv(title, fmt_f64(ratio * 100.0) + "%", indent);
 }
 
 void print_section(const char* name)
@@ -145,8 +155,10 @@ void print_flush_type_table(const PerfStats& stats)
 
 } // namespace
 
-Topdown::Topdown(PerfStats &stats)
-    : m_stats(stats)
+Topdown::Topdown(PerfStats &stats, const TCoreConfig& config)
+    : m_stats(stats),
+      m_res{},
+      m_core_config(config)
 {
 }
 
@@ -156,10 +168,29 @@ Topdown::~Topdown()
 
 void Topdown::analyze()
 {
+    u32 issue_width = m_core_config.issue_config().int_issue_width +
+                      m_core_config.issue_config().ls_issue_width;
+
+    m_res.total_cycles = m_stats.cycles;
+    m_res.total_slots = m_res.total_cycles * issue_width;
+    m_res.total_insts = m_stats.commit.retired_insts;
+    m_res.ipc = m_stats.ipc();
+
+    m_res.retiring = m_stats.commit.retired_insts * 1.0 / static_cast<f64>(m_res.total_slots);
+
+    u64 bad_insts = m_stats.issue.issued_insts - m_stats.commit.retired_insts
+                    + m_stats.frontend.recovery_slots;
+    m_res.bad_speculation = bad_insts * 1.0 / static_cast<f64>(m_res.total_slots);
+
+    u64 fetch_bubbles = m_stats.frontend.fetch_bubbles - m_stats.frontend.recovery_slots;
+    m_res.frontend_bound = fetch_bubbles * 1.0 / static_cast<f64>(m_res.total_slots);
+
+    m_res.backend_bound = 1.0 - m_res.frontend_bound - m_res.bad_speculation - m_res.retiring;
+
     return;
 }
 
-void Topdown::report()
+void Topdown::print_stats()
 {
     std::cout << "PerfStats\n";
     print_kv("Cycles", m_stats.cycles);
@@ -175,6 +206,8 @@ void Topdown::report()
     print_kv("ICache Miss Count", m_stats.frontend.icache_miss_count, 2);
     print_kv("ITLB Miss Count", m_stats.frontend.itlb_miss_count, 2);
     print_kv("Flushed Insts", m_stats.frontend.flushed_insts, 2);
+    print_kv("Fetch Bubbles", m_stats.frontend.fetch_bubbles, 2);
+    print_kv("Recovery Slots", m_stats.frontend.recovery_slots, 2);
 
     print_section("Rename Unit");
     print_kv("Input Insts", m_stats.rename.input_insts, 2);
@@ -204,4 +237,41 @@ void Topdown::report()
 
     print_section("Function Units");
     print_fu_table(m_stats);
+}
+
+void Topdown::print_results()
+{
+    std::cout << "Topdown Results\n";
+    print_kv("Total Cycles", m_res.total_cycles);
+    print_kv("Total Slots", m_res.total_slots);
+    print_kv("Total Insts", m_res.total_insts);
+    print_kv("IPC", m_res.ipc);
+
+    print_section("Top Level");
+    print_pct("Retiring", m_res.retiring, 2);
+    print_pct("Bad Speculation", m_res.bad_speculation, 2);
+    print_pct("Frontend Bound", m_res.frontend_bound, 2);
+    print_pct("Backend Bound", m_res.backend_bound, 2);
+
+    print_section("Bad Speculation");
+    print_kv("Branch Mispredict Slots", m_res.branch_mispredict_slots, 2);
+    print_kv("Load Replay Slots", m_res.load_replay_slots, 2);
+    print_kv("Memory Order Violation Slots", m_res.memory_order_violation_slots, 2);
+    print_kv("Other Flush Slots", m_res.other_flush_slots, 2);
+    print_pct("Branch Mispredict", m_res.branch_mispredict, 2);
+    print_pct("Load Replay", m_res.load_replay, 2);
+
+    print_section("Frontend Bound");
+    print_pct("Frontend Latency", m_res.frontend_latency, 2);
+    print_pct("Frontend Bandwidth", m_res.frontend_bandwidth, 2);
+
+    print_section("Backend Bound");
+    print_pct("Memory Bound", m_res.memory_bound, 2);
+    print_pct("Core Bound", m_res.core_bound, 2);
+}
+
+void Topdown::report()
+{
+    print_results();
+    print_stats();
 }

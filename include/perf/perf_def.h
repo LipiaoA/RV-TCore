@@ -55,6 +55,11 @@ struct PerfStats {
         u64 icache_miss_count { 0 };
         u64 itlb_miss_count { 0 };
         u64 flushed_insts { 0 };
+
+        u64 fetch_bubbles { 0 };
+        u64 recovery_slots { 0 };
+
+        u64 fetch_id { 0 };
     };
 
     struct RenameStats {

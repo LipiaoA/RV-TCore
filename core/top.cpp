@@ -135,7 +135,7 @@ void Top::build() {
     m_tcrat             =   new std::array<int, RV_TILE_SIZE>();
     m_checkpoints       =   new std::vector<RatCheckpoint>();
     m_perf_stats        =   new PerfStats();
-    m_topdown           =   new Topdown(*m_perf_stats);
+    m_topdown           =   new Topdown(*m_perf_stats, m_config);
     m_perf_stats->stats_level = 1;
     m_crat->fill(0);
     (*m_crat)[2] = 1; // x2/sp uses a dedicated initial physical register.

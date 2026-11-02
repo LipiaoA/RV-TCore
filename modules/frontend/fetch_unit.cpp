@@ -535,8 +535,10 @@ void FetchUnit::flush()
     case FlushType::FENCE:
     case FlushType::BRANCH_MISPRED: {
         if (m_stats.perf()) {
-            m_stats.frontend.branch_mispredict_count +=
-                ((m_flush_event.type == FlushType::BRANCH_MISPRED) ? 1 : 0);
+            if (m_flush_event.type == FlushType::BRANCH_MISPRED) {
+                ++m_stats.frontend.branch_mispredict_count;
+                m_stats.frontend.fetch_id = m_fetch_id;
+            }
             m_stats.frontend.flushed_insts += m_inst_buffer.size();
             auto count_pkt = [&](const pipe_reg_t<FetchPacket>& pkt) -> i32 {
                 if (!pkt.valid) {

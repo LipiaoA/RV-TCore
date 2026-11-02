@@ -328,7 +328,12 @@ void IssueUnit::wakeup() {
 
 static bool int_type(InstType type)
 {
-    return type == InstType::INT || type == InstType::BRANCH;
+    return type == InstType::INT;
+}
+
+static bool branch_type(InstType type)
+{
+    return type == InstType::BRANCH;
 }
 
 static bool ls_type(InstType type)
@@ -428,14 +433,13 @@ void IssueUnit::select()
     size_t sel = 0;
     for (size_t i = 0; sel < int_slots_left && i < candidates.size(); ++i) {
         auto& cand = candidates[i];
-        if (!int_type(cand.inst->type)) {
-            continue;
-        }
-        m_select_buffer.emplace_back(cand);
+        if (int_type(cand.inst->type) || branch_type(cand.inst->type)) {
+            m_select_buffer.emplace_back(cand);
         if (m_stats.perf()) {
             ++m_stats.issue.selected_insts;
         }
         ++sel;
+        }
     }
     sel = 0;
     for (size_t i = 0; sel < ls_slots_left && i < candidates.size(); ++i) {
@@ -490,6 +494,7 @@ void IssueUnit::select()
 void IssueUnit::issue()
 {
     u64 fu_busy = 0;
+    u32 int_issued = 0, ls_issued = 0;
     std::string st_half = "None";
 
     retire_executed(m_int_q);
@@ -523,11 +528,20 @@ void IssueUnit::issue()
         bool ret = m_exec.dispatch(inst);
         if (m_stats.perf() && ret) {
             ++m_stats.issue.issued_insts;
+            if (inst->fetch_id == m_stats.frontend.fetch_id) {
+                m_stats.frontend.fetch_id = 0;
+            }
+
         }
         if (!ret) {
             inst->store_issue_half = StoreIssueHalf::NONE;
             ++fu_busy;
         } else {
+            if (int_type(inst->type) || branch_type(inst->type)) {
+                ++int_issued;
+            } else if (ls_type(inst->type)) {
+                ++ls_issued;
+            }
             if (inst->type == InstType::STORE) {
                 if (cand.store_half == StoreIssueHalf::STA) {
                     st_half = "STA";
@@ -587,7 +601,15 @@ void IssueUnit::issue()
     m_select_buffer.clear();
     clean_bypass_hint();
     if (m_stats.perf()) {
-        m_stats.issue.fu_busy_count += fu_busy;
+        const FuStates& fu_states = m_exec.get_fu_states();
+        u32 i_empty = m_int_issue_width - int_issued + m_ls_issue_width - ls_issued;
+        u32 e_empty = fu_states.alu_aval + fu_states.bru_aval + fu_states.agu_aval + fu_states.std_aval;
+
+        m_stats.frontend.fetch_bubbles += std::min(i_empty, e_empty);
+
+        if (m_stats.frontend.fetch_id != 0) {
+            m_stats.frontend.recovery_slots += std::min(i_empty, e_empty);
+        }
     }
 }
 

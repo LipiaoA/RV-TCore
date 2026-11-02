@@ -14,6 +14,16 @@
 #include "rv_def.h"
 #include "config.h"
 
+struct FuStates {
+    u32 alu_aval { 0 };
+    u32 fpu_aval { 0 };
+    u32 bru_aval { 0 };
+    u32 agu_aval { 0 };
+    u32 std_aval { 0 };
+    u32 vpu_aval { 0 };
+    u32 tpu_aval { 0 };
+};
+
 class ExecuteUnit : public IExecute {
     constexpr static u32 MAX_ALU_NUM = 8;
     constexpr static u32 MAX_FPU_NUM = 4;
@@ -38,6 +48,7 @@ public:
     void                                set_idx(u32 idx) {m_idx = idx;}
     u32                                 get_idx() const {return m_idx;}
     FuType                              get_fu_type() const {return m_fu_types;}
+    const FuStates&                     get_fu_states();
 
 private:
     void                                arbitration();
@@ -81,6 +92,7 @@ private:
     PerfStats&                          m_stats;
     FuType                              m_fu_types { FuType::LSU };
     u32                                 m_idx { 0 };
+    FuStates                            m_fu_states;
 };
 
 #endif
