@@ -166,11 +166,16 @@ typedef struct {
 } FlushUnitConfig;
 
 typedef struct {
-    u32 int_issue_width { 4 };
-    u32 ls_issue_width { 2 };
-    u32 fp_issue_width { 2 };
-    u32 vec_issue_width { 1 };
-    u32 tile_issue_width { 1 };
+    u32 int_issue_width;
+    u32 ls_issue_width;
+    u32 fp_issue_width;
+    u32 vec_issue_width;
+    u32 tile_issue_width;
+    u32 int_queue_size;
+    u32 ls_queue_size;
+    u32 fp_queue_size;
+    u32 vec_queue_size;
+    u32 tsr_queue_size;
 } IssueConfig;
 
 typedef struct {
@@ -238,6 +243,11 @@ typedef struct {
     u32 alu_num;
     u32 fpu_num;
     u32 bru_num;
+    u32 int_queue_size;
+    u32 ls_queue_size;
+    u32 fp_queue_size;
+    u32 vec_queue_size;
+    u32 tsr_queue_size;
 
     // i-TLB related
     u32 itlb_hit_latency;

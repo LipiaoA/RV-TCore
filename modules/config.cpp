@@ -62,6 +62,11 @@ void TCoreConfig::init_config() {
     m_core_config.vpu_num         = 1;
     m_core_config.tpu_num         = 1;
     m_core_config.bru_num         = 1;
+    m_core_config.int_queue_size  = 48;
+    m_core_config.ls_queue_size   = 24;
+    m_core_config.fp_queue_size   = 24;
+    m_core_config.vec_queue_size  = 8;
+    m_core_config.tsr_queue_size  = 8;
 
     // i-TLB configuration
     m_core_config.itlb_hit_latency        = 12;
@@ -196,6 +201,11 @@ IssueConfig TCoreConfig::issue_config() const {
     conf.fp_issue_width  = m_core_config.fp_issue_width;
     conf.vec_issue_width = m_core_config.vec_issue_width;
     conf.tile_issue_width = m_core_config.tile_issue_width;
+    conf.int_queue_size = m_core_config.int_queue_size;
+    conf.ls_queue_size = m_core_config.ls_queue_size;
+    conf.fp_queue_size = m_core_config.fp_queue_size;
+    conf.vec_queue_size = m_core_config.vec_queue_size;
+    conf.tsr_queue_size = m_core_config.tsr_queue_size;
     return conf;
 }
 

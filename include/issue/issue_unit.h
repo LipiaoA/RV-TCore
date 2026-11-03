@@ -66,6 +66,11 @@ private:
     size_t                              m_fp_issue_width   { 2 };
     size_t                              m_vec_issue_width  { 1 };
     size_t                              m_tile_issue_width { 1 };
+    size_t                              m_int_queue_size;
+    size_t                              m_ls_queue_size;
+    size_t                              m_fp_queue_size;
+    size_t                              m_vec_queue_size;
+    size_t                              m_tsr_queue_size;
     INPUT std::vector<WakeupEvent>&     m_wakeup_bus;
 };
 

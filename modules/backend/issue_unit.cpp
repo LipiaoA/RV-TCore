@@ -29,6 +29,11 @@ IssueUnit::IssueUnit(const IssueConfig& conf, const IssueDeps& deps)
       m_fp_issue_width(conf.fp_issue_width),
       m_vec_issue_width(conf.vec_issue_width),
       m_tile_issue_width(conf.tile_issue_width),
+      m_int_queue_size(conf.int_queue_size),
+      m_ls_queue_size(conf.ls_queue_size),
+      m_fp_queue_size(conf.fp_queue_size),
+      m_vec_queue_size(conf.vec_queue_size),
+      m_tsr_queue_size(conf.tsr_queue_size),
       m_vec_reg_req_q(*deps.vec_reg_req_q),
       m_tile_reg_req_q(*deps.tile_reg_req_q),
       m_wakeup_bus(*deps.wakeup_bus),
@@ -690,24 +695,31 @@ void IssueUnit::requeue_from_rob(MInstPtr inst)
 
 void IssueUnit::async() {
     MInstPtr inst;
-    while (m_rename_issue_q.read(inst)) {
+    while (m_rename_issue_q.peek(inst)) {
+        bool pop = true;
         if (!inst->valid) {
+            m_rename_issue_q.read(inst);
             delete inst;
             continue;
         }
-        if (inst->type == InstType::VECTOR) {
+        if (inst->type == InstType::VECTOR && m_vec_q.size() < m_vec_queue_size) {
             m_vec_q.emplace_back(inst);
-        } else if (inst->type == InstType::TENSOR) {
+        } else if (inst->type == InstType::TENSOR && m_tensor_q.size() < m_tsr_queue_size) {
             m_tensor_q.emplace_back(inst);
-        } else if (inst->type == InstType::LOAD ||
+        } else if ((inst->type == InstType::LOAD ||
             inst->type == InstType::STA ||
             inst->type == InstType::STD ||
-            inst->type == InstType::STORE) {
+            inst->type == InstType::STORE) && m_ls_q.size() < m_ls_queue_size) {
             m_ls_q.emplace_back(inst);
-        } else if (inst->type == InstType::FP) {
+        } else if (inst->type == InstType::FP && m_fp_q.size() < m_fp_queue_size) {
             m_fp_q.emplace_back(inst);
-        } else {
+        } else if ((int_type(inst->type) || branch_type(inst->type)) && m_int_q.size() < m_int_queue_size) {
             m_int_q.emplace_back(inst);
+        } else {
+            pop = false;
+        }
+        if (pop) {
+            m_rename_issue_q.read(inst);
         }
     }
     return;

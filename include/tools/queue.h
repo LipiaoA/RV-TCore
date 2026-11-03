@@ -98,6 +98,15 @@ public:
         return true;
     }
 
+    // 读端接口： 从缓冲区获取元素但不弹出
+    inline bool peek(T &out) const
+    {
+        if (m_read_buffer.empty())
+            return false;
+        out = m_read_buffer.front();
+        return true;
+    }
+
     // 当前读队列是否为空
     inline bool empty() const
     {
