@@ -18,6 +18,8 @@ public:
         m_val &= (1 << m_clen) - 1;
     }
 
+    void reset() { m_val = 0; }
+
     u64 value() const { return m_val; }
 
 private:
@@ -66,19 +68,20 @@ struct TageTable {
 struct TagePred
 {
     bool valid = false;
-    bool final_pred;
+    bool final_pred = false;
     int provider = -1;
     int alt_provider = -1;
     bool alt_pred = false;
 };
 
 class TAGE {
-    constexpr static u32 MAX_TABLES = 5;
+    constexpr static u32 MAX_TABLES = 8;
 public:
     TAGE(const TageConfig &cfg);
 
     TagePred                                predict(u64 pc);
     void                                    update(u64 pc, bool taken, TagePred &pred);
+    void                                    reset();
 
 private:
     TageTable                               m_tables[MAX_TABLES];

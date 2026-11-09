@@ -84,6 +84,10 @@ struct PerfStats {
         u64 flushed_uops { 0 };
         u64 completed_uops { 0 };
         u64 rejected_uops { 0 };
+        u64 succ_direction { 0 };
+        u64 fail_direction { 0 };
+        u64 succ_target { 0 };
+        u64 fail_target { 0 };
     };
 
     struct CommitStats {

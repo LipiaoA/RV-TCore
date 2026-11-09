@@ -42,6 +42,12 @@ void Core::tick() {
     m_flush.tick();
     if (m_flush_event.valid) {
         if (m_flush_event.type == FlushType::STOP) {
+            LOG_LEVEL1("Core", "Program Completed Execution Successfully!!! PC: 0x%lx\n",
+                        m_flush_event.inst_pc);
+            m_exit = true;
+            return;
+        } else if (m_flush_event.type == FlushType::EXCEPTION) {
+            LOG_LEVEL1("Core", "ERROR! Exception Occurred At PC: 0x%lx\n", m_flush_event.inst_pc);
             m_exit = true;
             return;
         }

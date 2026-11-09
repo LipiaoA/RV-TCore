@@ -230,6 +230,7 @@ bool RenameUnit::save_branch_checkpoint(MInstPtr inst)
     inst->c_id = cp.c_id;
     cp.rid = inst->rid;
     m_checkpoints.emplace_back(cp);
+    LOG_LEVEL1("RenameUnit Checkpoint", "save c_id: %lu, pc:0x%lx, inst: %s", cp.c_id, inst->pc, inst->inst_name.c_str());
     return true;
 }
 
@@ -587,6 +588,8 @@ void RenameUnit::flush() {
     rebuild_vfree_list();
     rebuild_tfree_list();
     m_checkpoints.erase(it, m_checkpoints.end());
+    LOG_LEVEL1("RenameUnit Flush", "recover c_id: %lu,inst pc:0x%lx",
+                m_flush_event.c_id, m_flush_event.inst_pc);
 }
 
 void RenameUnit::reset() {

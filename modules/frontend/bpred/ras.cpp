@@ -35,7 +35,12 @@ RAS::Checkpoint RAS::checkpoint() const
 
 void RAS::restore(const Checkpoint& cp)
 {
-    m_sp = cp.sp;
+    m_sp = cp.sp > DEPTH ? DEPTH : static_cast<u32>(cp.sp);
+}
+
+u32 RAS::next_sp(u32 sp) const
+{
+    return sp < DEPTH ? sp + 1 : DEPTH;
 }
 
 bool RAS::empty() const

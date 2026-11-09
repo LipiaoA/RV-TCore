@@ -67,7 +67,17 @@ void DecodeUnit::d0() {
         LOG_LEVEL1("DecodeUnit d0", "decode pc:0x%lx inst: %s ", dinst->pc, dinst->inst_name.c_str());
         dinst->valid = true;
         dinst->fetch_id = finst.fetch_id;
-        dinst->pred_taken = (pkt.br_mask & (1u << i)) ? pkt.pred_taken : false;
+        if (pkt.br_mask & (1u << i)) {
+            dinst->pred_taken = pkt.bpred.valid ? pkt.bpred.taken : pkt.pred_taken;
+            dinst->bpred = pkt.bpred;
+            if (!pkt.bpred.valid) {
+                dinst->bpred.valid = true;
+                dinst->bpred.taken = pkt.pred_taken;
+                dinst->bpred.target = pkt.pred_target;
+            }
+        } else {
+            dinst->pred_taken = false;
+        }
         dinst->type = isa::inst_type(dinst->opcode);
         dinst->ls_width = isa::ls_width(dinst->opcode);
         m_d0_pkt.emplace_back(dinst);

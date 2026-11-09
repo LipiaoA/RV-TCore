@@ -1361,7 +1361,7 @@ int LSU::alloc_store_entry()
 
 void LSU::replay(LQEntry& load_entry)
 {
-    LOG_LEVEL1("LSU Replay", "load_id:%lu ldq:%zu addr:0x%lx state:%s",
+    LOG_LEVEL1("LoadStoreUnit", "Replay load_id:%lu ldq:%zu addr:0x%lx state:%s",
                load_entry.load_id, load_entry.ldq_idx, load_entry.addr,
                ldst_state_str(load_entry.state));
     load_entry.executed = false;
@@ -1381,7 +1381,7 @@ void LSU::replay(LQEntry& load_entry)
 
 void LSU::replay(SQEntry& store_entry)
 {
-    LOG_LEVEL1("LSU Replay", "store_id:%lu stq:%zu addr:0x%lx state:%s",
+    LOG_LEVEL1("LoadStoreUnit", "Replay store_id:%lu stq:%zu addr:0x%lx state:%s",
                store_entry.store_id, store_entry.stq_idx, store_entry.addr,
                ldst_state_str(store_entry.state));
     store_entry.data_ready = false;
@@ -1416,7 +1416,7 @@ void LSU::replay_store_half(ROBID rid, bool kill_sta, bool kill_std)
         //     st->uop->data_ready = false;
         // }
     }
-    LOG_LEVEL1("LSU Replay", "store half rid:%s%u kill_sta:%d kill_std:%d",
+    LOG_LEVEL1("LoadStoreUnit", "Replay store half rid:%s%u kill_sta:%d kill_std:%d",
                rid.direct ? "--" : "++", rid.idx, kill_sta, kill_std);
 }
 
@@ -1525,7 +1525,7 @@ void LSU::flush(const FlushEvent& event)
             s.valid = false;
         }
     }
-    LOG_LEVEL1("LSU Flush", "type:%s source:%s scope:%s rid:%u-%u loads:%zu stores:%zu",
+    LOG_LEVEL1("LoadStoreUnit", "Flush type:%s source:%s scope:%s rid:%u-%u loads:%zu stores:%zu",
                FlushTypeStr[static_cast<int>(event.type)],
                FlushSourceStr[static_cast<int>(event.source)],
                FlushScopeStr[static_cast<int>(event.scope)],
@@ -1590,7 +1590,7 @@ void LSU::dump_state() const
         }
     }
 
-    LOG_LEVEL1("LSU", "ldq:%zu/%zu head:%zu tail:%zu stq:%zu/%zu head:%zu tail:%zu commit:%zu exe:%zu "
+    LOG_LEVEL1("LoadStoreUnit", "ldq:%zu/%zu head:%zu tail:%zu stq:%zu/%zu head:%zu tail:%zu commit:%zu exe:%zu "
                "inflight_ld:%zu ready_st:%zu complete:%zu wb:%zu pending_resp:%zu pending_sta:%zu stall:%d",
                valid_loads, m_load_q_size, m_ldq_head, m_ldq_tail,
                valid_stores, m_store_q_size, m_stq_head, m_stq_tail,

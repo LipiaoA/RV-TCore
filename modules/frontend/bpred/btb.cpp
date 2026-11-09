@@ -23,7 +23,7 @@ BTB::BTB()
 }
 
 // lookup returns pair(hit, target)
-BTBResp BTB::lookup(pc_t pc, u64 time) {
+BTBResp BTB::lookup(pc_t pc, u32 time) {
 	auto [idx, tag] = index_and_tag(pc);
 	auto &set = m_sets[idx];
 	for (u32 w = 0; w < m_ways; ++w) {
@@ -38,17 +38,24 @@ BTBResp BTB::lookup(pc_t pc, u64 time) {
 void BTB::update(pc_t pc, pc_t target, BrType type, u32 time) {
 	auto [idx, tag] = index_and_tag(pc);
 	auto &set = m_sets[idx];
-	// look for invalid slot
+	for (u32 w = 0; w < m_ways; ++w) {
+		if (set[w].valid && set[w].tag == tag) {
+			set[w].target = target;
+			set[w].type = type;
+			set[w].last_used_time = time;
+			return;
+		}
+	}
 	for (u32 w = 0; w < m_ways; ++w) {
 		if (!set[w].valid) {
 			set[w].valid = true;
 			set[w].tag = tag;
 			set[w].target = target;
+			set[w].type = type;
 			set[w].last_used_time = time;
 			return;
 		}
 	}
-	// replace LRU
 	u32 lru = 0;
 	u32 lru_time = set[0].last_used_time;
 	for (u32 w = 1; w < m_ways; ++w) {
@@ -57,8 +64,10 @@ void BTB::update(pc_t pc, pc_t target, BrType type, u32 time) {
 			lru_time = set[w].last_used_time;
 		}
 	}
+	set[lru].valid = true;
 	set[lru].tag = tag;
 	set[lru].target = target;
+	set[lru].type = type;
 	set[lru].last_used_time = time;
 }
 

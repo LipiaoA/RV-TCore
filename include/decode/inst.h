@@ -19,6 +19,25 @@ struct PredecodeInfo {
     u8  slot     { 0 };    // 在 line 内的 slot 索引
 };
 
+// 取指阶段定稿、随指令走到执行/flush 的分支预测
+struct BranchPredMeta {
+    bool valid { false };
+    bool taken { false };
+    bool target_valid { false };
+    pc_t target { 0 };
+    BrType type { BrType::NONE };
+    u64 ghr_snapshot { 0 };
+    u32 ras_sp { 0 };
+    // F1/F2 已经按 spec_pc 做过的投机预测；F3 用它判断要不要纠正
+    bool spec { false };
+    pc_t spec_pc { 0 };
+    bool tage_valid { false };
+    bool tage_final { false };
+    int tage_provider { -1 };
+    int tage_alt_provider { -1 };
+    bool tage_alt_pred { false };
+};
+
 typedef struct {
     uint32_t mask;
     uint32_t match;
@@ -115,6 +134,7 @@ typedef struct MicroOp {
     InstType type { InstType::NONE };
     bool valid { false };
     bool pred_taken { false };
+    BranchPredMeta bpred {};
     InstFmt format;
     Operand rs1;
     Operand rs2;

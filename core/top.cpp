@@ -299,6 +299,7 @@ void Top::build() {
     bru_deps.wakeup_bus = m_comm_queues.wakeup_bus;
     bru_deps.rob = m_rob;
     bru_deps.perf_stats = m_perf_stats;
+    bru_deps.bpu = m_bpu;
 
     FPUDeps fpu_deps;
     fpu_deps.reg_req_q = m_comm_queues.reg_req_q;

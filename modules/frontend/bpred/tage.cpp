@@ -65,55 +65,52 @@ TagePred TAGE::predict(u64 pc)
 
 void TAGE::update(u64 pc, bool taken, TagePred &pred)
 {
-    if (pred.provider == -1) {
-        return;
-    }
+    if (pred.provider != -1) {
+        auto &e = m_tables[pred.provider].entries[index(pred.provider, pc)];
+        e.update(taken);
 
-    auto &e = m_tables[pred.provider].entries[index(pred.provider, pc)];
-    e.update(taken);
-
-    /* usefulness update  */
-    bool provider_correct = (pred.final_pred == taken);
-    bool alt_correct = (pred.alt_pred == taken);
-    if (provider_correct != alt_correct) {
-        if (provider_correct && e.u < 3) {
-            e.u++;
-        } else if (!provider_correct && e.u > 0) {
-            e.u--;
+        bool provider_correct = (pred.final_pred == taken);
+        bool alt_correct = (pred.alt_pred == taken);
+        if (provider_correct != alt_correct) {
+            if (provider_correct && e.u < 3) {
+                e.u++;
+            } else if (!provider_correct && e.u > 0) {
+                e.u--;
+            }
         }
     }
 
-    bool found = false;
-    /* 如果provider的预测失败 */
-    if(pred.final_pred != taken) {
-        for(u32 t = static_cast<u32>(pred.provider) + 1; t < m_ntables; t++) {
-            auto &e = m_tables[t].entries[index(static_cast<i32>(t), pc)];
-            if(e.u == 0) {
-                e.tag = ctag(static_cast<i32>(t), pc);
-                e.ctr = taken ? 0 : -1;
-                e.u   = 0;
-                found = true;
+    // miss 或预测错误时，向更长历史的空项分配。表满则跳过，历史仍然推进。
+    const bool allocate = pred.provider == -1 || pred.final_pred != taken;
+    if (allocate) {
+        u32 start = pred.provider == -1 ? 0 : static_cast<u32>(pred.provider) + 1;
+        for (u32 t = start; t < m_ntables; t++) {
+            auto &slot = m_tables[t].entries[index(static_cast<i32>(t), pc)];
+            if (slot.u == 0) {
+                slot.tag = ctag(static_cast<i32>(t), pc);
+                slot.ctr = taken ? 0 : -1;
+                slot.u = 0;
                 break;
             }
         }
     }
 
-    // we should update u in not found situation
-    assert(found);
-
-    // 更新全局历史
-    m_ghr = (m_ghr << 1) | taken;
-
-    for(u32 i = 0; i < m_ntables; i++)
-    {
-        auto &fold_idx = m_tables[i].fold_idx;
-        auto &fold_tag1 = m_tables[i].fold_tag1;
-        auto &fold_tag2 = m_tables[i].fold_tag2;
-        fold_idx.update(taken);
-        fold_tag1.update(taken);
-        fold_tag2.update(taken);
+    m_ghr = (m_ghr << 1) | (taken ? 1ull : 0ull);
+    for (u32 i = 0; i < m_ntables; i++) {
+        m_tables[i].fold_idx.update(taken);
+        m_tables[i].fold_tag1.update(taken);
+        m_tables[i].fold_tag2.update(taken);
     }
-    return;
+}
+
+void TAGE::reset()
+{
+    m_ghr = 0;
+    for (u32 i = 0; i < m_ntables; i++) {
+        m_tables[i].fold_idx.reset();
+        m_tables[i].fold_tag1.reset();
+        m_tables[i].fold_tag2.reset();
+    }
 }
 
 u32 TAGE::index(i32 t, pc_t pc) const

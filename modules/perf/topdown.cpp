@@ -95,7 +95,7 @@ bool fu_idle(const PerfStats::FuStats& s)
 
 void print_fu_table(const PerfStats& stats)
 {
-    const int widths[] = {6, 4, 14, 14, 16, 14};
+    const int widths[] = {4, 2, 12, 12, 14, 12};
     const std::string header[] = {
         "Type", "Id", "Accepted Uops", "Flushed Uops", "Completed Uops", "Rejected Uops"
     };
@@ -115,21 +115,62 @@ void print_fu_table(const PerfStats& stats)
             }
             any = true;
             const std::string row[] = {
-                fu_type_name(t),
-                fmt_u64(id),
-                fmt_u64(fu.accepted_uops),
-                fmt_u64(fu.flushed_uops),
-                fmt_u64(fu.completed_uops),
-                fmt_u64(fu.rejected_uops),
+                fu_type_name(t), fmt_u64(id), fmt_u64(fu.accepted_uops),
+                fmt_u64(fu.flushed_uops), fmt_u64(fu.completed_uops),
+                fmt_u64(fu.rejected_uops)
             };
             print_table_row(widths, row, n);
         }
+    }
+    print_table_border(widths, n);
+    for (u32 t = 0; t < fu_types && t < PerfStats::MAX_FLUSH_COUNT; ++t) {
+        u64 accepted_uops = 0;
+        u64 flushed_uops = 0;
+        u64 completed_uops = 0;
+        u64 rejected_uops = 0;
+        for (u32 id = 0; id < PerfStats::MAX_FU_NUM; ++id) {
+            const auto& fu = stats.fu[t][id];
+            accepted_uops += fu.accepted_uops;
+            flushed_uops += fu.flushed_uops;
+            completed_uops += fu.completed_uops;
+            rejected_uops += fu.rejected_uops;
+        }
+        const std::string row[] = {
+            fu_type_name(t), "T", fmt_u64(accepted_uops),
+            fmt_u64(flushed_uops), fmt_u64(completed_uops), fmt_u64(rejected_uops),
+        };
+        print_table_row(widths, row, n);
     }
     if (!any) {
         const std::string row[] = {"-", "-", "0", "0", "0", "0"};
         print_table_row(widths, row, n);
     }
     print_table_border(widths, n);
+}
+
+void print_branch_predictor_info(const PerfStats& stats) {
+    u64 direct_correct = 0;
+    u64 target_correct = 0;
+    u64 direct_miss = 0;
+    u64 target_miss = 0;
+    const u32 fu_types = static_cast<u32>(FuType::BRU);
+    for (u32 id = 0; id < PerfStats::MAX_FU_NUM; ++id) {
+        const auto& fu = stats.fu[fu_types][id];
+        direct_correct += fu.succ_direction;
+        target_correct += fu.succ_target;
+        direct_miss += fu.fail_direction;
+        target_miss += fu.fail_target;
+    }
+    f64 total_ratio = (direct_correct + target_correct) * 1.0 /
+                      (direct_correct + direct_miss + target_correct + target_miss);
+    print_kv("Direct Correct", direct_correct, 2);
+    print_kv("Target Correct", target_correct, 2);
+    print_kv("Direct Miss", direct_miss, 2);
+    print_kv("Target Miss", target_miss, 2);
+    print_pct("Direct Correct Ratio", direct_correct * 1.0 / (direct_correct + direct_miss), 2);
+    print_pct("Target Correct Ratio", target_correct * 1.0 / (target_correct + target_miss), 2);
+    print_pct("Total Correct Ratio", total_ratio, 2);
+    return;
 }
 
 void print_flush_type_table(const PerfStats& stats)
@@ -230,6 +271,9 @@ void Topdown::print_stats()
     print_kv("ROB Empty Cycles", m_stats.commit.rob_empty_cycles, 2);
     print_kv("Head Not Ready Cycles", m_stats.commit.head_not_ready_cycles, 2);
 
+    print_section("Branch Predictor Speculation");
+    print_branch_predictor_info(m_stats);
+
     print_section("Flush Unit");
     print_kv("Requests", m_stats.flush.requests, 2);
     print_kv("Events", m_stats.flush.events, 2);
@@ -237,6 +281,7 @@ void Topdown::print_stats()
 
     print_section("Function Units");
     print_fu_table(m_stats);
+    return;
 }
 
 void Topdown::print_results()

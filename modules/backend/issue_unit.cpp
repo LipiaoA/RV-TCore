@@ -45,14 +45,15 @@ void IssueUnit::build() {
 }
 
 void IssueUnit::tick() {
-    flush();
     /* run at previous clock cycle */
+    flush();
     async();
-    wakeup();
 
     /* run at current clock cycle */
     issue();
     select();
+
+    wakeup();
 }
 
 void IssueUnit::commit()
@@ -122,20 +123,19 @@ void IssueUnit::apply_replay_to_inst(MInstPtr inst, i32 ptag, bool kill_sta, boo
 
 void IssueUnit::handle_dep_kill(const WakeupEvent& event)
 {
-    std::queue<i32> kill_ptags_q;
-    std::unordered_set<i32> killed_ptags_set;
+    std::vector<i32> killed_ptags_vec;
     if (event.ptag >= 0) {
-        kill_ptags_q.push(event.ptag);
-        killed_ptags_set.insert(event.ptag);
+        killed_ptags_vec.push_back(event.ptag);
     }
 
     auto replay_iq_inst = [&](MInstPtr inst, bool& grew) {
         if (!inst || !inst->valid) {
             return;
         }
-        while (!kill_ptags_q.empty()) {
-            i32 ptag = kill_ptags_q.front();
-            kill_ptags_q.pop();
+        std::deque<i32> kill_ptags(killed_ptags_vec.begin(), killed_ptags_vec.end());
+        while (!kill_ptags.empty()) {
+            i32 ptag = kill_ptags.front();
+            kill_ptags.pop_front();
             const bool hit_rs1 = src_matches_ptag(inst->rs1, ptag);
             const bool hit_rs2 = src_matches_ptag(inst->rs2, ptag);
             if (!hit_rs1 && !hit_rs2) {
@@ -152,18 +152,22 @@ void IssueUnit::handle_dep_kill(const WakeupEvent& event)
                 m_rob.mark_not_ready(inst->rid);
                 if (m_regfile && inst->rd.valid && inst->rd.ptag >= 0) {
                     m_regfile->set_busy(inst->rd.ptag);
-                    if (killed_ptags_set.insert(inst->rd.ptag).second) {
-                        kill_ptags_q.push(inst->rd.ptag);
+                    if (std::find(killed_ptags_vec.begin(), killed_ptags_vec.end(), inst->rd.ptag) == killed_ptags_vec.end()) {
+                        kill_ptags.push_back(inst->rd.ptag);
+                        killed_ptags_vec.push_back(inst->rd.ptag);
                         grew = true;
                     }
                 }
                 continue;
             }
             apply_replay_to_inst(inst, ptag, hit_rs1, hit_rs2);
-            if (inst->rd.valid && inst->rd.ptag >= 0) {
-                if (killed_ptags_set.insert(inst->rd.ptag).second) {
+
+            if (inst->rd.valid) {
+                if (std::find(killed_ptags_vec.begin(), killed_ptags_vec.end(),
+                    inst->rd.ptag) == killed_ptags_vec.end()) {
                     grew = true;
-                    kill_ptags_q.push(inst->rd.ptag);
+                    kill_ptags.push_back(inst->rd.ptag);
+                    killed_ptags_vec.push_back(inst->rd.ptag);
                 }
             }
         }
@@ -204,7 +208,7 @@ void IssueUnit::handle_dep_kill(const WakeupEvent& event)
             bool hit = false;
             bool kill_sta = false;
             bool kill_std = false;
-            for (i32 ptag : killed_ptags_set) {
+            for (i32 ptag : killed_ptags_vec) {
                 if (src_matches_ptag(inst->rs1, ptag)) {
                     hit = true;
                     kill_sta = true;
@@ -220,14 +224,15 @@ void IssueUnit::handle_dep_kill(const WakeupEvent& event)
             if (inst->type == InstType::STORE) {
                 apply_replay_to_inst(inst, -1, kill_sta, kill_std);
             } else {
-                for (i32 ptag : killed_ptags_set) {
+                for (i32 ptag : killed_ptags_vec) {
                     if (src_matches_ptag(inst->rs1, ptag) || src_matches_ptag(inst->rs2, ptag)) {
                         apply_replay_to_inst(inst, ptag, false, false);
                     }
                 }
             }
-            if (inst->rd.valid && inst->rd.ptag >= 0) {
-                if (killed_ptags_set.insert(inst->rd.ptag).second) {
+            if (inst->rd.valid) {
+                if (std::find(killed_ptags_vec.begin(), killed_ptags_vec.end(),
+                    inst->rd.ptag) == killed_ptags_vec.end()) {
                     if (m_regfile) {
                         m_regfile->set_busy(inst->rd.ptag);
                     }
@@ -299,13 +304,19 @@ void IssueUnit::wakeup() {
         }
     };
 
+    // 优先处理 replay情况，再处理wakeup
     for (const auto& event : m_wakeup_bus) {
         if (!event.valid) {
             continue;
         }
         if (event.type == WAKEUP_REPLAY || event.load_dep_kill) {
-            LOG_LEVEL1("IssueUnit", "Wakeup typ: replay ptag:p%d rid:%d", event.ptag, event.rid.idx);
+            LOG_LEVEL1("IssueUnit", "Replay ptag:p%d rid:%d", event.ptag, event.rid.idx);
             handle_dep_kill(event);
+        }
+    }
+
+    for (const auto& event : m_wakeup_bus) {
+        if (!event.valid || event.type == WAKEUP_REPLAY || event.load_dep_kill) {
             continue;
         }
         for (auto inst : m_int_q) {
@@ -720,6 +731,9 @@ void IssueUnit::async() {
         }
         if (pop) {
             m_rename_issue_q.read(inst);
+        } else {
+            // issue queue is full, break the loop
+            break;
         }
     }
     return;
@@ -834,6 +848,8 @@ void IssueUnit::EmitSrcRead(const MInstPtr inst, const Operand& src, int idx)
     req.rid = inst->rid;
     req.fu = fu;
     req.rtyp = RegType::GPR;
+    LOG_LEVEL1("IssueUnit SrcRead", "pc: 0x%lx, inst: %s, src: v%d-a%d-p%d, idx: %d, fu: %s",
+               inst->pc, inst->inst_name.c_str(), src.valid, src.atag, src.ptag, idx, FuTypeStr[static_cast<int>(fu)]);
     m_reg_req_q.write(req);
 }
 

@@ -176,11 +176,11 @@ void CommitUnit::inst_commit() {
                 InstrTrace::instance().record_retire(committed->inst->pc, result);
                 RetireMemInfo mem_info = retired_ls_info(committed->inst, m_lsu);
                 if (!VeriRef::instance().check_retire(*committed->inst, &mem_info)) {
-                    LOG_LEVEL1("CommitUnit", "ref model mismatch at pc: 0x%lx inst: %s",
+                    LOG_LEVEL1("CommitUnit", "ERROR! Ref Model Mismatch At PC: 0x%lx inst: %s",
                                committed->inst->pc, committed->inst->inst_name.c_str());
                     FlushEvent event;
                     event.valid = true;
-                    event.type = FlushType::STOP;
+                    event.type = FlushType::EXCEPTION;
                     event.source = FlushSource::COMMIT;
                     event.scope = FlushScope::ALL;
                     m_flush_req_q.write(event);
@@ -188,7 +188,7 @@ void CommitUnit::inst_commit() {
                 }
             }
             if (isa::is_ecall(committed->inst->opcode)) {
-                LOG_LEVEL1("CommitUnit", "ecall pc: 0x%lx", committed->inst->pc);
+                LOG_LEVEL1("CommitUnit", "Ecall PC: 0x%lx", committed->inst->pc);
                 FlushEvent event;
                 event.valid = true;
                 event.type = FlushType::STOP;

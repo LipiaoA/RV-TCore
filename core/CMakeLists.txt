@@ -26,7 +26,10 @@ target_link_libraries(core
     util
     tools
     memory
+    # fetch 与 backend 互相引用（rename↔issue，BRU↔分支预测器），静态库需要扫两遍。
+    -Wl,--start-group
     fetch
     backend
+    -Wl,--end-group
     perf
 )

@@ -5,15 +5,6 @@
 #include "intf.h"
 #include "config.h"
 
-enum class BrType {
-    NONE,
-    COND,   // conditional branch
-    JAL,    // direct jump
-    CALL,
-    RET,
-    JALR
-};
-
 struct BTBEntry {
     bool valid = false;
     u64 tag = -1ull;
@@ -39,9 +30,9 @@ public:
     BTB(const BTBConfig& config);
     ~BTB() {}
     BTB();
-    BTBResp                                     lookup(pc_t pc, u64 time);
+    BTBResp                                     lookup(pc_t pc, u32 time);
 
-    void                                        update(u64 pc, pc_t target, BrType type, u32 time);
+    void                                        update(pc_t pc, pc_t target, BrType type, u32 time);
 
     void                                        invalidate_all();
 private:

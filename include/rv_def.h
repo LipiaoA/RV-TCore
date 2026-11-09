@@ -23,6 +23,24 @@ using pc_t = u64;
 using insn_t = u64;
 using bytes_t = std::vector<u8>;
 
+enum class BrType {
+    NONE,
+    COND,
+    JAL,
+    CALL,
+    RET,
+    JALR
+};
+
+constexpr const char* BrTypeStr[6] = {
+    "NONE",
+    "COND",
+    "JAL",
+    "CALL",
+    "RET",
+    "JALR"
+};
+
 #define INPUT
 #define OUTPUT
 

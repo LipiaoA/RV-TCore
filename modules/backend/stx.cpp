@@ -134,6 +134,10 @@ void STD::E0()
                inst->rid.direct ? "--" : "++", inst->rid.idx);
     m_pipe[1].valid = false;
     m_pipe[1].inst = nullptr;
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        ++m_stats.fu[ftyp][m_idx].completed_uops;
+    }
 }
 
 void STD::shift()

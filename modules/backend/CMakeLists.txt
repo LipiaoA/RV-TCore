@@ -30,6 +30,7 @@ target_include_directories(backend PUBLIC
     ${CMAKE_SOURCE_DIR}/include/rename
     ${CMAKE_SOURCE_DIR}/include/decode
     ${CMAKE_SOURCE_DIR}/include/memory
+    ${CMAKE_SOURCE_DIR}/include/bpred
 )
 
 target_link_libraries(backend PUBLIC

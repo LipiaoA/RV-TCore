@@ -27,6 +27,18 @@ enum class FuType {
     NUM_FU_TYPES,
 };
 
+constexpr const char* FuTypeStr[] = {
+    "NONE",
+    "ALU",
+    "BRU",
+    "LSU",
+    "AGU",
+    "STD",
+    "FPU",
+    "VPU",
+    "TPU",
+};
+
 struct FetchInst {
     pc_t pc { 0 };
     insn_t insn { 0 };
@@ -45,6 +57,7 @@ struct FetchPacket {
     pc_t base_pc { 0 };
     bool pred_taken { false };
     pc_t pred_target { 0 };
+    BranchPredMeta bpred {};
     uint8_t  valid_mask { 0 };
     uint8_t  br_mask    { 0 };
 
@@ -61,13 +74,16 @@ struct FetchPacket {
 struct branch_pred_t {
     bool valid { false };
     bool taken { false };
+    bool target_valid { false };
     pc_t target { 0 };
+    BrType type { BrType::NONE };
 };
 
-constexpr static u32 MAX_PREDICT_WIDTH = 4;
+constexpr static u32 MAX_PREDICT_WIDTH = 8;
 typedef struct {
     branch_pred_t pred[MAX_PREDICT_WIDTH];
-    u64 ghr_snapshot = 0;
+    u64 ghr_snapshot { 0 };
+    u32 ras_sp { 0 };
 } branch_pred;
 
 struct CommitAck {
@@ -240,6 +256,15 @@ enum WakeupType {
     WAKEUP_REPLAY,     // 依赖失效 / LoadDepKill
     WAKEUP_KILL        // flush
 };
+
+constexpr static const char* WakeupTypeStr[] = {
+    "WAKEUP_BYPASS",
+    "WAKEUP_WRITEBACK",
+    "WAKEUP_ACTIVE",
+    "WAKEUP_REPLAY",
+    "WAKEUP_KILL",
+};
+
 typedef struct {
     bool       valid { false };
     WakeupType type { WAKEUP_BYPASS };
@@ -268,6 +293,9 @@ typedef struct {
     // 分支恢复信息
     bool branch_taken { false };
     pc_t branch_target { 0 };
+    // 为 true 时用 bpred 的快照把投机 GHR/RAS 收回到这条分支
+    bool bpred_repair { false };
+    BranchPredMeta bpred {};
     bool recover_c_id { false };
     u64 c_id { 0 };
 
@@ -555,6 +583,7 @@ typedef struct {
     FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>*        reg_bypass_bus { nullptr };
     std::vector<WakeupEvent>*   wakeup_bus { nullptr };
     PerfStats*                  perf_stats { nullptr };
+    BranchPredictor*            bpu { nullptr };
 } BRUDeps;
 
 typedef struct {

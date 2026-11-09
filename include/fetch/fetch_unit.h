@@ -88,6 +88,7 @@ class FetchUnit : public IFetch {
         pc_t pc { 0 };
         u32 insn { 0 };
         u64 fetch_id { 0 };
+        BranchPredMeta block {};
     } F2Inst;
 public:
     FetchUnit(const FetchConfig& conf, const IFetchDeps& deps);
@@ -111,6 +112,8 @@ private:
     void                                fetch5();
     pc_t                                next_pc();
     u32                                 align_group(pc_t pc) const;
+    u32                                 predict_slots(pc_t pc) const;
+    BrType                              classify_branch(u32 insn) const;
     u32                                 align_bank(pc_t pc) const;
     u32                                 bank_idx(pc_t pc) const;
     u32                                 group_idx(pc_t pc) const;
@@ -143,6 +146,9 @@ private:
 
     STATE_F1 branch_pred                m_f1_pred;
     STATE_F2 branch_pred                m_f2_pred;
+    branch_pred                         m_f2_f1 {};
+    bool                                m_f2_latched { false };
+    pc_t                                m_f2_latch_pc { 0 };
     STATE_F3 branch_pred                m_f3_bpred;
     STATE_F3 TagePred                   m_f3_pred[MAX_FETCH_WIDTH];
 

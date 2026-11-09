@@ -178,8 +178,9 @@ void ALU::wakeup(MInstPtr inst)
     event.producer_fu = FuType::ALU;
     event.producer_fu_id = static_cast<int>(m_idx);
     m_wakeup_bus.push_back(event);
-    LOG_LEVEL1("ALU Wakeup", "idx:%d inst: %s, rd:v%d-x%d-p%d-0x%016lx",
-               m_idx, inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
+    LOG_LEVEL1("ALU Wakeup", "type:%s, idx:%d inst: %s, rd:v%d-x%d-p%d-0x%016lx",
+               WakeupTypeStr[event.type], m_idx, inst->inst_name.c_str(),
+               inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
 }
 
 void ALU::broadcast(MInstPtr inst)
@@ -200,6 +201,8 @@ void ALU::broadcast(MInstPtr inst)
     } else {
         assert(false);
     }
+    LOG_LEVEL1("ALU", "broadcast rd:v%d-x%d-p%d-0x%016lx",
+               inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
 }
 
 void ALU::flush(const FlushEvent& event)

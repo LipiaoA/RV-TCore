@@ -20,6 +20,7 @@ public:
 
     Checkpoint                          checkpoint() const;
     void                                restore(const Checkpoint& cp);
+    u32                                 next_sp(u32 sp) const;
 
 private:
     const u32                           DEPTH;

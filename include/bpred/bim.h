@@ -22,9 +22,14 @@ public:
     BIM(u32 entries = 0x4000, u32 histLen = 16, u32 fetchWidth = 4);
     BIM(const BIMConfig& config);
 
-    branch_pred                         predict(pc_t pc);
-    void                                update(pc_t pc, bool taken);
+    // cond_mask 的第 i 位表示 base+i*4 是条件分支。只对这些槽查表并推进 GHR。
+    branch_pred                         predict(pc_t base, u32 nslots, u32 cond_mask);
+    bool                                peek(pc_t pc) const;
+    void                                update(pc_t pc, bool taken, u64 ghr);
     void                                rollback(u64 ghr);
+    void                                shift(bool taken);
+    u64                                 ghr() const { return m_ghr; }
+    u64                                 advance(u64 ghr, bool taken) const;
 
 private:
     u32                                 m_entries;
@@ -34,7 +39,8 @@ private:
     SatCounter                          m_table[MAX_ENTRIES];
     u64                                 m_ghr = 0;
 
-    u32                                 index(pc_t pc) const;
+    u64                                 hist_mask() const;
+    u32                                 index(pc_t pc, u64 ghr) const;
 };
 
 #endif

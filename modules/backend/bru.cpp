@@ -1,7 +1,9 @@
 #include "bru.h"
 #include "isa/opcode.h"
+#include "isa/decode.h"
 #include "inst_exec.h"
 #include "rob/rob.h"
+#include "branch_predictor.h"
 
 u32 BRU::bru_idx = 0;
 
@@ -13,6 +15,7 @@ BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
       m_wakeup_bus(*deps.wakeup_bus),
       m_reg_resp_q(*deps.reg_resp_q),
       m_reg_bypass_bus(*deps.reg_bypass_bus),
+      m_bpu(deps.bpu),
       m_stats(*deps.perf_stats)
 
 {
@@ -30,7 +33,7 @@ BRU::BRU(const BRUConfig& conf, const BRUDeps& deps)
 
 void BRU::fwd_bypass()
 {
-    if (!m_pipe[0].valid || !m_pipe[0].inst) {
+    if (!m_pipe[0].valid) {
         return;
     }
     Operand* rs1 = &m_pipe[0].inst->rs1;
@@ -47,10 +50,78 @@ void BRU::fwd_bypass()
             }
         }
     }
-    if ((rs1->valid && !rs1->data_available && !rs1->bypass_hint) || (rs2->valid && !rs2->data_available && !rs2->bypass_hint)) {
+    if ((rs1->valid && !rs1->data_available && !rs1->bypass_hint) ||
+        (rs2->valid && !rs2->data_available && !rs2->bypass_hint)) {
         m_pipe[0].valid = false;
         m_pipe[0].inst = nullptr;
     }
+}
+
+static BrType classify_branch(const MicroOp* inst)
+{
+    if (!inst) {
+        return BrType::NONE;
+    }
+    if (isa::cond_jump(inst->opcode)) {
+        return BrType::COND;
+    }
+    const u32 rd = inst->rd.valid ? static_cast<u32>(inst->rd.atag) : 0;
+    const u32 rs1 = static_cast<u32>(inst->rs1.atag);
+    if (inst->opcode == OP_JAL) {
+        return (rd == 1 || rd == 5) ? BrType::CALL : BrType::JAL;
+    }
+    if (inst->opcode == OP_JALR) {
+        if (rd == 0 && (rs1 == 1 || rs1 == 5)) {
+            return BrType::RET;
+        }
+        if (rd == 1 || rd == 5) {
+            return BrType::CALL;
+        }
+        return BrType::JALR;
+    }
+    return BrType::NONE;
+}
+
+static void train_branch(BranchPredictor* bpu, const MicroOp* inst, bool taken, pc_t target)
+{
+    if (!bpu || !inst) {
+        return;
+    }
+    BranchUpdate info;
+    info.pc = inst->pc;
+    info.taken = taken;
+    info.target_valid = taken;
+    info.target = taken ? target : 0;
+    info.type = classify_branch(inst);
+    info.ghr_snapshot = inst->bpred.ghr_snapshot;
+    info.ras_sp = inst->bpred.ras_sp;
+    info.tage_valid = inst->bpred.tage_valid;
+    info.tage_final = inst->bpred.tage_final;
+    info.tage_provider = inst->bpred.tage_provider;
+    info.tage_alt_provider = inst->bpred.tage_alt_provider;
+    info.tage_alt_pred = inst->bpred.tage_alt_pred;
+    bpu->update(info);
+}
+
+static void fill_mispred(FlushEvent& event, const MicroOp* inst, bool taken, pc_t redirect_pc)
+{
+    event.valid = true;
+    event.type = FlushType::BRANCH_MISPRED;
+    event.source = FlushSource::BRU;
+    event.scope = FlushScope::YOUNGER_THAN;
+    event.rid = inst->rid;
+    event.redirect = true;
+    event.redirect_pc = redirect_pc;
+    event.branch_taken = taken;
+    event.branch_target = redirect_pc;
+    event.recover_c_id = true;
+    event.c_id = inst->c_id;
+    event.inst_pc = inst->pc;
+    event.fetch_id = inst->fetch_id;
+    event.epoch = inst->epoch;
+    event.bpred = inst->bpred;
+    event.bpred.type = classify_branch(inst);
+    event.bpred_repair = inst->bpred.valid;
 }
 
 bool branch_taken(InstOp op, u64 v1, u64 v2)
@@ -91,10 +162,19 @@ void BRU::commit()
 
 bool BRU::dispatch(MInstPtr inst)
 {
-    if (!accept() || !inst)
+    if (!accept() || !inst) {
+        if (m_stats.perf()) {
+            u32 ftyp = static_cast<size_t>(m_fu_type);
+            ++m_stats.fu[ftyp][m_idx].rejected_uops;
+        }
         return false;
+    }
     m_input_latch.inst = inst;
     m_input_latch.valid = true;
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        ++m_stats.fu[ftyp][m_idx].accepted_uops;
+    }
     return true;
 }
 
@@ -127,23 +207,19 @@ void BRU::R1()
     if (inst->rd.valid) {
         wakeup(inst);
     }
-    /* predict taken but not taken, flush*/
+    // 预测 taken、实际 not-taken：提前一拍冲刷。训练留在 E0，避免计数器更新两次。
     if (m_pred_taken != inst->pred_taken && !m_pred_taken) {
         FlushEvent event;
-        event.valid = true;
-        event.type = FlushType::BRANCH_MISPRED;
-        event.source = FlushSource::BRU;
-        event.scope = FlushScope::YOUNGER_THAN;
-        event.rid = inst->rid;
-        event.redirect = true;
-        event.redirect_pc = inst->pc + 4;
-        event.branch_taken = false;
-        event.recover_c_id = true;
-        event.c_id = inst->c_id;
-        event.inst_pc = inst->pc;
-        event.fetch_id = inst->fetch_id;
-        event.epoch = inst->epoch;
+        fill_mispred(event, inst, false, inst->pc + 4);
         m_flush_req_q.write(event);
+    }
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        if (m_pred_taken != inst->pred_taken) {
+            ++m_stats.fu[ftyp][m_idx].fail_direction;
+        } else {
+            ++m_stats.fu[ftyp][m_idx].succ_direction;
+        }
     }
 }
 
@@ -157,23 +233,15 @@ void BRU::E0()
     if (!ret.valid)
         return;
 
-    bool mispredict = ret.taken != inst->pred_taken;
+    const bool dir_mis = ret.taken != inst->pred_taken;
+    const bool tgt_mis = ret.taken && inst->bpred.target_valid && ret.target != inst->bpred.target;
+    const pc_t redirect_pc = ret.taken ? ret.target : inst->pc + 4;
+    train_branch(m_bpu, inst, ret.taken, ret.target);
 
-    if (mispredict) {
+    // not-taken 的冲刷已由 R1 发出；这里补上 taken 方向和目标不符。
+    if (tgt_mis || (dir_mis && ret.taken)) {
         FlushEvent event;
-        event.valid = true;
-        event.rid = inst->rid;
-        event.type = FlushType::BRANCH_MISPRED;
-        event.source = FlushSource::BRU;
-        event.scope = FlushScope::YOUNGER_THAN;
-        event.redirect = true;
-        event.redirect_pc = ret.target;
-        event.branch_taken = ret.taken;
-        event.recover_c_id = true;
-        event.c_id = inst->c_id;
-        event.inst_pc = inst->pc;
-        event.fetch_id = inst->fetch_id;
-        event.epoch = inst->epoch;
+        fill_mispred(event, inst, ret.taken, redirect_pc);
         m_flush_req_q.write(event);
     }
 
@@ -184,6 +252,14 @@ void BRU::E0()
     m_pipe[1].inst = nullptr;
     m_commit_latch.inst = inst;
     m_commit_latch.valid = true;
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        if (tgt_mis) {
+            ++m_stats.fu[ftyp][m_idx].fail_target;
+        } else {
+            ++m_stats.fu[ftyp][m_idx].succ_target;
+        }
+    }
     return;
 }
 
@@ -263,20 +339,20 @@ void BRU::dump_states() const
     std::string log_prefix = "BRU" + std::to_string(m_idx) + " ";
     if (m_pipe[0].valid) {
         auto inst = m_pipe[0].inst;
-        LOG_LEVEL1(log_prefix + "R0", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
+        LOG_LEVEL1(log_prefix + "R1", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
             inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
     }
     if (m_pipe[1].valid) {
         auto inst = m_pipe[1].inst;
-        LOG_LEVEL1(log_prefix + "R1", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx, pred_taken: %d, real_taken: %d",
+        LOG_LEVEL1(log_prefix + "E0", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx, pred_taken: %d, real_taken: %d",
             inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
             inst->pred_taken, m_pred_taken);
     }
     if (m_commit_latch.valid) {
         auto inst = m_commit_latch.inst;
-        LOG_LEVEL1(log_prefix + "E0", "pc: 0x%lx, inst: %s, rd: v%d-a%d-p%d-0x%lx",
+        LOG_LEVEL1(log_prefix + "COMMIT", "pc: 0x%lx, inst: %s, rd: v%d-a%d-p%d-0x%lx",
             inst->pc, inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
     }
 }
@@ -296,6 +372,10 @@ void BRU::commit_ack()
 {
     m_commit_latch.valid = false;
     m_commit_latch.inst = nullptr;
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        ++m_stats.fu[ftyp][m_idx].completed_uops;
+    }
 }
 
 void BRU::reset() {

@@ -145,6 +145,10 @@ void AGU::E0()
         LOG_LEVEL1("AGU E0", "addr ready, load pc:0x%lx id:%lu addr:0x%lx rid:%s%u",
                    inst->pc, ld->load_id, ld->addr, inst->rid.direct ? "--" : "++", inst->rid.idx);
     }
+    if (m_stats.perf()) {
+        u32 ftyp = static_cast<size_t>(m_fu_type);
+        ++m_stats.fu[ftyp][m_idx].completed_uops;
+    }
     m_pipe[1].valid = false;
     m_pipe[1].inst = nullptr;
 }

@@ -40,6 +40,8 @@ void RegFileUnit::r0() {
     invalidate(m_fpu_resp_q);
     invalidate(m_alu_resp_q);
 
+    std::queue<RegReq> write_req_q;
+
     while (!m_reg_req_q.empty()) {
         RegResp resp;
         RegReq req;
@@ -47,18 +49,11 @@ void RegFileUnit::r0() {
         if (!ret || !req.valid)
             continue;
         if (req.write) {
-            if (m_prf.write(req.ptag, req.val)) {
-                WakeupEvent event;
-                event.valid = true;
-                event.type = WAKEUP_WRITEBACK;
-                event.ptag = req.ptag;
-                event.rid = req.rid;
-                event.rtyp = RegType::GPR;
-                m_wakeup_bus.push_back(event);
-                LOG_LEVEL1("RegFile Wakeup", "writeback x%d-p%d-0x%016lx",
-                    req.atag, req.ptag, req.val);
-            }
-        } else if (m_prf.is_ready(req.ptag)) {
+            write_req_q.push(std::move(req));
+            continue;
+        }
+        // register read
+        if (m_prf.is_ready(req.ptag)) {
             resp.val = m_prf.read(req.ptag);
             LOG_LEVEL1("RegFile Ready", "read x%d-p%d-0x%016lx", req.atag, req.ptag, resp.val);
             resp.valid = true;
@@ -85,9 +80,27 @@ void RegFileUnit::r0() {
             event.rid = req.rid;
             event.rtyp = RegType::GPR;
             m_wakeup_bus.push_back(event);
-            LOG_LEVEL1("RegFile Wakeup", "replay x%d-p%d", req.atag, req.ptag);
+            LOG_LEVEL1("RegFileUnit", "Replay x%d-p%d", req.atag, req.ptag);
         }
     }
+
+    while (!write_req_q.empty()) {
+        RegReq req = write_req_q.front();
+        write_req_q.pop();
+        bool ret = m_prf.write(req.ptag, req.val);
+        if (ret) {
+            WakeupEvent event;
+            event.valid = true;
+            event.type = WAKEUP_WRITEBACK;
+            event.ptag = req.ptag;
+            event.rid = req.rid;
+            event.rtyp = RegType::GPR;
+            m_wakeup_bus.push_back(event);
+            LOG_LEVEL1("RegFileUnit", "Wakeup x%d-p%d-0x%016lx",
+                req.atag, req.ptag, req.val);
+        }
+    }
+    return;
 }
 
 bool RegFileUnit::is_ready(i32 ptag) const {

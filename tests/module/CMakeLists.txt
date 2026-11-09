@@ -9,9 +9,8 @@ add_executable(rename_test rename_test.cpp)
 add_executable(vector_regfile_test vector_regfile_test.cpp)
 add_executable(fetch_test fetch_test.cpp)
 
-# fetch 在 rename_unit 中引用 IssueUnit::is_*，须先于 backend 链接，
-# 否则 GNU ld 在处理完 backend 后才从 fetch 拉出 rename_unit.o，无法回头拉取 issue_unit.o。
-set(_module_test_libs fetch backend memory tools util)
+# rename 引用 IssueUnit，BRU 引用 BranchPredictor，静态库互相依赖。
+set(_module_test_libs -Wl,--start-group fetch backend -Wl,--end-group memory tools util)
 
 target_link_libraries(commit_test PRIVATE ${_module_test_libs})
 target_link_libraries(decode_test PRIVATE ${_module_test_libs})

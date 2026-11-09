@@ -7,6 +7,8 @@
 #include "rob/rob.h"
 #include "perf/perf_def.h"
 
+class BranchPredictor;
+
 class ExecuteUnit;
 
 class BRU : public DevIntf {
@@ -51,7 +53,7 @@ private:
     FUStage                                 m_commit_latch;
     ROB&                                    m_rob;
 
-    i32                                     m_stages { 4 };
+    i32                                     m_stages;
     FUStage                                 m_pipe[MAX_STAGES];
     bool                                    m_pred_taken { false };
     pc_t                                    m_pred_target { 0 };
@@ -62,6 +64,7 @@ private:
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_resp_q;
     INPUT  FixedArray<RegResp, MAX_REGISTER_REQ_CAPACITY>&             m_reg_bypass_bus;
 
+    BranchPredictor*                        m_bpu { nullptr };
     u32                                     m_idx { 0 };
     static u32                              bru_idx;
     FuType                                  m_fu_type { FuType::BRU };
