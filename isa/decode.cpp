@@ -161,6 +161,10 @@ InstType inst_type(InstOp op) {
         type = InstType::CMD;
     } else if (is_ecall(op)) {
         type = InstType::BRANCH;
+    } else if (is_mul_div_rem(op)) {
+        // FIXME: mul and div instructions are not implemented yet,
+        // so we treat them as integer instructions for now.
+        type = InstType::INT;
     }
     return type;
 }

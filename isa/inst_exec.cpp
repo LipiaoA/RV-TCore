@@ -56,6 +56,117 @@ AluExecResult exec_alu(MInstPtr inst) {
     case OP_SRLW:  result.value = sext32(inst->rs1.val >> shamt32(inst->rs2.val)); break;
     case OP_SRAW:  result.value = sext32(static_cast<u64>(static_cast<i32>(inst->rs1.val) >> shamt32(inst->rs2.val))); break;
 
+    // ----- RV64M -----
+    case OP_MUL:
+        result.value = inst->rs1.val * inst->rs2.val;
+        break;
+    case OP_MULH: {
+        __int128 prod = static_cast<__int128>(static_cast<i64>(inst->rs1.val)) *
+                        static_cast<__int128>(static_cast<i64>(inst->rs2.val));
+        result.value = static_cast<u64>(static_cast<__uint128_t>(prod) >> 64);
+        break;
+    }
+    case OP_MULHSU: {
+        __int128 prod = static_cast<__int128>(static_cast<i64>(inst->rs1.val)) *
+                        static_cast<__int128>(static_cast<__uint128_t>(inst->rs2.val));
+        result.value = static_cast<u64>(static_cast<__uint128_t>(prod) >> 64);
+        break;
+    }
+    case OP_MULHU: {
+        __uint128_t prod = static_cast<__uint128_t>(inst->rs1.val) *
+                           static_cast<__uint128_t>(inst->rs2.val);
+        result.value = static_cast<u64>(prod >> 64);
+        break;
+    }
+    case OP_DIV: {
+        i64 a = static_cast<i64>(inst->rs1.val);
+        i64 b = static_cast<i64>(inst->rs2.val);
+        if (b == 0) {
+            result.value = static_cast<u64>(-1);
+        } else if (a == static_cast<i64>(1ull << 63) && b == -1) {
+            result.value = static_cast<u64>(a);
+        } else {
+            result.value = static_cast<u64>(a / b);
+        }
+        break;
+    }
+    case OP_DIVU: {
+        if (inst->rs2.val == 0) {
+            result.value = ~0ull;
+        } else {
+            result.value = inst->rs1.val / inst->rs2.val;
+        }
+        break;
+    }
+    case OP_REM: {
+        i64 a = static_cast<i64>(inst->rs1.val);
+        i64 b = static_cast<i64>(inst->rs2.val);
+        if (b == 0) {
+            result.value = static_cast<u64>(a);
+        } else if (a == static_cast<i64>(1ull << 63) && b == -1) {
+            result.value = 0;
+        } else {
+            result.value = static_cast<u64>(a % b);
+        }
+        break;
+    }
+    case OP_REMU: {
+        if (inst->rs2.val == 0) {
+            result.value = inst->rs1.val;
+        } else {
+            result.value = inst->rs1.val % inst->rs2.val;
+        }
+        break;
+    }
+    case OP_MULW:
+        result.value = sext32(static_cast<u64>(
+            static_cast<u32>(static_cast<i32>(inst->rs1.val) * static_cast<i32>(inst->rs2.val))));
+        break;
+    case OP_DIVW: {
+        i32 a = static_cast<i32>(inst->rs1.val);
+        i32 b = static_cast<i32>(inst->rs2.val);
+        if (b == 0) {
+            result.value = sext32(static_cast<u64>(static_cast<u32>(-1)));
+        } else if (a == static_cast<i32>(1u << 31) && b == -1) {
+            result.value = sext32(static_cast<u64>(static_cast<u32>(a)));
+        } else {
+            result.value = sext32(static_cast<u64>(static_cast<u32>(a / b)));
+        }
+        break;
+    }
+    case OP_DIVUW: {
+        u32 a = static_cast<u32>(inst->rs1.val);
+        u32 b = static_cast<u32>(inst->rs2.val);
+        if (b == 0) {
+            result.value = sext32(~0u);
+        } else {
+            result.value = sext32(a / b);
+        }
+        break;
+    }
+    case OP_REMW: {
+        i32 a = static_cast<i32>(inst->rs1.val);
+        i32 b = static_cast<i32>(inst->rs2.val);
+        if (b == 0) {
+            result.value = sext32(static_cast<u64>(static_cast<u32>(a)));
+        } else if (a == static_cast<i32>(1u << 31) && b == -1) {
+            result.value = 0;
+        } else {
+            result.value = sext32(static_cast<u64>(static_cast<u32>(a % b)));
+        }
+        break;
+    }
+    case OP_REMUW: {
+        u32 a = static_cast<u32>(inst->rs1.val);
+        u32 b = static_cast<u32>(inst->rs2.val);
+        if (b == 0) {
+            result.value = sext32(a);
+        } else {
+            result.value = sext32(a % b);
+        }
+        break;
+    }
+
     // ----- RV128 ("D" suffix) — not supported on RV64 -----
     case OP_ADDID:
     case OP_SLLID:
@@ -66,19 +177,6 @@ AluExecResult exec_alu(MInstPtr inst) {
     case OP_SLLD:
     case OP_SRLD:
     case OP_SRAD:
-    case OP_MUL:
-    case OP_MULH:
-    case OP_MULHSU:
-    case OP_MULHU:
-    case OP_DIV:
-    case OP_DIVU:
-    case OP_REM:
-    case OP_REMU:
-    case OP_MULW:
-    case OP_DIVW:
-    case OP_DIVUW:
-    case OP_REMW:
-    case OP_REMUW:
     case OP_MULD:
     case OP_DIVD:
     case OP_DIVUD:

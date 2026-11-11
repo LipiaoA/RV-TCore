@@ -52,6 +52,10 @@ inline bool is_vector(InstOp op) {
     return op >= OP_VLE8_V && op < OP_AMOCAS_W;
 }
 
+inline bool is_mul_div_rem(InstOp op) {
+    return op >= OP_MUL && op <= OP_REMUD;
+}
+
 InstType inst_type(InstOp op);
 u32      ls_width(InstOp op);
 i64      extract_imm(u64 raw, InstFmt fmt, InstOp op);
