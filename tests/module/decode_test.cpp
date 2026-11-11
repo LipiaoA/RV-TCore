@@ -84,7 +84,7 @@ int main()
     assert(decode_rename_q.empty());
 
     decode_rename_q.tick();
-    assert(decode_rename_q.size() == 1);
+    assert(decode_rename_q.rsize() == 1);
 
     MInstPtr out { nullptr };
     assert(decode_rename_q.read(out));

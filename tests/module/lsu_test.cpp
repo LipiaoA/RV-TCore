@@ -9,6 +9,7 @@
 #include "isa/opcode.h"
 #include "memory/mem.h"
 #include "memory/tlb.h"
+#include "perf/perf_def.h"
 #include "rob/rob.h"
 #include "tools/queue.h"
 
@@ -23,6 +24,7 @@ struct Harness {
     std::vector<SQEntry> store_q;
     std::vector<WakeupEvent> wakeup_bus;
     FlushEvent flush_event {};
+    PerfStats stats {};
     CycleScheduler sched;
     std::vector<PTWLevelConfig> levels { {1} };
     MultiLevelTLB tlb { &sched, 12, levels };
@@ -47,9 +49,6 @@ struct Harness {
         l2.set_mem(&mem);
         dcache.attach_lower(&l2);
         lsu.build();
-        agu.bind_queues(&lsu.store_q(), &lsu.load_q(), &lsu);
-        agu2.bind_queues(&lsu.store_q(), &lsu.load_q(), &lsu);
-        std_fu.bind_lsu(&lsu);
     }
 
     ROBConfig make_rob_config()
@@ -106,26 +105,35 @@ struct Harness {
         deps.lsu_ld_q = &load_q;
         deps.lsu_st_q = &store_q;
         deps.flush_event = &flush_event;
+        deps.perf_stats = &stats;
         return deps;
     }
 
     AGUDeps make_agu_deps()
     {
         AGUDeps deps {};
+        deps.lsu_st_q = &store_q;
+        deps.lsu_ld_q = &load_q;
         deps.rob = &rob;
         deps.reg_req_q = &reg_req_q;
         deps.reg_resp_q = &lsu_resp_q;
         deps.reg_bypass_bus = &bypass_q;
+        deps.lsu = &lsu;
+        deps.perf_stats = &stats;
         return deps;
     }
 
     STDDeps make_std_deps()
     {
         STDDeps deps {};
+        deps.lsu_st_q = &store_q;
+        deps.lsu_ld_q = &load_q;
         deps.rob = &rob;
         deps.reg_req_q = &reg_req_q;
         deps.reg_resp_q = &lsu_resp_q;
         deps.reg_bypass_bus = &bypass_q;
+        deps.lsu = &lsu;
+        deps.perf_stats = &stats;
         return deps;
     }
 
@@ -225,7 +233,7 @@ bool run_until_std_complete(Harness& h, MInstPtr inst, int max_cycles = 256)
 {
     for (int i = 0; i < max_cycles; ++i) {
         run_cycle(h);
-        if (h.std_fu.commit_ready() && h.std_fu.commit_inst() == inst) {
+        if (inst && inst->std_done) {
             return true;
         }
     }
@@ -239,11 +247,10 @@ void ack_if_front(Harness& h, MInstPtr inst)
     h.lsu.commit_ack();
 }
 
-void ack_std(Harness& h, MInstPtr inst)
+void ack_std(Harness&, MInstPtr inst)
 {
-    assert(h.std_fu.commit_ready());
-    assert(h.std_fu.commit_inst() == inst);
-    h.std_fu.commit_ack();
+    assert(inst && inst->std_done);
+    assert(inst->data_ready);
 }
 
 void test_agu_waits_for_source_operand()
@@ -258,17 +265,20 @@ void test_agu_waits_for_source_operand()
     assert(h.lsu.allocate(load));
     assert(h.dispatch(load));
 
+    // AGU drops uops whose rs1 is not yet available; Issue would redispatch.
     for (int i = 0; i < 8; ++i) {
         run_cycle(h);
         assert(!h.lsu.commit_ready());
+        assert(h.dispatch(load));
     }
 
     RegResp resp {};
     resp.valid = true;
     resp.ptag = 9;
     resp.val = 0x10;
-    h.bypass_q.push_back(resp);
+    h.lsu_resp_q.push_back(resp);
 
+    assert(h.dispatch(load));
     assert(run_until_lsu_complete(h, load));
     assert(load->rd.val == 0x55aa);
 }
@@ -290,7 +300,8 @@ void test_store_commit_updates_subsequent_loads()
     auto* sta = make_sta(0x2200, ROBID{2, 0}, 0x1080, token);
     auto* std = make_std(0x2200, ROBID{3, 0}, 0x2222, token);
     assert(h.lsu.allocate(sta));
-    assert(h.lsu.allocate(std));
+    // STD shares the STA-allocated SQ entry via store_id/token.
+    std->store_id = sta->store_id;
     assert(h.dispatch(sta));
     assert(h.dispatch(std));
     assert(run_until_lsu_complete(h, sta));
@@ -320,10 +331,15 @@ void test_younger_load_replays_when_older_store_resolves_same_address()
     auto* load = make_load(0x2500, ROBID{3, 0}, 0x1100, 6);
 
     assert(h.lsu.allocate(sta));
-    assert(h.lsu.allocate(std));
+    std->store_id = sta->store_id;
     assert(h.dispatch(sta));
     assert(h.dispatch(std));
-    run_cycle(h);
+    // STA waits for rs1; redispatch while providing address via reg response.
+    for (int i = 0; i < 4; ++i) {
+        run_cycle(h);
+        (void)h.dispatch(sta);
+        (void)h.dispatch(std);
+    }
     assert(h.lsu.allocate(load));
     assert(h.dispatch(load));
     assert(run_until_lsu_complete(h, load));
@@ -333,24 +349,31 @@ void test_younger_load_replays_when_older_store_resolves_same_address()
     resp.valid = true;
     resp.ptag = 10;
     resp.val = 0x1100;
-    h.bypass_q.push_back(resp);
+    h.lsu_resp_q.clear();
+    h.lsu_resp_q.push_back(resp);
+    assert(h.dispatch(sta));
 
-    bool saw_memory_order = false;
-    for (int i = 0; i < 16; ++i) {
+    // Current LSU uses lightweight misspec recovery (LoadDepKill), not MEMORY_ORDER flush.
+    bool saw_load_dep_kill = false;
+    for (int i = 0; i < 32; ++i) {
         run_cycle(h);
-        FlushEvent event {};
-        while (h.flush_req_q.read(event)) {
-            if (event.valid && event.type == FlushType::MEMORY_ORDER
-                && event.scope == FlushScope::FROM_RID
+        (void)h.dispatch(sta);
+        (void)h.dispatch(std);
+        for (const auto& event : h.wakeup_bus) {
+            if (event.valid && event.load_dep_kill && event.ptag == load->rd.ptag
                 && event.rid.idx == load->rid.idx) {
-                saw_memory_order = true;
+                saw_load_dep_kill = true;
+                break;
             }
         }
-        if (saw_memory_order) {
+        if (saw_load_dep_kill) {
             break;
         }
     }
-    assert(saw_memory_order);
+    assert(saw_load_dep_kill);
+    LQEntry* ld = h.lsu.find_load_by_id(load->load_idx);
+    assert(ld != nullptr);
+    assert(ld->violation_reported);
 }
 
 void test_load_lcam_forward_waits_until_cycle_after_execute()
@@ -361,7 +384,7 @@ void test_load_lcam_forward_waits_until_cycle_after_execute()
     auto* sta = make_sta(0x2600, ROBID{1, 0}, 0x1180, token);
     auto* std = make_std(0x2600, ROBID{2, 0}, 0x123456789abcdef0ULL, token);
     assert(h.lsu.allocate(sta));
-    assert(h.lsu.allocate(std));
+    std->store_id = sta->store_id;
 
     SQEntry* st = h.lsu.find_store_by_id(sta->store_id);
     assert(st != nullptr);

@@ -1,36 +1,47 @@
+#include <cassert>
+#include <cstdlib>
 #include <iostream>
-#include "branch_predictor.h"
+#include <vector>
 
-struct TraceEntry { u64 pc; bool taken; };
+#include "bim.h"
 
-void simulate(HybridPredictor &bp, const std::vector<TraceEntry> &trace) {
-    for (auto &t : trace) {
-        bool pred = bp.predict(t.pc);
-        bp.update(t.pc, t.taken);
+struct TraceEntry {
+    u64 pc;
+    bool taken;
+};
+
+static void simulate(BIM& bp, const std::vector<TraceEntry>& trace)
+{
+    u64 correct = 0;
+    for (const auto& t : trace) {
+        const u64 ghr = bp.ghr();
+        const bool pred = bp.peek(t.pc);
+        if (pred == t.taken) {
+            ++correct;
+        }
+        bp.update(t.pc, t.taken, ghr);
+        bp.shift(t.taken);
     }
-    std::cout << "Accuracy: " << bp.accuracy()*100 << "%\n";
-    std::cout << "Local Accuracy: " << bp.local_acc()*100 << "%\n";
-    std::cout << "Global Accuracy: " << bp.global_acc()*100 << "%\n";
+
+    const double accuracy = trace.empty()
+        ? 0.0
+        : static_cast<double>(correct) / static_cast<double>(trace.size());
+    std::cout << "Accuracy: " << accuracy * 100.0 << "%\n";
+    assert(accuracy > 0.7);
 }
 
-int main() {
-    // 参数：BHT大小、BHR长度、PC低位数、GHR长度
-    size_t bht_entries = 2048;
-    unsigned bhr_bits = 6;
-    unsigned pc_low_bits = 6;
-    unsigned ghr_bits = 8;
-    bool chooser_table = false;
+int main()
+{
+    BIM bp(2048, 8, 4);
 
-    HybridPredictor bp(bht_entries, pc_low_bits, bhr_bits, ghr_bits, chooser_table);
-
-    // 构造简单trace
     std::vector<TraceEntry> trace;
-    u64 pc0 = 0x1000, pc1 = 0x2000;
-    for (int i=0; i<1000; i++) {
+    const u64 pc0 = 0x1000;
+    const u64 pc1 = 0x2000;
+    for (int i = 0; i < 1000; ++i) {
         trace.push_back({pc0, true});
         trace.push_back({pc1, (i % 2) == 0});
     }
 
     simulate(bp, trace);
-    return 0;
+    return EXIT_SUCCESS;
 }

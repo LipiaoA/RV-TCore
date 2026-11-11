@@ -118,7 +118,7 @@ void AGU::E0()
         return;
     }
 
-    if (inst->type == InstType::STORE) {
+    if (inst->type == InstType::STORE || inst->type == InstType::STA) {
         SQEntry* st = m_lsu.find_store_by_id(inst->store_id);
         if (!st) {
             return;

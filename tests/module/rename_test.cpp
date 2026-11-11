@@ -8,6 +8,7 @@
 #include "execute/lsu/lsu.h"
 #include "rob/rob.h"
 #include "module_comm.h"
+#include "perf/perf_def.h"
 #include "tools/queue.h"
 #include "isa/opcode.h"
 #include "icache/dcache.h"
@@ -15,6 +16,7 @@
 
 int main()
 {
+    PerfStats stats {};
     ASyncQueue<MInstPtr> decode_rename_q(32);
     ASyncQueue<MInstPtr> dispatch_issue_q(32);
     ASyncQueue<RegReq> reg_req_q(32);
@@ -95,6 +97,7 @@ int main()
     lsu_deps.sched = &sched;
     lsu_deps.lsu_ld_q = &lsu_ld_q;
     lsu_deps.lsu_st_q = &lsu_st_q;
+    lsu_deps.perf_stats = &stats;
     LSUConfig lsu_conf {};
     lsu_conf.load_q_size = 8;
     lsu_conf.store_q_size = 8;
@@ -114,6 +117,7 @@ int main()
     rename_deps.vcrat = &vcrat;
     rename_deps.tcrat = &tcrat;
     rename_deps.checkpoints = &checkpoints;
+    rename_deps.perf_stats = &stats;
 
     RenameConfig rename_conf {};
     rename_conf.width = 4;
@@ -138,7 +142,7 @@ int main()
 
     assert(decode_rename_q.write(uop));
     decode_rename_q.tick();
-    assert(decode_rename_q.size() == 1);
+    assert(decode_rename_q.rsize() == 1);
     assert(dispatch_issue_q.empty());
 
     rename.tick();
@@ -152,7 +156,7 @@ int main()
     assert(dispatch_issue_q.empty());
 
     dispatch_issue_q.tick();
-    assert(dispatch_issue_q.size() == 1);
+    assert(dispatch_issue_q.rsize() == 1);
 
     MInstPtr out {};
     assert(dispatch_issue_q.read(out));

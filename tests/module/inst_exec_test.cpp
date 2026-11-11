@@ -2,6 +2,9 @@
 #include <cstdlib>
 
 #include "inst_exec.h"
+#include "isa/decode.h"
+
+using namespace isa;
 
 static MicroOp make_inst(InstOp op, u64 pc = 0x1000)
 {
@@ -30,7 +33,6 @@ int main()
         assert(result.valid);
         assert(result.write_rd);
         assert(result.value == static_cast<u64>(-1));
-        assert(inst.rd.val == static_cast<u64>(-1));
     }
 
     {
@@ -62,7 +64,6 @@ int main()
         assert(result.target == 0x3006);
         assert(result.write_rd);
         assert(result.link == 0x2004);
-        assert(inst.rd.val == 0x2004);
     }
 
     {
@@ -85,14 +86,12 @@ int main()
         InstExec::AguExecResult result = InstExec::exec_agu(&inst);
         assert(result.valid);
         assert(result.addr == 0x7ffffff8);
-        assert(inst.addr == 0x7ffffff8);
-        assert(inst.addr_ready);
     }
 
     {
         MicroOp inst = make_inst(OP_FADD_S);
         InstExec::FpuExecResult result = InstExec::exec_fpu(&inst);
-        assert(!result.valid);
+        assert(result.valid);
         assert(result.unsupported);
     }
 

@@ -7,6 +7,7 @@
 #include "execute/lsu/lsu.h"
 #include "icache/dcache.h"
 #include "memory/tlb.h"
+#include "perf/perf_def.h"
 #include "rob/rob.h"
 #include "tools/queue.h"
 #include "isa/opcode.h"
@@ -29,6 +30,7 @@ int main()
     mem.add_segment(0x1000, 0x2000);
     l2.set_mem(&mem);
 
+    PerfStats stats {};
     ASyncQueue<MInstPtr> rename_issue_q(32);
     ASyncQueue<RegReq> reg_req_q(32);
     ASyncQueue<VecRegReq> vec_reg_req_q(32);
@@ -64,6 +66,7 @@ int main()
     lsu_deps.wakeup_bus = &wakeup_bus;
     lsu_deps.lsu_ld_q = &load_q;
     lsu_deps.lsu_st_q = &store_q;
+    lsu_deps.perf_stats = &stats;
     LSUConfig lsu_conf {};
     LSU lsu(lsu_conf, lsu_deps);
 
@@ -72,12 +75,14 @@ int main()
     exec_deps.inst_commit_q = &inst_commit_q;
     exec_deps.flush_event = &flush_event;
     exec_deps.rob = &rob;
+    exec_deps.perf_stats = &stats;
     ALUDeps alu_deps {};
     alu_deps.rob = &rob;
     alu_deps.reg_req_q = &reg_req_q;
     alu_deps.reg_resp_q = &alu_resp_q;
     alu_deps.reg_bypass_bus = &bypass_q;
     alu_deps.wakeup_bus = &wakeup_bus;
+    alu_deps.perf_stats = &stats;
     BRUDeps bru_deps {};
     bru_deps.rob = &rob;
     bru_deps.reg_req_q = &reg_req_q;
@@ -85,6 +90,7 @@ int main()
     bru_deps.reg_resp_q = &bru_resp_q;
     bru_deps.reg_bypass_bus = &bypass_q;
     bru_deps.wakeup_bus = &wakeup_bus;
+    bru_deps.perf_stats = &stats;
     FPUDeps fpu_deps {};
     fpu_deps.reg_req_q = &reg_req_q;
     fpu_deps.reg_resp_q = &fpu_resp_q;
@@ -92,6 +98,7 @@ int main()
     fpu_deps.flush_event = &flush_event;
     fpu_deps.rob = &rob;
     fpu_deps.wakeup_bus = &wakeup_bus;
+    fpu_deps.perf_stats = &stats;
     exec_deps.alu_deps = &alu_deps;
     exec_deps.bru_deps = &bru_deps;
     exec_deps.fpu_deps = &fpu_deps;
@@ -112,17 +119,24 @@ int main()
     deps.tile_reg_req_q = &tile_reg_req_q;
     deps.wakeup_bus = &wakeup_bus;
     deps.flush_event = &flush_event;
+    deps.perf_stats = &stats;
 
     IssueConfig conf {};
     conf.int_issue_width = 1;
     conf.ls_issue_width = 0;
     conf.fp_issue_width = 0;
+    conf.int_queue_size = 16;
+    conf.ls_queue_size = 16;
+    conf.fp_queue_size = 16;
+    conf.vec_queue_size = 16;
+    conf.tsr_queue_size = 16;
 
     IssueUnit issue(conf, deps);
     issue.build();
 
     MInstPtr inst = new MicroOp();
     inst->valid = true;
+    inst->state = InstState::RENAMED;
     inst->opcode = OP_ADD;
     inst->type = InstType::INT;
     inst->rs1.valid = true;
@@ -143,7 +157,7 @@ int main()
     assert(rename_issue_q.write(inst));
     assert(rename_issue_q.empty());
     rename_issue_q.tick();
-    assert(rename_issue_q.size() == 1);
+    assert(rename_issue_q.rsize() == 1);
 
     issue.tick();
     assert(rename_issue_q.empty());
@@ -166,6 +180,7 @@ int main()
     auto make_ready_int = [&](u32 rob_idx, u32 ptag_rs1) {
         MInstPtr uop = new MicroOp();
         uop->valid = true;
+        uop->state = InstState::RENAMED;
         uop->opcode = OP_ADD;
         uop->type = InstType::INT;
         uop->rs1.valid = true;
@@ -184,26 +199,33 @@ int main()
     assert(rename_issue_q.write(inst_b));
     rename_issue_q.tick();
 
+    // tick: async + select; next tick: issue selected uops
+    issue_busy.tick();
     issue_busy.tick();
     issue_busy.commit();
-    assert(reg_req_q.read(req));
+    // Only one ALU: older uop issues and emits PRF read; younger stays pending.
     assert(reg_req_q.read(req));
     assert(reg_req_q.empty());
 
     issue_busy.tick();
     issue_busy.commit();
+    // Pending uop must not re-emit PRF reads while FU remains busy.
     assert(reg_req_q.empty());
 
-    IssueConfig fp_conf {};
+    IssueConfig fp_conf = conf;
     fp_conf.int_issue_width = 0;
     fp_conf.ls_issue_width = 0;
     fp_conf.fp_issue_width = 1;
-    deps.exec = &execute;
+    exec_conf.fpu_num = 1;
+    exec_conf.fpu_conf.stages = 2;
+    ExecuteUnit execute_fp(exec_conf, exec_deps);
+    deps.exec = &execute_fp;
     IssueUnit issue_fp(fp_conf, deps);
     issue_fp.build();
 
     MInstPtr fp_inst = new MicroOp();
     fp_inst->valid = true;
+    fp_inst->state = InstState::RENAMED;
     fp_inst->opcode = OP_FADD_S;
     fp_inst->type = InstType::FP;
     fp_inst->rs1.valid = true;
@@ -214,6 +236,7 @@ int main()
     assert(rename_issue_q.write(fp_inst));
     rename_issue_q.tick();
 
+    issue_fp.tick();
     issue_fp.tick();
     issue_fp.commit();
     assert(reg_req_q.read(req));

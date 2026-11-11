@@ -1,53 +1,75 @@
-#include <bits/stdc++.h>
+#include <cassert>
+#include <cstdlib>
+#include <iostream>
 
-#include "intf.h"
-#include "target_predictor.h"
+#include "btb.h"
+#include "rv_def.h"
 
 int main()
 {
-    SimConfig cfg;
-    TargetPredictor sim(cfg);
+    BTB btb(256, 4, 16, 2);
+    u32 time = 1;
 
-    // Create a synthetic trace that exercises direct branches, calls/rets, and indirects.
-    std::vector<InstRecord> trace;
-
-    // 1) Some direct branches (taken)
-    for (int i = 0; i < 200; i++) {
-        u64 pc = 0x1000 + i * 4;
-        InstRecord r{pc, DIRECT, pc + 0x200 + (i % 8) * 4, true};
-        trace.push_back(r);
+    // Direct/cond branch target
+    {
+        pc_t pc = 0x1000;
+        pc_t target = 0x1200;
+        btb.update(pc, target, BrType::COND, time++);
+        BTBResp resp = btb.lookup(pc, time++);
+        assert(resp.hit);
+        assert(resp.target == target);
+        assert(resp.type == BrType::COND);
     }
 
-    // 2) Calls and corresponding rets
-    // simulate calls from a few call sites
-    for (int i = 0; i < 50; i++) {
-        u64 call_pc = 0x2000 + (i % 5) * 4;
-        InstRecord call{call_pc, CALL, 0x8000 + (i % 3) * 0x10, false};
-        trace.push_back(call);
-        // some body
-        for (int k = 0; k < 3; k++)
-            trace.push_back({call_pc + 4 + k * 4, OTHER, 0, false});
-        // return
-        InstRecord ret{call_pc + 16, RET, call_pc + 4, false};
-        trace.push_back(ret);
+    // Call / ret style entries
+    {
+        pc_t call_pc = 0x2000;
+        pc_t call_tgt = 0x8000;
+        btb.update(call_pc, call_tgt, BrType::CALL, time++);
+        BTBResp call_resp = btb.lookup(call_pc, time++);
+        assert(call_resp.hit);
+        assert(call_resp.target == call_tgt);
+        assert(call_resp.type == BrType::CALL);
+
+        pc_t ret_pc = 0x8010;
+        pc_t ret_tgt = 0x2004;
+        btb.update(ret_pc, ret_tgt, BrType::RET, time++);
+        BTBResp ret_resp = btb.lookup(ret_pc, time++);
+        assert(ret_resp.hit);
+        assert(ret_resp.target == ret_tgt);
+        assert(ret_resp.type == BrType::RET);
     }
 
-    // 3) Indirect branches whose targets depend on history
-    // We'll craft two call targets that alternate depending on history pattern
-    // pattern: if last BHR lowbit==1 -> target A else target B
-    for (int i = 0; i < 200; i++) {
-        u64 pc = 0x3000 + (i % 7) * 4;
-        // choose target according to simple rule to make history useful
-        bool history_bit = (i % 3 == 0);
-        u64 target = history_bit ? 0x9000 : 0xA000;
-        InstRecord ind{pc, INDIRECT, target, true};
-        trace.push_back(ind);
+    // Indirect / jalr
+    {
+        pc_t pc = 0x3000;
+        pc_t target = 0x9000;
+        btb.update(pc, target, BrType::JALR, time++);
+        BTBResp resp = btb.lookup(pc, time++);
+        assert(resp.hit);
+        assert(resp.target == target);
+        assert(resp.type == BrType::JALR);
+
+        // Same PC, newer target overwrites
+        pc_t new_target = 0xA000;
+        btb.update(pc, new_target, BrType::JALR, time++);
+        resp = btb.lookup(pc, time++);
+        assert(resp.hit);
+        assert(resp.target == new_target);
     }
 
-    // run simulation
-    sim.run(trace);
-    sim.print_stats();
+    // Miss path
+    {
+        BTBResp miss = btb.lookup(0xDEAD0000, time++);
+        assert(!miss.hit);
+    }
 
-    std::cout << "Done.\n";
-    return 0;
+    btb.invalidate_all();
+    {
+        BTBResp resp = btb.lookup(0x1000, time++);
+        assert(!resp.hit);
+    }
+
+    std::cout << "btb_test passed\n";
+    return EXIT_SUCCESS;
 }
