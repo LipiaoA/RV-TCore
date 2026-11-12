@@ -270,14 +270,13 @@ void RenameUnit::r1() {
     size_t n = 0;
     while (n < m_rename_width && !m_r1_buf.empty()) {
         MInstPtr inst = m_r1_buf.front();
-        m_r1_buf.pop_front();
+        bool exception = false;
 
         if (!inst->fetch_fault) {
             if (needs_gpr_free_entry(inst) && m_free_list.empty()) {
                 if (m_stats.perf()) {
                     ++m_stats.rename.free_list_stall_cycles;
                 }
-                m_r1_buf.push_front(inst);
                 LOG_LEVEL1("RenameUnit R1", "r1 pc:0x%lx, inst: %s, free list stall",
                     inst->pc, inst->inst_name.c_str());
                 break;
@@ -285,12 +284,10 @@ void RenameUnit::r1() {
             if (needs_vec_free_entry(inst)) {
                 const u32 need = inst->lmul > 1 ? inst->lmul : 1;
                 if (m_vfree_list.size() < need) {
-                    m_r1_buf.push_front(inst);
                     break;
                 }
             }
             if (needs_tile_free_entry(inst) && m_tfree_list.empty()) {
-                m_r1_buf.push_front(inst);
                 break;
             }
 
@@ -310,18 +307,19 @@ void RenameUnit::r1() {
                 rename_src_gpr(inst->rs2);
                 rename_rd_gpr(inst);
                 LOG_LEVEL1("RenameUnit R1", "r1 pc:0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx,"
-                    " rs2: v%d-a%d-p%d-0x%lx, rd: v%d-a%d-p%d-0x%lx",
+                    " rs2: v%d-a%d-p%d-0x%lx, rd: v%d-a%d-p%d-0x%lx, fetch id: %lu",
                     inst->pc, inst->inst_name.c_str(),
                     inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
                     inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
-                    inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
+                    inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val,
+                    inst->fetch_id);
             }
         }
-
         if (m_stats.perf()) {
             ++m_stats.rename.renamed_insts;
         }
         inst->state = InstState::RENAMED;
+        m_r1_buf.pop_front();
         m_r2_buf.push_back(inst);
         ++n;
     }
@@ -371,7 +369,8 @@ void RenameUnit::r2() {
         }
 
         m_lsu.allocate(inst);
-
+        LOG_LEVEL1("RenameUnit R2", "Rob Allocate pc:0x%lx, inst: %s, fetch id: %lu, rid:%s",
+            inst->pc, inst->inst_name.c_str(), inst->fetch_id, inst->rid.str());
         if (inst->type == InstType::STORE) {
             inst->sta_iss = false;
             inst->std_iss = false;

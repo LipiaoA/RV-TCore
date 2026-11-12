@@ -128,23 +128,13 @@ void VeriRef::dump_mismatch() const
     if (!ref || !dut) {
         return;
     }
+    LOG_LEVEL1("VeriRef", "  REF: pc=0x%lx op=%d effect=%d rd=%d val=0x%lx"
+        " mem_addr=0x%lx mem_data=0x%lx next_pc=0x%lx",
+        ref->pc, static_cast<int>(ref->opcode), static_cast<int>(ref->effect),
+        ref->rd, ref->rd_val, ref->mem_addr, ref->mem_data, ref->next_pc);
 
-    std::cerr << "  REF: pc=0x" << std::hex << ref->pc
-              << " op=" << static_cast<int>(ref->opcode)
-              << " effect=" << static_cast<int>(ref->effect)
-              << " rd=x" << std::dec << ref->rd
-              << " val=0x" << std::hex << ref->rd_val
-              << " mem_addr=0x" << ref->mem_addr
-              << " mem_data=0x" << ref->mem_data
-              << " next_pc=0x" << ref->next_pc
-              << std::dec << std::endl;
-    std::cerr << "  DUT: pc=0x" << std::hex << dut->pc
-              << " op=" << static_cast<int>(dut->opcode)
-              << " effect=" << static_cast<int>(dut->effect)
-              << " rd=x" << std::dec << dut->rd
-              << " val=0x" << std::hex << dut->rd_val
-              << " mem_addr=0x" << dut->mem_addr
-              << " mem_data=0x" << dut->mem_data
-              << " next_pc=0x" << dut->next_pc
-              << std::dec << std::endl;
+    LOG_LEVEL1("VeriRef", "  DUT: pc=0x%lx op=%d effect=%d rd=%d val=0x%lx "
+        "mem_addr=0x%lx mem_data=0x%lx next_pc=0x%lx",
+        dut->pc, static_cast<int>(dut->opcode), static_cast<int>(dut->effect),
+        dut->rd, dut->rd_val, dut->mem_addr, dut->mem_data, dut->next_pc);
 }

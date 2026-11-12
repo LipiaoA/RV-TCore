@@ -305,12 +305,12 @@ void IssueUnit::wakeup() {
     };
 
     // 优先处理 replay情况，再处理wakeup
-    for (const auto& event : m_wakeup_bus) {
+    for (auto& event : m_wakeup_bus) {
         if (!event.valid) {
             continue;
         }
         if (event.type == WAKEUP_REPLAY || event.load_dep_kill) {
-            LOG_LEVEL1("IssueUnit", "Replay ptag:p%d rid:%d", event.ptag, event.rid.idx);
+            LOG_LEVEL1("IssueUnit", "Replay ptag:p%d rid:%s", event.ptag, event.rid.str());
             handle_dep_kill(event);
         }
     }
@@ -606,13 +606,13 @@ void IssueUnit::issue()
         }
 
         LOG_LEVEL1("IssueUnit iss", "inst typ:%s half:%s issued:%s pc:0x%lx, name:%s,"
-                    "rs1:v%d-x%d-p%d bps:%d, rs2:v%d-x%d-p%d bps:%d, rd:v%d-x%d-p%d%s%d",
+                    "rs1:v%d-x%d-p%d bps:%d, rs2:v%d-x%d-p%d bps:%d, rd:v%d-x%d-p%d,rid:%s",
                     inst_type_str(inst->type), st_half.c_str(),
                     ret ? "true" : "false", inst->pc, inst->inst_name.c_str(),
                     inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.bypass_hint,
                     inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.bypass_hint,
                     inst->rd.valid, inst->rd.atag, inst->rd.ptag,
-                    inst->rid.direct ? "--" : "++", inst->rid.idx);
+                    inst->rid.str());
     }
     m_select_buffer.clear();
     clean_bypass_hint();
@@ -699,9 +699,9 @@ void IssueUnit::requeue_from_rob(MInstPtr inst)
     } else {
         m_int_q.emplace_back(inst);
     }
-    LOG_LEVEL1("IssueUnit", "requeue from ROB pc:0x%lx type:%s rid:%s%u",
+    LOG_LEVEL1("IssueUnit", "requeue from ROB pc:0x%lx type:%s rid:%s",
                inst->pc, inst_type_str(inst->type),
-               inst->rid.direct ? "--" : "++", inst->rid.idx);
+               inst->rid.str());
 }
 
 void IssueUnit::async() {

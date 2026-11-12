@@ -52,8 +52,8 @@ void TCoreConfig::init_config() {
     m_core_config.bru_stages        = 2;
 
     // issue / executetop
-    m_core_config.int_issue_width = 4;
-    m_core_config.ls_issue_width  = 2;
+    m_core_config.int_issue_width = 1;
+    m_core_config.ls_issue_width  = 1;
     m_core_config.fp_issue_width  = 2;
     m_core_config.vec_issue_width = 1;
     m_core_config.tile_issue_width = 1;

@@ -796,11 +796,9 @@ void FetchUnit::dump_state() const
         auto fetch_id = evt.fetch_id;
         auto inst_pc = evt.inst_pc;
         auto r_pc = evt.redirect_pc;
-        auto rid = evt.rid;
-        std::string id_pre = rid.idx == 0 ? "++" : "--";
-        LOG_LEVEL1("FetchUnit Flush Event", "type: %s, source: %s, scope: %s, rid: %s%d, rdirect pc:0x%lx, "
-                   "fetch_id: %d, inst_pc:0x%lx",
-                   type, source, scope, id_pre.c_str(), rid.idx, r_pc, fetch_id, inst_pc);
+        LOG_LEVEL1("FetchUnit Flush Event", "type: %s, source: %s, scope: %s,"
+                   " rid:%s, rdirect pc:0x%lx, fetch_id: %lu, inst_pc:0x%lx",
+                   type, source, scope, evt.rid.str(), r_pc, fetch_id, inst_pc);
     }
     if (m_state[F0].valid) {
         pc_t line_addr = m_icache.align_line(m_state[F0].vpc);

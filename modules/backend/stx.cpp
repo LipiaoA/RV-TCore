@@ -129,9 +129,9 @@ void STD::E0()
     inst->data_ready = true;
     m_lsu.on_store_operands_updated(*sq);
 
-    LOG_LEVEL1("DGU E0", "store pc:0x%lx id:%lu stq idx:%zu addr:0x%lx data:0x%lx width:%u rid:%s%u",
+    LOG_LEVEL1("DGU E0", "store pc:0x%lx id:%lu stq idx:%zu addr:0x%lx data:0x%lx width:%u rid:%s",
                inst->pc, sq->store_id, sq->stq_idx, sq->addr, sq->data, sq->ls_width,
-               inst->rid.direct ? "--" : "++", inst->rid.idx);
+               inst->rid.str());
     m_pipe[1].valid = false;
     m_pipe[1].inst = nullptr;
     if (m_stats.perf()) {

@@ -290,8 +290,8 @@ void LSU::rsp()
         s.store_in_flight = false;
         s.succeeded = true;
         m_stq_execute_head = wrap_inc(m_stq_execute_head, m_store_q_size);
-        LOG_LEVEL1("LSU D$ Resp", "complete store pc:0x%lx id:%lu stq:%zu addr:0x%lx rid:%s%u",
-                   s.uop->pc, s.store_id, pending.stq_idx, s.pa ? s.pa : s.addr, s.uop->rid.direct ? "--" : "++", s.uop->rid.idx);
+        LOG_LEVEL1("LSU D$ Resp", "complete store pc:0x%lx id:%lu stq:%zu addr:0x%lx rid:%s",
+                   s.uop->pc, s.store_id, pending.stq_idx, s.pa ? s.pa : s.addr, s.uop->rid.str());
     }
 
     // process pending mem responses
@@ -314,10 +314,10 @@ void LSU::rsp()
         auto fwd = try_forward(pending.addr, load_mask, entry, true);
         if (fwd.has_value()) {
             data = fwd->second;
-            LOG_LEVEL1("LSU RSP", "late forward load_id:%lu stq:%zu addr:0x%lx data:0x%lx",
+            LOG_LEVEL1("LoadStoreUnit Rsp", "Late forward load_id:%lu stq:%zu addr:0x%lx data:0x%lx",
                        pending.load_id, fwd->first, pending.addr, data);
         }
-        LOG_LEVEL1("LSU RSP", "mem resp pc:0x%lx id:%lu req_gen:%lu addr:0x%lx width:%u valid:%d data:0x%lx",
+        LOG_LEVEL1("LoadStoreUnit Rsp", "Resp pc:0x%lx id:%lu req_gen:%lu addr:0x%lx width:%u valid:%d data:0x%lx",
                    entry.uop->pc, pending.load_id, pending.req_gen, pending.addr, pending.width,
                    pending.resp.valid, data);
         enqueue_wb(pending.load_id, data, 1);
@@ -488,7 +488,7 @@ void LSU::issue_mem(LQEntry& entry, u64 pa, u8 byte_mask)
     req.line_addr = round_down(pa, line_size);
     req.epoch = entry.uop ? entry.uop->epoch : 0;
 
-    LOG_LEVEL1("LSU D$ Req", "load_id:%lu req_gen:%lu paddr:0x%lx line:0x%lx vaddr:0x%lx width:%u speculative:%d",
+    LOG_LEVEL1("LSU", "DCache Req load_id:%lu req_gen:%lu paddr:0x%lx line:0x%lx vaddr:0x%lx width:%u speculative:%d",
                load_id, req_gen, pa, req.line_addr, byte_addr, width, entry.speculative);
     m_dcache.fetch_line_async(req).then([this, load_id, req_gen, byte_addr, width](const MemResp& resp) {
         PendingMemResp pending {};
@@ -498,8 +498,13 @@ void LSU::issue_mem(LQEntry& entry, u64 pa, u8 byte_mask)
         pending.width = width;
         pending.resp = resp;
         m_pending_mem_resps.push_back(pending);
-        LOG_LEVEL1("LSU D$ Resp", "queue load_id:%lu req_gen:%lu addr:0x%lx width:%u valid:%d",
+        LOG_LEVEL1("LSU", "DCache Resp load_id:%lu req_gen:%lu addr:0x%lx width:%u valid:%d",
                    load_id, req_gen, byte_addr, width, resp.valid);
+        u64 dat[8];
+        memcpy(dat, resp.data, 8 * sizeof(u64));
+        LOG_LEVEL1("LSU", "DCache Resp Line Addr:0x%lx, Data:0x%lx 0x%lx 0x%lx "
+            "0x%lx 0x%lx 0x%lx 0x%lx 0x%lx", resp.line_addr, dat[0], dat[1],
+            dat[2], dat[3], dat[4], dat[5], dat[6], dat[7]);
     });
 }
 
@@ -534,8 +539,8 @@ void LSU::stlb()
     }
     st->pa = pa;
     st->addr_is_virtual = false;
-    LOG_LEVEL1("LSU STA", "TLB hit pc:0x%lx id:%lu st_idx:%zu vaddr:0x%lx paddr:0x%lx, rid:%s%u",
-               st->uop->pc, st->store_id, stq_idx, st->addr, pa, st->uop->rid.direct ? "--" : "++", st->uop->rid.idx);
+    LOG_LEVEL1("LSU STA", "TLB hit pc:0x%lx id:%lu st_idx:%zu vaddr:0x%lx paddr:0x%lx, rid:%s",
+               st->uop->pc, st->store_id, stq_idx, st->addr, pa, st->uop->rid.str());
     //FIXME: Flush Type should be LOAD_REPLAY
     check_mem_order(*st);
 }
@@ -574,7 +579,7 @@ void LSU::iss()
         }
         auto& entry = lsu_ld_q[idx];
         if (store_set_block(entry)) {
-            LOG_LEVEL1("LSU ISS", "store-set wait pc:0x%lx load_id:%lu wait_store:%lu addr:0x%lx",
+            LOG_LEVEL1("LSU ISS", "Store-set wait pc:0x%lx load_id:%lu wait_store:%lu addr:0x%lx",
                        entry.uop->pc, entry.load_id, entry.wait_store_id, entry.addr);
             continue;
         }
@@ -592,8 +597,8 @@ void LSU::iss()
             || sq_conflict(entry.addr, load_mask, entry)) {
             entry.state = WAIT_SQ_CHECK;
             entry.waiting_on_store = true;
-            LOG_LEVEL1("LSU ISS", "store queue conflict pc:0x%lx load_id:%lu ldq:%zu addr:0x%lx mask:0x%x",
-                       entry.uop->pc, entry.load_id, idx, entry.addr, load_mask);
+            LOG_LEVEL1("LSU ISS", "Store Conflict pc:0x%lx load_id:%lu addr:0x%lx mask:0x%x, rid:%s",
+                       entry.uop->pc, entry.load_id, entry.addr, load_mask, entry.uop->rid.str());
             continue;
         }
 
@@ -622,7 +627,7 @@ void LSU::fire_load(size_t ldq_idx)
                 // TODO: Add speculative load wakeup
                 // wakeup_load(entry.uop, true);
             }
-            LOG_LEVEL1("LSU ISS", "issue load pc:0x%lx id:%lu addr:0x%lx mask:0x%x, waiting store:%d",
+            LOG_LEVEL1("LSU ISS", "Issue load pc:0x%lx id:%lu addr:0x%lx mask:0x%x, waiting store:%d",
                        entry.uop->pc, entry.load_id, entry.addr, load_mask, entry.waiting_on_store);
             return;
         }
@@ -688,7 +693,7 @@ void LSU::issue_store(SQEntry& s, size_t stq_idx)
     req.width = s.ls_width ? s.ls_width : 8;
     req.epoch = s.uop ? s.uop->epoch : 0;
     s.store_in_flight = true;
-    LOG_LEVEL1("LSU WB", "issue store pc:0x%lx id:%lu stq:%zu addr:0x%lx data:0x%lx width:%u",
+    LOG_LEVEL1("LSU WB", "Issue store pc:0x%lx id:%lu stq:%zu addr:0x%lx data:0x%lx width:%u",
                s.uop->pc, s.store_id, stq_idx, s.addr, s.data, s.ls_width);
     m_dcache.store_merge_async(req).then([this, stq_idx](bool) {
         PendingStoreResp pending {};
@@ -708,7 +713,7 @@ void LSU::complete_load(uint64_t load_id, uint64_t data)
     const u8 load_mask = entry.uop ? gen_byte_mask(entry.addr, entry.uop->ls_width) : 0xFFu;
     if (!entry.forward_std_val && checkViolation(entry.addr, entry.rob_idx, load_mask)) {
         recover_load_misspec(entry, nullptr);
-        LOG_LEVEL1("LSU WB", "complete replay pc:0x%lx id:%lu addr:0x%lx mask:0x%x",
+        LOG_LEVEL1("LSU WB", "Complete replay pc:0x%lx id:%lu addr:0x%lx mask:0x%x",
                    entry.uop->pc, entry.load_id, entry.addr, load_mask);
         if (entry.uop) {
             for (const auto& s : lsu_st_q) {
@@ -737,8 +742,8 @@ void LSU::complete_load(uint64_t load_id, uint64_t data)
         wakeup_load(entry.uop, false);
         m_complete_q.write(entry.uop);
     }
-    LOG_LEVEL1("LSU WB", "complete load pc:0x%lx id:%lu ldq:%zu addr:0x%lx data:0x%lx",
-               entry.uop->pc, entry.load_id, entry.ldq_idx, entry.addr, data);
+    LOG_LEVEL1("LSU WB", "Complete load pc:0x%lx id:%lu ldq:%zu addr:0x%lx data:0x%lx, rid:%s",
+               entry.uop->pc, entry.load_id, entry.ldq_idx, entry.addr, data, entry.uop->rid.str());
 }
 
 void LSU::sta(SQEntry& st)
@@ -755,8 +760,8 @@ void LSU::sta(SQEntry& st)
     st.uop->sta_done = true;
     st.uop->std_done = true;
     m_complete_q.write(st.uop);
-    LOG_LEVEL1("LSU STA", "complete store_id:%lu stq:%zu addr:0x%lx paddr:0x%lx",
-               st.store_id, st.stq_idx, st.addr, st.pa);
+    LOG_LEVEL1("LSU STA", "Complete store_id:%lu stq:%zu addr:0x%lx paddr:0x%lx, rid:%s",
+               st.store_id, st.stq_idx, st.addr, st.pa, st.uop->rid.str());
 }
 
 void LSU::wakeup_load(MInstPtr inst, bool speculative)
@@ -770,7 +775,7 @@ void LSU::wakeup_load(MInstPtr inst, bool speculative)
     event.ptag = inst->rd.ptag;
     event.rid = inst->rid;
     m_wakeup_bus.push_back(event);
-    LOG_LEVEL1("LSU Wakeup", "ptag:p%d rid:%u-%u speculative:%d",
+    LOG_LEVEL1("LSU", "Wakeup ptag:p%d rid:%u-%u speculative:%d",
                event.ptag, event.rid.direct, event.rid.idx, speculative);
 }
 
@@ -952,8 +957,6 @@ bool LSU::store_set_block(LQEntry& load_entry)
     load_entry.waiting_on_store = true;
     load_entry.wait_store_id = static_cast<uint64_t>(dep_store);
     load_entry.state = WAIT_SQ_CHECK;
-    LOG_LEVEL1("LSU StoreSet", "load_id:%lu ssid:%u wait_store:%lu pc:0x%lx",
-               load_entry.load_id, ssid, load_entry.wait_store_id, load_entry.uop->pc);
     return true;
 }
 
@@ -975,8 +978,6 @@ void LSU::check_mem_order(SQEntry& st)
             continue;
         }
         l.order_fail = true;
-        LOG_LEVEL1("LSU STA", "store order fail pc:0x%lx id:%lu st_addr:0x%lx ld_addr:0x%lx rid:%s%u",
-                   st.uop->pc, st.store_id, st.addr, l.addr, st.uop->rid.direct ? "--" : "++", st.uop->rid.idx);
         flush_order(l, st);
         return;
     }
@@ -1227,9 +1228,9 @@ void LSU::on_store_operands_updated(SQEntry& st)
         check_mem_order(st);
     }
     if (st.addr_ready && st.data_ready) {
-        LOG_LEVEL1("LSU Store", "operands ready store_id:%lu stq:%zu addr:0x%lx data:0x%lx width:%u, rid:%s%u",
+        LOG_LEVEL1("LSU", "operands ready store_id:%lu stq:%zu addr:0x%lx data:0x%lx width:%u, rid:%s",
                    st.store_id, st.stq_idx, st.addr, st.data, st.ls_width,
-                   st.rob_idx.direct ? "--" : "++", st.rob_idx.idx);
+                   st.rob_idx.str());
         const u8 store_mask = gen_byte_mask(st.addr, st.ls_width ? st.ls_width : 8);
         for (auto& l : lsu_ld_q) {
             if (!l.valid) {
@@ -1284,8 +1285,8 @@ void LSU::commit_store(ROBID rid)
         if (s.uop) {
             m_ssp.clearLFST(s.uop->ssid, s.store_id);
         }
-        LOG_LEVEL1("LSU Commit", "store committed store_id:%lu stq:%zu rid:%s%u, addr:0x%lx, data:0x%lx, width:%u",
-                   s.store_id, s.stq_idx, rid.direct ? "--" : "++", rid.idx, s.addr, s.data, s.ls_width);
+        LOG_LEVEL1("LSU Commit", "store committed store_id:%lu stq:%zu rid:%s, addr:0x%lx, data:0x%lx, width:%u",
+                   s.store_id, s.stq_idx, rid.str(), s.addr, s.data, s.ls_width);
         return;
     }
 }
@@ -1297,8 +1298,8 @@ void LSU::retire_load(ROBID rid)
         return;
     }
     const size_t idx = lq->ldq_idx;
-    LOG_LEVEL1("LSU Commit", "load retired load_id:%lu ldq:%zu rid:%s%u, addr:0x%lx, width:%u",
-               lq->load_id, idx, rid.direct ? "--" : "++", rid.idx, lq->addr, lq->uop->ls_width);
+    LOG_LEVEL1("LSU Commit", "load retired load_id:%lu ldq:%zu rid:%s, addr:0x%lx, width:%u",
+               lq->load_id, idx, rid.str(), lq->addr, lq->uop->ls_width);
     *lq = LQEntry {};
     if (idx == m_ldq_head) {
         while (m_ldq_head != m_ldq_tail && !lsu_ld_q[m_ldq_head].valid) {
@@ -1361,7 +1362,7 @@ int LSU::alloc_store_entry()
 
 void LSU::replay(LQEntry& load_entry)
 {
-    LOG_LEVEL1("LoadStoreUnit", "Replay load_id:%lu ldq:%zu addr:0x%lx state:%s",
+    LOG_LEVEL1("LSU", "Replay load_id:%lu ldq:%zu addr:0x%lx state:%s",
                load_entry.load_id, load_entry.ldq_idx, load_entry.addr,
                ldst_state_str(load_entry.state));
     load_entry.executed = false;
@@ -1381,7 +1382,7 @@ void LSU::replay(LQEntry& load_entry)
 
 void LSU::replay(SQEntry& store_entry)
 {
-    LOG_LEVEL1("LoadStoreUnit", "Replay store_id:%lu stq:%zu addr:0x%lx state:%s",
+    LOG_LEVEL1("LSU", "Replay store_id:%lu stq:%zu addr:0x%lx state:%s",
                store_entry.store_id, store_entry.stq_idx, store_entry.addr,
                ldst_state_str(store_entry.state));
     store_entry.data_ready = false;
@@ -1416,8 +1417,8 @@ void LSU::replay_store_half(ROBID rid, bool kill_sta, bool kill_std)
         //     st->uop->data_ready = false;
         // }
     }
-    LOG_LEVEL1("LoadStoreUnit", "Replay store half rid:%s%u kill_sta:%d kill_std:%d",
-               rid.direct ? "--" : "++", rid.idx, kill_sta, kill_std);
+    LOG_LEVEL1("LoadStoreUnit", "Replay store half rid:%s kill_sta:%d kill_std:%d",
+               rid.str(), kill_sta, kill_std);
 }
 
 void LSU::flush(const FlushEvent& event)

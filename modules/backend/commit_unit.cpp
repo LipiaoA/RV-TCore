@@ -111,9 +111,8 @@ void CommitUnit::inst_resolve() {
             if (m_stats.perf()) {
                 ++m_stats.commit.resolved_insts;
             }
-            LOG_LEVEL1("CommitUnit", "pc: 0x%lx, inst: %s type:%s resolved, rid:%s%u", inst->pc,
-                        inst->inst_name.c_str(), inst_type_str(inst->type),
-                        inst->rid.direct ? "--" : "++", inst->rid.idx);
+            LOG_LEVEL1("CommitUnit", "pc: 0x%lx, inst: %s type:%s resolved, rid:%s", inst->pc,
+                        inst->inst_name.c_str(), inst_type_str(inst->type), inst->rid.str());
         }
     }
 }
@@ -168,16 +167,15 @@ void CommitUnit::inst_commit() {
             }
 
             if (!committed->inst->fetch_fault) {
-                std::string rid_str = committed->inst->rid.direct ? "--" : "++";
-                u32 r_idx = committed->inst->rid.idx;
-                LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired, rid: %s%u",
-                    committed->inst->pc, committed->inst->inst_name.c_str(), rid_str.c_str(), r_idx);
-                u64 result = committed->inst->rd.valid ? committed->inst->rd.val : 0;
-                InstrTrace::instance().record_retire(committed->inst->pc, result);
-                RetireMemInfo mem_info = retired_ls_info(committed->inst, m_lsu);
-                if (!VeriRef::instance().check_retire(*committed->inst, &mem_info)) {
+                auto inst = committed->inst;
+                LOG_LEVEL1("CommitUnit", "pc: 0x%lx commit inst: %s retired, rid:%s",
+                    inst->pc, inst->inst_name.c_str(), inst->rid.str());
+                u64 result = inst->rd.valid ? inst->rd.val : 0;
+                InstrTrace::instance().record_retire(inst->pc, result);
+                RetireMemInfo mem_info = retired_ls_info(inst, m_lsu);
+                if (!VeriRef::instance().check_retire(*inst, &mem_info)) {
                     LOG_LEVEL1("CommitUnit", "ERROR! Ref Model Mismatch At PC: 0x%lx inst: %s",
-                               committed->inst->pc, committed->inst->inst_name.c_str());
+                               inst->pc, inst->inst_name.c_str());
                     FlushEvent event;
                     event.valid = true;
                     event.type = FlushType::EXCEPTION;

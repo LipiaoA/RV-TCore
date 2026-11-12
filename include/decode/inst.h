@@ -3,6 +3,7 @@
 
 #include <cstdint>
 #include <string>
+#include <format>
 
 #include "isa/opcode.h"
 #include "rv_def.h"
@@ -66,9 +67,14 @@ typedef struct {
     u32 rgrp { 1 };
 } Operand;
 
-typedef struct ROBID{
+typedef struct ROBID {
     u32 idx;
     u32 direct {0};
+    std::string s;
+    const char * str() {
+        s = (direct ? "--" : "++") + std::to_string(idx);
+        return s.c_str();
+    }
     bool operator ==(const struct ROBID& other) const {
         return idx == other.idx && direct == other.direct;
     }

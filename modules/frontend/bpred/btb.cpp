@@ -29,6 +29,8 @@ BTBResp BTB::lookup(pc_t pc, u32 time) {
 	for (u32 w = 0; w < m_ways; ++w) {
 		if (set[w].valid && set[w].tag == tag) {
 			set[w].last_used_time = time;
+			LOG_LEVEL1("BTB F1", "BTB hit pc:0x%lx tag:0x%lx target:0x%lx type:%u",
+			  pc, tag, set[w].target, static_cast<u32>(set[w].type));
 			return {true, set[w].target, set[w].type};
 		}
 	}
@@ -43,6 +45,8 @@ void BTB::update(pc_t pc, pc_t target, BrType type, u32 time) {
 			set[w].target = target;
 			set[w].type = type;
 			set[w].last_used_time = time;
+			LOG_LEVEL1("BTB", "Update pc:0x%lx tag:0x%lx target:0x%lx type:%u",
+			  pc, tag, target, static_cast<u32>(type));
 			return;
 		}
 	}
@@ -53,6 +57,8 @@ void BTB::update(pc_t pc, pc_t target, BrType type, u32 time) {
 			set[w].target = target;
 			set[w].type = type;
 			set[w].last_used_time = time;
+			LOG_LEVEL1("BTB", "Update pc:0x%lx tag:0x%lx target:0x%lx type:%u",
+			  pc, tag, target, static_cast<u32>(type));
 			return;
 		}
 	}
@@ -69,6 +75,8 @@ void BTB::update(pc_t pc, pc_t target, BrType type, u32 time) {
 	set[lru].target = target;
 	set[lru].type = type;
 	set[lru].last_used_time = time;
+	LOG_LEVEL1("BTB", "Update pc:0x%lx tag:0x%lx target:0x%lx type:%u",
+	  pc, tag, target, static_cast<u32>(type));
 }
 
 void BTB::invalidate_all() {

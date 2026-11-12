@@ -189,7 +189,9 @@ void BRU::R1()
         return;
     }
     MInstPtr inst = m_pipe[0].inst;
-    for (Operand* src : {&inst->rs1, &inst->rs2}) {
+    Operand *rs1 = &inst->rs1;
+    Operand *rs2 = &inst->rs2;
+    for (Operand* src : {rs1, rs2}) {
         if (!src->valid || src->bypass_hint) {
             continue;
         }
@@ -204,6 +206,11 @@ void BRU::R1()
     }
 
     m_pred_taken= branch_taken(inst->opcode, inst->rs1.val, inst->rs2.val);
+
+    if (rs1->valid && !rs1->data_available && !rs1->bypass_hint ||
+        rs2->valid && !rs2->data_available && !rs2->bypass_hint) {
+        return;
+    }
     if (inst->rd.valid) {
         wakeup(inst);
     }
@@ -339,21 +346,25 @@ void BRU::dump_states() const
     std::string log_prefix = "BRU" + std::to_string(m_idx) + " ";
     if (m_pipe[0].valid) {
         auto inst = m_pipe[0].inst;
-        LOG_LEVEL1(log_prefix + "R1", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx",
+        const char *str_rid = inst->rid.str();
+        LOG_LEVEL1(log_prefix + "R1", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx, rid:%s",
             inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
-            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val);
+            inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val, str_rid);
     }
     if (m_pipe[1].valid) {
         auto inst = m_pipe[1].inst;
-        LOG_LEVEL1(log_prefix + "E0", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx, pred_taken: %d, real_taken: %d",
+        const char *str_rid = inst->rid.str();
+        LOG_LEVEL1(log_prefix + "E0", "pc: 0x%lx, inst: %s, rs1: v%d-a%d-p%d-0x%lx, rs2: v-%d-a%d-p%d-0x%lx,"
+            " pred_taken: %d, real_taken: %d, rid:%s",
             inst->pc, inst->inst_name.c_str(), inst->rs1.valid, inst->rs1.atag, inst->rs1.ptag, inst->rs1.val,
             inst->rs2.valid, inst->rs2.atag, inst->rs2.ptag, inst->rs2.val,
-            inst->pred_taken, m_pred_taken);
+            inst->pred_taken, m_pred_taken, str_rid);
     }
     if (m_commit_latch.valid) {
         auto inst = m_commit_latch.inst;
-        LOG_LEVEL1(log_prefix + "COMMIT", "pc: 0x%lx, inst: %s, rd: v%d-a%d-p%d-0x%lx",
-            inst->pc, inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val);
+        const char *str_rid = inst->rid.str();
+        LOG_LEVEL1(log_prefix + "COMMIT", "pc: 0x%lx, inst: %s, rd: v%d-a%d-p%d-0x%lx, rid:%s",
+            inst->pc, inst->inst_name.c_str(), inst->rd.valid, inst->rd.atag, inst->rd.ptag, inst->rd.val, str_rid);
     }
 }
 

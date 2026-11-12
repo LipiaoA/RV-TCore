@@ -55,6 +55,111 @@ int main()
     }
 
     {
+        MicroOp inst = make_inst(OP_MUL);
+        inst.rs1.val = 6;
+        inst.rs2.val = 7;
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == 42);
+    }
+
+    {
+        MicroOp inst = make_inst(OP_MULH);
+        inst.rs1.val = 0xffffffffffffffffull; // -1
+        inst.rs2.val = 0xffffffffffffffffull; // -1
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == 0); // (-1)*(-1) high = 0
+    }
+
+    {
+        MicroOp inst = make_inst(OP_MULHU);
+        inst.rs1.val = 0xffffffffffffffffull;
+        inst.rs2.val = 0xffffffffffffffffull;
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == 0xfffffffffffffffeull);
+    }
+
+    {
+        MicroOp inst = make_inst(OP_MULHSU);
+        inst.rs1.val = static_cast<u64>(-1); // signed -1
+        inst.rs2.val = 2;                    // unsigned 2
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == 0xffffffffffffffffull); // high of -2
+    }
+
+    {
+        MicroOp inst = make_inst(OP_DIV);
+        inst.rs1.val = static_cast<u64>(-20);
+        inst.rs2.val = 3;
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == static_cast<u64>(-6));
+    }
+
+    {
+        MicroOp inst = make_inst(OP_DIV);
+        inst.rs1.val = 0x8000000000000000ull;
+        inst.rs2.val = static_cast<u64>(-1);
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == 0x8000000000000000ull); // overflow → dividend
+    }
+
+    {
+        MicroOp inst = make_inst(OP_DIVU);
+        inst.rs1.val = 20;
+        inst.rs2.val = 0;
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == ~0ull);
+    }
+
+    {
+        MicroOp inst = make_inst(OP_REM);
+        inst.rs1.val = static_cast<u64>(-20);
+        inst.rs2.val = 3;
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == static_cast<u64>(-2));
+    }
+
+    {
+        MicroOp inst = make_inst(OP_MULW);
+        inst.rs1.val = 0x100000007ull;
+        inst.rs2.val = 0x100000003ull;
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == 21); // 7*3, upper bits ignored
+    }
+
+    {
+        MicroOp inst = make_inst(OP_DIVW);
+        inst.rs1.val = 0xffffffff80000000ull; // INT32_MIN
+        inst.rs2.val = static_cast<u64>(-1);
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == 0xffffffff80000000ull);
+    }
+
+    {
+        MicroOp inst = make_inst(OP_REMUW);
+        inst.rs1.val = 0xffffffff00000007ull;
+        inst.rs2.val = 3;
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(result.valid);
+        assert(result.value == 1);
+    }
+
+    {
+        MicroOp inst = make_inst(OP_MULD);
+        InstExec::AluExecResult result = InstExec::exec_alu(&inst);
+        assert(!result.valid); // RV128, unsupported on RV64
+    }
+
+    {
         MicroOp inst = make_inst(OP_JALR, 0x2000);
         inst.rs1.val = 0x3003;
         inst.imm = 4;

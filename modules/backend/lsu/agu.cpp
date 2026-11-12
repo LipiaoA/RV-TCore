@@ -133,8 +133,8 @@ void AGU::E0()
         inst->addr = ret.addr;
         inst->addr_ready = true;
         m_lsu.on_store_operands_updated(st_entry);
-        LOG_LEVEL1("AGU E0", "addr ready,store pc:0x%lx id:%lu addr:0x%lx rid:%s%u",
-                   inst->pc, st_entry.store_id, st_entry.addr, inst->rid.direct ? "--" : "++", inst->rid.idx);
+        LOG_LEVEL1("AGU E0", "addr ready,store pc:0x%lx id:%lu addr:0x%lx rid:%s",
+                   inst->pc, st_entry.store_id, st_entry.addr, inst->rid.str());
     } else if (inst->type == InstType::LOAD) {
         LQEntry* ld = m_lsu.find_load_by_id(inst->load_idx);
         if (!ld) {
@@ -142,8 +142,8 @@ void AGU::E0()
         }
         ld->addr = ret.addr;
         ld->addr_ready = true;
-        LOG_LEVEL1("AGU E0", "addr ready, load pc:0x%lx id:%lu addr:0x%lx rid:%s%u",
-                   inst->pc, ld->load_id, ld->addr, inst->rid.direct ? "--" : "++", inst->rid.idx);
+        LOG_LEVEL1("AGU E0", "addr ready, load pc:0x%lx id:%lu addr:0x%lx rid:%s",
+                   inst->pc, ld->load_id, ld->addr, inst->rid.str());
     }
     if (m_stats.perf()) {
         u32 ftyp = static_cast<size_t>(m_fu_type);

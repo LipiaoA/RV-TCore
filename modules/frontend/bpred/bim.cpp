@@ -56,6 +56,7 @@ branch_pred BIM::predict(pc_t base, u32 nslots, u32 cond_mask)
         predict.pred[i].taken = taken;
         predict.pred[i].type = BrType::COND;
         spec_ghr = advance(spec_ghr, taken);
+        LOG_LEVEL1("BIM", "Predict pc:0x%lx ghr:0x%lx taken: %u", pc, spec_ghr, taken);
         break;
     }
     m_ghr = spec_ghr;
