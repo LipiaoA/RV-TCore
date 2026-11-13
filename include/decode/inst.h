@@ -78,6 +78,9 @@ typedef struct ROBID {
     bool operator ==(const struct ROBID& other) const {
         return idx == other.idx && direct == other.direct;
     }
+    bool operator !=(const struct ROBID& other) const {
+        return idx != other.idx || direct != other.direct;
+    }
 } ROBID;
 
 typedef struct {

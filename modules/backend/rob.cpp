@@ -54,6 +54,10 @@ std::optional<ROBID> ROB::alloc(const MInstPtr inst) {
     m_tail.idx = (m_tail.idx + 1) % m_capacity;
     m_tail.direct = (m_tail.idx == 0) ? 1 - m_tail.direct : m_tail.direct;
     ++m_size;
+    // LOG_LEVEL1("ROB", "Allocate pc:0x%lx, inst: %s, fetch id: %lu, rid:%s",
+    //     inst->pc, inst->inst_name.c_str(), inst->fetch_id, write_id.str());
+    LOG_LEVEL1("ROB", "ROB Allocated rid:%s, head:%s, tail:%s, fetch id: %lu",
+        write_id.str(), m_head.str(), m_tail.str(), inst->fetch_id);
     return std::make_optional<ROBID>(write_id);
 }
 

@@ -18,6 +18,7 @@
 #include "util.h"
 #include "config.h"
 #include "perf/perf_def.h"
+#include "store_buffer.h"
 
 static const int SSIT_SIZE = 1024;
 static const int LFST_SIZE = 1024;
@@ -147,7 +148,7 @@ struct PendingMemResp {
 };
 
 struct PendingStoreResp {
-    size_t stq_idx { 0 };
+    uint64_t store_id { 0 };
 };
 
 class LSU {
@@ -184,7 +185,7 @@ public:
     void                                replay_store_half(ROBID rid, bool kill_sta, bool kill_std);
     // 1A: load 错推测轻量恢复（原地 replay + LoadDepKill，不 flush）
     void                                recover_load_misspec(LQEntry& load_entry, SQEntry* store_entry);
-    bool                                checkViolation(uint64_t addr, ROBID rob_idx, u8 byte_mask) const;
+    bool                                check_stq_violation(uint64_t addr, ROBID rid, u8 byte_mask) const;
 
     SQEntry*                            find_sq_for_std(MInstPtr inst);
     SQEntry*                            find_store_by_id(uint64_t store_id);
@@ -202,6 +203,8 @@ private:
     static bool                         mask_overlap(u8 a, u8 b);
     static bool                         mask_contains(u8 container, u8 sub);
     static u64                          apply_load_gen(const SQEntry& s_entry, u64 load_addr, u32 load_width);
+    static u64                          apply_store_data(u64 store_addr, u64 store_data, u32 store_width,
+                                                         u64 load_addr, u32 load_width);
 
     bool                                ldq_full() const;
     bool                                stq_full() const;
@@ -214,8 +217,6 @@ private:
     void                                ldx();
     void                                stlb();
     void                                iss();
-    void                                drain_stores();
-    void                                writeback_stores();
     void                                sta(SQEntry& st);
 
     void                                fire_load(size_t ldq_idx);
@@ -225,6 +226,23 @@ private:
     void                                complete_load(uint64_t load_id, uint64_t data);
     void                                enqueue_wb(uint64_t load_id, u64 data, u32 delay);
 
+    struct LoadPick {
+        bool ok { false };
+        bool replay { false };
+        bool sb_wait { false };
+        bool forwarded { false };
+        bool from_sb { false };
+        size_t stq_idx { 0 };
+        u64 data { 0 };
+    };
+    LoadPick                            resolve_load(const LQEntry& entry, u64 mem_data, bool have_mem) const;
+    void                                drain_sq_to_sb();
+    void                                issue_sb();
+    void                                note_sb_write(const SBEntry& written);
+    void                                retire_stq_head();
+    std::optional<u64>                  try_forward_sb(u64 addr, u8 load_mask, u32 load_width) const;
+    bool                                sb_blocks_load(u64 addr, u8 load_mask) const;
+
 
     LQEntry*                            find_load_by_ldq_idx(size_t idx);
     SQEntry*                            find_store_by_stq_idx(size_t idx);
@@ -232,8 +250,7 @@ private:
     std::optional<std::pair<size_t, u64>> try_forward(u64 addr, u8 load_mask,
                                                       const LQEntry& load, bool can_forward) const;
     size_t                              pick_fwd_stq(u64 addr, u8 load_mask, const LQEntry& load) const;
-    bool                                sq_conflict(u64 addr, u8 load_mask, const LQEntry& load) const;
-    bool                                is_spec_load(u64 addr, u8 byte_mask, ROBID rob_idx) const;
+    bool                                is_spec_load(u64 addr, u8 byte_mask, ROBID rid) const;
     bool                                load_blocked(size_t ldq_idx) const;
     void                                block_load(size_t ldq_idx);
     bool                                store_set_block(LQEntry& load_entry);
@@ -243,7 +260,7 @@ private:
     void                                flush_order(LQEntry& load_entry, SQEntry& store_entry);
     void                                emit_load_dep_kill(MInstPtr load_uop);
     void                                wakeup_load(MInstPtr inst, bool speculative);
-    void                                issue_store(SQEntry& s, size_t stq_idx);
+    void                                replay_load(LQEntry& entry, bool sb_wait);
     static u64                          extract_load_data(const MemResp& resp, u64 addr, u32 width, u32 line_size);
     bool                                grab_mem_port();
     void                                dump_state() const;
@@ -289,6 +306,8 @@ private:
     std::vector<bool>                   m_p1_block_load_mask;
     bool                                m_mem_port_busy { false };
     bool                                m_tlb_port_busy { false };
+    StoreBuffer                         m_store_buffer;
+    uint64_t                            m_sb_epoch { 0 };
     PerfStats&                          m_stats;
 };
 

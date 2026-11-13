@@ -16,6 +16,7 @@ add_library(backend STATIC
     vector/vector_unit.cpp
     tile/tile_unit.cpp
     lsu/lsu.cpp
+    lsu/store_buffer.cpp
     lsu/agu.cpp
 )
 

@@ -80,7 +80,8 @@ void RenameUnit::r0() {
         if (m_stats.perf()) {
             ++m_stats.rename.input_insts;
         }
-        LOG_LEVEL1("RenameUnit R0", "r0 pc:0x%lx, inst: %s", inst->pc, inst->inst_name.c_str());
+        LOG_LEVEL1("RenameUnit R0", "r0 pc:0x%lx, inst: %s, fetch id: %lu",
+            inst->pc, inst->inst_name.c_str(), inst->fetch_id);
         m_r1_buf.push_back(inst);
         ++n;
     }
@@ -230,7 +231,8 @@ bool RenameUnit::save_branch_checkpoint(MInstPtr inst)
     inst->c_id = cp.c_id;
     cp.rid = inst->rid;
     m_checkpoints.emplace_back(cp);
-    LOG_LEVEL1("RenameUnit Checkpoint", "save c_id: %lu, pc:0x%lx, inst: %s", cp.c_id, inst->pc, inst->inst_name.c_str());
+    LOG_LEVEL1("RenameUnit Checkpoint", "save c_id: %lu, pc:0x%lx, inst: %s, fetch id: %lu",
+         cp.c_id, inst->pc, inst->inst_name.c_str(), inst->fetch_id);
     return true;
 }
 
@@ -277,8 +279,8 @@ void RenameUnit::r1() {
                 if (m_stats.perf()) {
                     ++m_stats.rename.free_list_stall_cycles;
                 }
-                LOG_LEVEL1("RenameUnit R1", "r1 pc:0x%lx, inst: %s, free list stall",
-                    inst->pc, inst->inst_name.c_str());
+                LOG_LEVEL1("RenameUnit R1", "free list stall, pc:0x%lx, inst: %s, fetch id: %lu",
+                    inst->pc, inst->inst_name.c_str(), inst->fetch_id);
                 break;
             }
             if (needs_vec_free_entry(inst)) {

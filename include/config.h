@@ -115,6 +115,7 @@ typedef struct {
 typedef struct {
     u32 load_q_size { 128 };
     u32 store_q_size { 128 };
+    u32 sb_size { 16 };
     u32 mshr_buffer_size { 128 };
     u32 issue_width { 2 };
     u32 dtlb_hit_latency { 1 };

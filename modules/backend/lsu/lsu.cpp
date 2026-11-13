@@ -43,26 +43,6 @@ bool same_rob_id(const ROBID& lhs, const ROBID& rhs)
     return lhs.idx == rhs.idx && lhs.direct == rhs.direct;
 }
 
-const char* ldst_state_str(LdStState state)
-{
-    switch (state) {
-    case WAIT_ADDR:
-        return "WAIT_ADDR";
-    case WAIT_SQ_CHECK:
-        return "WAIT_SQ_CHECK";
-    case WAIT_TLB:
-        return "WAIT_TLB";
-    case WAIT_CACHE:
-        return "WAIT_CACHE";
-    case WAIT_FILL:
-        return "WAIT_FILL";
-    case READY:
-        return "READY";
-    default:
-        return "UNKNOWN";
-    }
-}
-
 } // namespace
 
 LSU::LSU(const LSUConfig& conf, const LSUDeps& deps)
@@ -101,6 +81,9 @@ void LSU::build()
     m_ldq_head = m_ldq_tail = 0;
     m_stq_head = m_stq_tail = m_stq_commit_head = m_stq_execute_head = 0;
     m_live_store_mask[0] = m_live_store_mask[1] = 0;
+    ++m_sb_epoch;
+    m_store_buffer.set_capacity(m_conf.sb_size);
+    m_pending_store_resps.clear();
 }
 
 LSU::~LSU()
@@ -157,10 +140,18 @@ bool LSU::mask_contains(u8 container, u8 sub)
 
 u64 LSU::apply_load_gen(const SQEntry& s_entry, u64 load_addr, u32 load_width)
 {
+    return apply_store_data(s_entry.addr, s_entry.data, s_entry.ls_width, load_addr, load_width);
+}
 
-    u64 reg_data = s_entry.data;
-    u64 store_addr = s_entry.addr;
-    u32 store_width = s_entry.ls_width;
+u64 LSU::apply_store_data(u64 store_addr, u64 reg_data, u32 store_width,
+                          u64 load_addr, u32 load_width)
+{
+    if (store_width == 0) {
+        store_width = 8;
+    }
+    if (load_width == 0) {
+        load_width = 8;
+    }
 
     const u32 store_off = static_cast<u32>(store_addr & 7ULL);
     const u32 load_off  = static_cast<u32>(load_addr & 7ULL);
@@ -234,21 +225,14 @@ void LSU::tick()
     m_tlb_port_busy = false;
 
     wb();
-    for (auto& s : lsu_st_q) {
-        if (s.valid && s.addr_ready && !s.addr_is_virtual && !s.sta_completed && s.data_ready) {
-            sta(s);
-        }
-    }
-    lc();
-    rsp();
-    stlb();
-    ldx();
-    iss();
+    lc();   // 执行 load 冲突检查, 主要是从 stq 中做数据转发
+    rsp();   // 处理 load 内存返回，响应 store 内存完成写会
+    stlb();  // 执行 store TLB 翻译
+    ldx();  // 执行 load，先做TLB翻译，然后发 Dcache 请求
+    iss(); // 冲突检查  选出能执行的 load 进入流水
 
-    if (!m_block_load_mask.empty()) {
-        m_p1_block_load_mask = m_block_load_mask;
-        std::fill(m_block_load_mask.begin(), m_block_load_mask.end(), false);
-    }
+    m_p1_block_load_mask = m_block_load_mask;
+    std::fill(m_block_load_mask.begin(), m_block_load_mask.end(), false);
     dump_state();
 }
 
@@ -256,10 +240,64 @@ void LSU::commit()
 {
 }
 
+void LSU::retire_stq_head()
+{
+    if (m_stq_head >= lsu_st_q.size() || !lsu_st_q[m_stq_head].valid) {
+        return;
+    }
+    LOG_LEVEL1("LSU WB", "Retire Store Entry stq:%zu store_id:%lu",
+               m_stq_head, lsu_st_q[m_stq_head].store_id);
+    mask_bit_clear(m_live_store_mask, m_stq_head);
+    for (size_t i = 0; i < m_load_q_size; ++i) {
+        mask_bit_clear(lsu_ld_q[i].st_dep_mask, m_stq_head);
+    }
+    lsu_st_q[m_stq_head] = SQEntry {};
+    m_stq_head = wrap_inc(m_stq_head, m_store_q_size);
+    m_stq_execute_head = m_stq_head;
+}
+
+void LSU::drain_sq_to_sb()
+{
+    // 只从最老的 SQ entry 进入 SB，写入后才能退出。
+    while (lsu_st_q[m_stq_head].valid && lsu_st_q[m_stq_head].committed) {
+        auto& store = lsu_st_q[m_stq_head];
+        if (!store.succeeded) {
+            if (!store.addr_ready || !store.data_ready || store.addr_is_virtual) {
+                assert(false);
+                break;
+            }
+            if (m_store_buffer.is_full()) {
+                m_stall = STORE_BUFFER_FULL;
+                store.state = WAIT_WRITEBACK;
+                LOG_LEVEL1("LSU WB", "Full Stall store_id:%lu stq:%zu sb:%zu",
+                           store.store_id, store.stq_idx, m_store_buffer.size());
+                break;
+            }
+            SBEntry entry {};
+            entry.valid = true;
+            entry.store_id = store.store_id;
+            entry.vaddr = store.addr;
+            entry.paddr = store.pa != 0 ? store.pa : store.addr;
+            entry.data = store.data;
+            entry.width = store.ls_width ? store.ls_width : 8;
+            entry.byte_mask = gen_byte_mask(entry.paddr, entry.width);
+            entry.epoch = store.uop ? store.uop->epoch : 0;
+            m_store_buffer.push(entry);
+            store.succeeded = true;
+            store.state = READY;
+            LOG_LEVEL1("LSU WB", "Write Store Buffer store_id:%lu stq:%zu va:0x%lx pa:0x%lx data:0x%lx width:%u sb:%zu",
+                       store.store_id, store.stq_idx, entry.vaddr, entry.paddr,
+                       entry.data, entry.width, m_store_buffer.size());
+        }
+        retire_stq_head();
+    }
+}
+
 void LSU::wb()
 {
-    drain_stores();
-    writeback_stores();
+    drain_sq_to_sb();
+    issue_sb();
+
     std::deque<LSUWBSlot> remaining;
     for (auto& slot : m_wb_pipe) {
         if (!slot.valid) {
@@ -273,6 +311,11 @@ void LSU::wb()
         }
     }
     m_wb_pipe = std::move(remaining);
+    for (auto& s : lsu_st_q) {
+        if (s.valid && s.addr_ready && !s.addr_is_virtual && !s.sta_completed && s.data_ready) {
+            sta(s);
+        }
+    }
 }
 
 void LSU::rsp()
@@ -280,18 +323,17 @@ void LSU::rsp()
     while (!m_pending_store_resps.empty()) {
         PendingStoreResp pending = m_pending_store_resps.front();
         m_pending_store_resps.pop_front();
-        if (pending.stq_idx >= m_store_q_size) {
+        if (m_store_buffer.is_empty()) {
             continue;
         }
-        auto& s = lsu_st_q[pending.stq_idx];
-        if (!s.valid || !s.store_in_flight) {
-            continue;
+        SBEntry& front = m_store_buffer.front();
+        if (!front.valid || !front.writing || front.store_id != pending.store_id) {
+            assert(false);
         }
-        s.store_in_flight = false;
-        s.succeeded = true;
-        m_stq_execute_head = wrap_inc(m_stq_execute_head, m_store_q_size);
-        LOG_LEVEL1("LSU D$ Resp", "complete store pc:0x%lx id:%lu stq:%zu addr:0x%lx rid:%s",
-                   s.uop->pc, s.store_id, pending.stq_idx, s.pa ? s.pa : s.addr, s.uop->rid.str());
+        LOG_LEVEL1("LSU D$ Resp", "complete store id:%lu addr:0x%lx data:0x%lx",
+                   front.store_id, front.paddr, front.data);
+        note_sb_write(front);
+        m_store_buffer.pop();
     }
 
     // process pending mem responses
@@ -305,22 +347,35 @@ void LSU::rsp()
             continue;
         }
         auto& entry = *entry_ptr;
-        u64 data = 0;
+        u64 mem_data = 0;
         if (pending.resp.valid) {
-            data = extract_load_data(pending.resp, pending.addr, pending.width,
-                                     m_conf.dcache_line_size);
+            mem_data = extract_load_data(pending.resp, pending.addr, pending.width,
+                                         m_conf.dcache_line_size);
         }
-        const u8 load_mask = entry.uop ? gen_byte_mask(pending.addr, entry.uop->ls_width) : 0xFFu;
-        auto fwd = try_forward(pending.addr, load_mask, entry, true);
-        if (fwd.has_value()) {
-            data = fwd->second;
-            LOG_LEVEL1("LoadStoreUnit Rsp", "Late forward load_id:%lu stq:%zu addr:0x%lx data:0x%lx",
-                       pending.load_id, fwd->first, pending.addr, data);
+        if (entry.forward_std_val) {
+            mem_data = entry.data;
+        }
+        const LoadPick pick = resolve_load(entry, mem_data, true);
+        if (pick.replay || !pick.ok) {
+            entry.in_flight = false;
+            replay_load(entry, pick.sb_wait);
+            LOG_LEVEL1("LoadStoreUnit Rsp", "replay load_id:%lu addr:0x%lx sb_wait:%d",
+                       pending.load_id, pending.addr, pick.sb_wait);
+            continue;
+        }
+        if (pick.forwarded) {
+            entry.forward_std_val = true;
+            entry.data = pick.data;
+            if (!pick.from_sb) {
+                entry.forward_stq_idx = pick.stq_idx;
+            }
+            LOG_LEVEL1("LoadStoreUnit Rsp", "Late forward load_id:%lu from_sb:%d stq:%zu addr:0x%lx data:0x%lx",
+                       pending.load_id, pick.from_sb, pick.stq_idx, pending.addr, pick.data);
         }
         LOG_LEVEL1("LoadStoreUnit Rsp", "Resp pc:0x%lx id:%lu req_gen:%lu addr:0x%lx width:%u valid:%d data:0x%lx",
                    entry.uop->pc, pending.load_id, pending.req_gen, pending.addr, pending.width,
-                   pending.resp.valid, data);
-        enqueue_wb(pending.load_id, data, 1);
+                   pending.resp.valid, pick.data);
+        enqueue_wb(pending.load_id, pick.data, 1);
         entry.in_flight = false;
         entry.executed = true;
     }
@@ -389,7 +444,7 @@ void LSU::do_ldx(LSUExeSlot& slot)
     slot.paddr = pa;
     entry->pa = pa;
     entry->addr_is_virtual = false;
-    LOG_LEVEL1("LSU LDX", "load tlb hit pc:0x%lx id:%lu vaddr:0x%lx paddr:0x%lx mask:0x%x",
+    LOG_LEVEL1("LSU LDX", "Load tlb hit pc:0x%lx id:%lu vaddr:0x%lx paddr:0x%lx mask:0x%x",
                entry->uop->pc, entry->load_id, slot.vaddr, pa, slot.byte_mask);
 
     if (!grab_mem_port()) {
@@ -411,8 +466,10 @@ void LSU::do_ldx(LSUExeSlot& slot)
     for (auto& s : m_s1_slots) {
         if (!s.valid) {
             s = s1_slot;
-            LOG_LEVEL1("LSU LDX", "execute load pc:0x%lx id:%lu ldq:%zu vaddr:0x%lx paddr:0x%lx mask:0x%x mem_issued:%d",
-                       entry->uop->pc, entry->load_id, slot.ldq_idx, slot.vaddr, pa, slot.byte_mask, slot.mem_issued);
+            LOG_LEVEL1("LSU LDX", "Execute load pc:0x%lx id:%lu ldq:%zu "
+                "vaddr:0x%lx paddr:0x%lx mask:0x%x mem_issued:%d rid:%s",
+                entry->uop->pc, entry->load_id, slot.ldq_idx, slot.vaddr, pa,
+                slot.byte_mask, slot.mem_issued, entry->uop->rid.str());
             return;
         }
     }
@@ -429,34 +486,37 @@ void LSU::lcam(LSUS1Slot& slot)
     slot.killed = false;
     slot.forward_val = false;
 
-    const u8 load_mask = slot.byte_mask;
-    auto fwd = try_forward(slot.vaddr, load_mask, *entry, true);
-    if (fwd.has_value()) {
+    const LoadPick pick = resolve_load(*entry, 0, false);
+    if (pick.forwarded) {
         slot.forward_val = true;
-        slot.forward_stq_idx = fwd->first;
+        slot.forward_stq_idx = pick.stq_idx;
         slot.killed = true;
         entry->forward_std_val = true;
-        entry->forward_stq_idx = fwd->first;
+        entry->data = pick.data;
+        entry->sb_conflict = false;
+        if (!pick.from_sb) {
+            entry->forward_stq_idx = pick.stq_idx;
+        }
         entry->speculative = false;
         entry->in_flight = false;
         entry->executed = true;
         entry->state = READY;
-        enqueue_wb(entry->load_id, fwd->second, 1);
+        enqueue_wb(entry->load_id, pick.data, 1);
         if (entry->uop && entry->uop->rd.valid) {
             // TODO: Add speculative load wakeup
             // wakeup_load(entry->uop, true);
         }
-        LOG_LEVEL1("LSU LCAM", "forward pc:0x%lx load_id:%lu ldq:%zu stq:%zu addr:0x%lx data:0x%lx",
-                   entry->uop->pc, entry->load_id, slot.ldq_idx, fwd->first, slot.vaddr, fwd->second);
+        LOG_LEVEL1("LSU LCAM", "forward pc:0x%lx load_id:%lu ldq:%zu from_sb:%d stq:%zu addr:0x%lx data:0x%lx",
+                   entry->uop->pc, entry->load_id, slot.ldq_idx, pick.from_sb, pick.stq_idx,
+                   slot.vaddr, pick.data);
         return;
     }
 
-    if (checkViolation(slot.vaddr, entry->rob_idx, load_mask)
-        || sq_conflict(slot.vaddr, load_mask, *entry)) {
+    if (pick.replay) {
         slot.killed = true;
-        recover_load_misspec(*entry, nullptr);
-        LOG_LEVEL1("LSU LCAM", "replay load_id:%lu ldq:%zu addr:0x%lx mask:0x%x",
-                   entry->load_id, slot.ldq_idx, slot.vaddr, load_mask);
+        replay_load(*entry, pick.sb_wait);
+        LOG_LEVEL1("LSU LCAM", "replay load_id:%lu ldq:%zu addr:0x%lx sb_wait:%d",
+                   entry->load_id, slot.ldq_idx, slot.vaddr, pick.sb_wait);
         return;
     }
 
@@ -475,7 +535,7 @@ void LSU::issue_mem(LQEntry& entry, u64 pa, u8 byte_mask)
     entry.state = WAIT_CACHE;
     entry.speculative = is_spec_load(entry.addr,
         entry.uop ? gen_byte_mask(entry.addr, entry.uop->ls_width) : 0xFFu,
-        entry.rob_idx);
+        entry.rid);
 
     const uint64_t load_id = entry.load_id;
     const uint64_t req_gen = entry.mem_req_gen;
@@ -539,6 +599,7 @@ void LSU::stlb()
     }
     st->pa = pa;
     st->addr_is_virtual = false;
+    st->state = WAIT_WRITEBACK;
     LOG_LEVEL1("LSU STA", "TLB hit pc:0x%lx id:%lu st_idx:%zu vaddr:0x%lx paddr:0x%lx, rid:%s",
                st->uop->pc, st->store_id, stq_idx, st->addr, pa, st->uop->rid.str());
     //FIXME: Flush Type should be LOAD_REPLAY
@@ -558,6 +619,7 @@ void LSU::iss()
             continue;
         }
         if (entry.state != WAIT_ADDR && entry.state != WAIT_SQ_CHECK
+            && entry.state != WAIT_SB_CHECK
             && entry.state != WAIT_TLB && entry.state != WAIT_CACHE) {
             continue;
         }
@@ -569,7 +631,7 @@ void LSU::iss()
 
     std::stable_sort(ready_loads.begin(), ready_loads.end(),
         [this](size_t a, size_t b) {
-            return m_rob.is_older_than(lsu_ld_q[a].rob_idx, lsu_ld_q[b].rob_idx);
+            return m_rob.is_older_than(lsu_ld_q[a].rid, lsu_ld_q[b].rid);
         });
 
     u32 issued = 0;
@@ -593,12 +655,18 @@ void LSU::iss()
         }
 
         const u8 load_mask = entry.uop ? gen_byte_mask(entry.addr, entry.uop->ls_width) : 0xFFu;
-        if (checkViolation(entry.addr, entry.rob_idx, load_mask)
-            || sq_conflict(entry.addr, load_mask, entry)) {
+        if (check_stq_violation(entry.addr, entry.rid, load_mask)) {
             entry.state = WAIT_SQ_CHECK;
             entry.waiting_on_store = true;
             LOG_LEVEL1("LSU ISS", "Store Conflict pc:0x%lx load_id:%lu addr:0x%lx mask:0x%x, rid:%s",
                        entry.uop->pc, entry.load_id, entry.addr, load_mask, entry.uop->rid.str());
+            continue;
+        }
+        if (sb_blocks_load(entry.addr, load_mask)) {
+            entry.state = WAIT_SB_CHECK;
+            entry.waiting_on_store = false;
+            LOG_LEVEL1("LSU ISS", "StoreBuffer conflict pc:0x%lx load_id:%lu addr:0x%lx mask:0x%x",
+                       entry.uop->pc, entry.load_id, entry.addr, load_mask);
             continue;
         }
 
@@ -611,7 +679,7 @@ void LSU::iss()
 void LSU::fire_load(size_t ldq_idx)
 {
     auto& entry = lsu_ld_q[ldq_idx];
-    const u8 load_mask = entry.uop ? gen_byte_mask(entry.addr, entry.uop->ls_width) : 0xFFu;
+    const u8 load_mask = gen_byte_mask(entry.addr, entry.uop->ls_width);
 
     LSUExeSlot slot {};
     slot.valid = true;
@@ -627,8 +695,8 @@ void LSU::fire_load(size_t ldq_idx)
                 // TODO: Add speculative load wakeup
                 // wakeup_load(entry.uop, true);
             }
-            LOG_LEVEL1("LSU ISS", "Issue load pc:0x%lx id:%lu addr:0x%lx mask:0x%x, waiting store:%d",
-                       entry.uop->pc, entry.load_id, entry.addr, load_mask, entry.waiting_on_store);
+            LOG_LEVEL1("LSU ISS", "Issue load pc:0x%lx addr:0x%lx mask:0x%x rid:%s",
+                       entry.uop->pc, entry.addr, load_mask, entry.rid.str());
             return;
         }
     }
@@ -644,62 +712,143 @@ bool LSU::grab_mem_port()
     return true;
 }
 
-void LSU::drain_stores()
+void LSU::issue_sb()
 {
-    while (lsu_st_q[m_stq_head].valid && lsu_st_q[m_stq_head].committed
-           && lsu_st_q[m_stq_head].succeeded) {
-        mask_bit_clear(m_live_store_mask, m_stq_head);
-        for (size_t i = 0; i < m_load_q_size; ++i) {
-            mask_bit_clear(lsu_ld_q[i].st_dep_mask, m_stq_head);
-        }
-        lsu_st_q[m_stq_head] = SQEntry {};
-        m_stq_head = wrap_inc(m_stq_head, m_store_q_size);
-    }
-}
-
-void LSU::writeback_stores()
-{
-    if (m_mem_port_busy) {
+    if (m_store_buffer.is_empty()) {
         return;
     }
-    for (size_t n = 0; n < m_store_q_size; ++n) {
-        size_t idx = (m_stq_execute_head + n) % m_store_q_size;
-        auto& s = lsu_st_q[idx];
-        if (!s.valid || !s.committed || s.succeeded) {
-            continue;
-        }
-        if (s.store_in_flight) {
-            return;
-        }
-        if (!s.addr_ready || !s.data_ready || s.addr_is_virtual) {
-            return;
-        }
-        if (!grab_mem_port()) {
-            m_stall = DCACHE_PORT_FULL;
-            return;
-        }
-        issue_store(s, idx);
-        m_mem_port_busy = false;
+    SBEntry& front = m_store_buffer.front();
+    if (!front.valid || front.writing) {
         return;
     }
-}
-
-void LSU::issue_store(SQEntry& s, size_t stq_idx)
-{
+    if (!grab_mem_port()) {
+        m_stall = DCACHE_PORT_FULL;
+        return;
+    }
     StoreReq req {};
     req.valid = true;
-    req.addr = s.pa ? s.pa : s.addr;
-    req.data = s.data;
-    req.width = s.ls_width ? s.ls_width : 8;
-    req.epoch = s.uop ? s.uop->epoch : 0;
-    s.store_in_flight = true;
-    LOG_LEVEL1("LSU WB", "Issue store pc:0x%lx id:%lu stq:%zu addr:0x%lx data:0x%lx width:%u",
-               s.uop->pc, s.store_id, stq_idx, s.addr, s.data, s.ls_width);
-    m_dcache.store_merge_async(req).then([this, stq_idx](bool) {
+    req.addr = front.paddr;
+    req.data = front.data;
+    req.width = front.width ? front.width : 8;
+    req.epoch = front.epoch;
+    front.writing = true;
+    const uint64_t store_id = front.store_id;
+    const uint64_t epoch = m_sb_epoch;
+    LOG_LEVEL1("LSU WB", "Write D$ store_id:%lu addr:0x%lx data:0x%lx width:%u",
+               store_id, req.addr, req.data, req.width);
+    m_dcache.store_merge_async(req).then([this, store_id, epoch](bool) {
+        if (epoch != m_sb_epoch) {
+            return;
+        }
         PendingStoreResp pending {};
-        pending.stq_idx = stq_idx;
+        pending.store_id = store_id;
         m_pending_store_resps.push_back(pending);
     });
+    // 写出不占死本拍的 load 端口，和原先 SQ 直接写 D$ 一样每拍最多发一条。
+    m_mem_port_busy = false;
+}
+
+void LSU::note_sb_write(const SBEntry& written)
+{
+    for (auto& load : lsu_ld_q) {
+        if (!load.valid || !load.in_flight) {
+            continue;
+        }
+        const u32 width = load.uop ? load.uop->ls_width : 8;
+        const u8 load_mask = gen_byte_mask(load.addr, width);
+        const bool match = dword_addr_match(written.vaddr, load.addr)
+            || dword_addr_match(written.paddr, load.addr);
+        if (!match || !mask_overlap(written.byte_mask, load_mask)) {
+            continue;
+        }
+        if (mask_contains(written.byte_mask, load_mask)) {
+            const u64 data_addr = dword_addr_match(written.vaddr, load.addr)
+                ? written.vaddr : written.paddr;
+            load.forward_std_val = true;
+            load.sb_conflict = false;
+            load.data = apply_store_data(data_addr, written.data, written.width, load.addr, width);
+            LOG_LEVEL1("LSU SB", "snoop forward load_id:%lu store_id:%lu addr:0x%lx data:0x%lx",
+                       load.load_id, written.store_id, load.addr, load.data);
+            continue;
+        }
+        LOG_LEVEL1("LSU SB", "snoop replay load_id:%lu store_id:%lu addr:0x%lx",
+                   load.load_id, written.store_id, load.addr);
+        load.in_flight = false;
+        replay_load(load, false);
+        load.waiting_on_store = false;
+        load.wait_store_id = static_cast<uint64_t>(-1);
+        load.state = WAIT_ADDR;
+    }
+}
+
+void LSU::replay_load(LQEntry& entry, bool sb_wait)
+{
+    recover_load_misspec(entry, nullptr);
+    entry.sb_conflict = false;
+    if (!sb_wait) {
+        return;
+    }
+    entry.waiting_on_store = false;
+    entry.wait_store_id = static_cast<uint64_t>(-1);
+    entry.state = WAIT_SB_CHECK;
+}
+
+LSU::LoadPick LSU::resolve_load(const LQEntry& entry, u64 mem_data, bool have_mem) const
+{
+    LoadPick pick {};
+    const u32 width = entry.uop ? entry.uop->ls_width : 8;
+    const u8 load_mask = gen_byte_mask(entry.addr, width);
+    if (auto fwd = try_forward(entry.addr, load_mask, entry, true)) {
+        pick.ok = true;
+        pick.forwarded = true;
+        pick.stq_idx = fwd->first;
+        pick.data = fwd->second;
+        return pick;
+    }
+    if (check_stq_violation(entry.addr, entry.rid, load_mask)) {
+        pick.replay = true;
+        return pick;
+    }
+    if (auto sb = try_forward_sb(entry.addr, load_mask, width)) {
+        pick.ok = true;
+        pick.forwarded = true;
+        pick.from_sb = true;
+        pick.data = *sb;
+        return pick;
+    }
+    if (entry.sb_conflict || sb_blocks_load(entry.addr, load_mask)) {
+        pick.replay = true;
+        pick.sb_wait = true;
+        return pick;
+    }
+    if (entry.forward_std_val) {
+        pick.ok = true;
+        pick.forwarded = true;
+        pick.from_sb = true;
+        pick.data = entry.data;
+        return pick;
+    }
+    if (have_mem) {
+        pick.ok = true;
+        pick.data = mem_data;
+        return pick;
+    }
+    return pick;
+}
+
+std::optional<u64> LSU::try_forward_sb(u64 addr, u8 load_mask, u32 load_width) const
+{
+    const SBForward hit = m_store_buffer.find_youngest(addr, load_mask);
+    if (!hit.hit || !hit.full_cover) {
+        return std::nullopt;
+    }
+    return apply_store_data(hit.addr, hit.data, hit.width, addr, load_width);
+}
+
+bool LSU::sb_blocks_load(u64 addr, u8 load_mask) const
+{
+    const SBForward hit = m_store_buffer.find_youngest(addr, load_mask);
+    return hit.hit && !hit.full_cover;
 }
 
 void LSU::complete_load(uint64_t load_id, uint64_t data)
@@ -710,14 +859,17 @@ void LSU::complete_load(uint64_t load_id, uint64_t data)
     }
     auto& entry = *entry_ptr;
 
-    const u8 load_mask = entry.uop ? gen_byte_mask(entry.addr, entry.uop->ls_width) : 0xFFu;
-    if (!entry.forward_std_val && checkViolation(entry.addr, entry.rob_idx, load_mask)) {
-        recover_load_misspec(entry, nullptr);
-        LOG_LEVEL1("LSU WB", "Complete replay pc:0x%lx id:%lu addr:0x%lx mask:0x%x",
-                   entry.uop->pc, entry.load_id, entry.addr, load_mask);
-        if (entry.uop) {
+    const u32 width = entry.uop ? entry.uop->ls_width : 8;
+    const u8 load_mask = gen_byte_mask(entry.addr, width);
+    u64 incoming = entry.forward_std_val ? entry.data : data;
+    const LoadPick pick = resolve_load(entry, incoming, true);
+    if (pick.replay || !pick.ok) {
+        replay_load(entry, pick.sb_wait);
+        LOG_LEVEL1("LSU WB", "Complete replay pc:0x%lx id:%lu addr:0x%lx mask:0x%x sb_wait:%d",
+                   entry.uop->pc, entry.load_id, entry.addr, load_mask, pick.sb_wait);
+        if (!pick.sb_wait && entry.uop) {
             for (const auto& s : lsu_st_q) {
-                if (s.valid && s.uop && m_rob.is_older_than(s.rob_idx, entry.rob_idx)
+                if (s.valid && s.uop && m_rob.is_older_than(s.rid, entry.rid)
                     && s.addr_ready && dword_addr_match(s.addr, entry.addr)
                     && mask_overlap(gen_byte_mask(s.addr, s.ls_width), load_mask)
                     && !s.data_ready) {
@@ -728,11 +880,13 @@ void LSU::complete_load(uint64_t load_id, uint64_t data)
         }
         return;
     }
+    data = pick.data;
 
     entry.in_flight = false;
     entry.executed = true;
     entry.succeeded = true;
     entry.value_ready = true;
+    entry.forward_std_val = pick.forwarded;
     entry.data = data;
     entry.state = READY;
 
@@ -760,7 +914,7 @@ void LSU::sta(SQEntry& st)
     st.uop->sta_done = true;
     st.uop->std_done = true;
     m_complete_q.write(st.uop);
-    LOG_LEVEL1("LSU STA", "Complete store_id:%lu stq:%zu addr:0x%lx paddr:0x%lx, rid:%s",
+    LOG_LEVEL1("LSU WB", "Complete store_id:%lu stq:%zu addr:0x%lx paddr:0x%lx, rid:%s",
                st.store_id, st.stq_idx, st.addr, st.pa, st.uop->rid.str());
 }
 
@@ -804,13 +958,14 @@ std::optional<std::pair<size_t, u64>> LSU::try_forward(u64 addr, u8 load_mask,
 
 size_t LSU::pick_fwd_stq(u64 addr, u8 load_mask, const LQEntry& load) const
 {
+    // SQ 是环，下标大的不一定更年轻。命中多条时必须按 ROB 年龄取最年轻的那条。
     size_t found = m_store_q_size;
     for (size_t i = 0; i < m_store_q_size; ++i) {
         const auto& s = lsu_st_q[i];
         if (!s.valid || !st_dep_hit(load, i)) {
             continue;
         }
-        if (!m_rob.is_older_than(s.rob_idx, load.rob_idx)) {
+        if (!m_rob.is_older_than(s.rid, load.rid)) {
             continue;
         }
         if (!s.addr_ready || s.addr_is_virtual) {
@@ -826,39 +981,12 @@ size_t LSU::pick_fwd_stq(u64 addr, u8 load_mask, const LQEntry& load) const
         if (!mask_contains(store_mask, load_mask)) {
             continue;
         }
-        if (i >= load.youngest_stq_idx) {
+        if (found < m_store_q_size && !m_rob.is_older_than(lsu_st_q[found].rid, s.rid)) {
             continue;
         }
         found = i;
     }
     return found;
-}
-
-bool LSU::sq_conflict(u64 addr, u8 load_mask, const LQEntry& load) const
-{
-    for (size_t i = 0; i < m_store_q_size; ++i) {
-        const auto& s = lsu_st_q[i];
-        if (!s.valid || !st_dep_hit(load, i)) {
-            continue;
-        }
-        if (!m_rob.is_older_than(s.rob_idx, load.rob_idx)) {
-            continue;
-        }
-        if (!s.addr_ready || s.addr_is_virtual) {
-            continue;
-        }
-        if (!dword_addr_match(s.addr, addr)) {
-            continue;
-        }
-        const u8 store_mask = gen_byte_mask(s.addr, s.ls_width ? s.ls_width : 8);
-        if (!mask_overlap(store_mask, load_mask)) {
-            continue;
-        }
-        if (!s.data_ready || !mask_contains(store_mask, load_mask)) {
-            return true;
-        }
-    }
-    return false;
 }
 
 bool LSU::load_blocked(size_t ldq_idx) const
@@ -877,41 +1005,45 @@ void LSU::block_load(size_t ldq_idx)
     }
 }
 
-bool LSU::checkViolation(uint64_t addr, ROBID rob_idx, u8 byte_mask) const
+bool LSU::check_stq_violation(uint64_t addr, ROBID rid, u8 load_mask) const
 {
     for (size_t i = 0; i < m_store_q_size; ++i) {
         const auto& s = lsu_st_q[i];
         if (!s.valid) {
             continue;
         }
-        if (!m_rob.is_older_than(s.rob_idx, rob_idx)) {
+        // 查比 load  更老的 store
+        if (!m_rob.is_older_than(s.rid, rid)) {
             continue;
         }
+        // 放过 addr 没ready的，，， 有问题吧。。 或者未翻译的，，
         if (!s.addr_ready || s.addr_is_virtual) {
             continue;
         }
+
         if (!dword_addr_match(s.addr, addr)) {
             continue;
         }
         const u8 store_mask = gen_byte_mask(s.addr, s.ls_width ? s.ls_width : 8);
-        if (!mask_overlap(store_mask, byte_mask)) {
+        if (!mask_overlap(store_mask, load_mask)) {
             continue;
         }
-        if (!s.data_ready) {
+        // 数据ready 但是 并未store mask未覆盖load mask 也算冲突，暂时不做部分转发。
+        if (!s.data_ready || !mask_contains(store_mask, load_mask)) {
             return true;
         }
     }
     return false;
 }
 
-bool LSU::is_spec_load(u64 addr, u8 byte_mask, ROBID rob_idx) const
+bool LSU::is_spec_load(u64 addr, u8 byte_mask, ROBID rid) const
 {
     for (size_t i = 0; i < m_store_q_size; ++i) {
         const auto& s = lsu_st_q[i];
         if (!s.valid) {
             continue;
         }
-        if (!m_rob.is_older_than(s.rob_idx, rob_idx)) {
+        if (!m_rob.is_older_than(s.rid, rid)) {
             continue;
         }
         if (!s.addr_ready || s.addr_is_virtual) {
@@ -943,7 +1075,7 @@ bool LSU::store_set_block(LQEntry& load_entry)
         return false;
     }
     auto& st = *st_ptr;
-    if (!st.valid || st.committed || !m_rob.is_older_than(st.rob_idx, load_entry.rob_idx)) {
+    if (!st.valid || st.committed || !m_rob.is_older_than(st.rid, load_entry.rid)) {
         return false;
     }
     const u8 load_mask = gen_byte_mask(load_entry.addr, load_entry.uop->ls_width);
@@ -970,7 +1102,7 @@ void LSU::check_mem_order(SQEntry& st)
         if (!l.valid || !l.executed || l.violation_reported || !l.speculative) {
             continue;
         }
-        if (!m_rob.is_older_than(st.rob_idx, l.rob_idx)) {
+        if (!m_rob.is_older_than(st.rid, l.rid)) {
             continue;
         }
         const u8 load_mask = l.uop ? gen_byte_mask(l.addr, l.uop->ls_width) : 0xFFu;
@@ -1058,7 +1190,7 @@ bool LSU::can_dispatch(MInstPtr inst) const
             if (!entry.valid) {
                 continue;
             }
-            if (entry.rob_idx.idx == inst->rid.idx && entry.rob_idx.direct == inst->rid.direct) {
+            if (entry.rid == inst->rid) {
                 return true;
             }
             if (entry.store_id == inst->store_id && inst->store_id != 0) {
@@ -1087,7 +1219,7 @@ bool LSU::allocate(MInstPtr inst)
         entry.uop = inst;
         entry.load_id = load_id;
         entry.ldq_idx = static_cast<size_t>(idx);
-        entry.rob_idx = inst->rid;
+        entry.rid = inst->rid;
         entry.state = WAIT_ADDR;
         entry.st_dep_mask[0] = m_live_store_mask[0];
         entry.st_dep_mask[1] = m_live_store_mask[1];
@@ -1109,7 +1241,7 @@ bool LSU::allocate(MInstPtr inst)
         entry = SQEntry {};
         entry.valid = true;
         entry.uop = inst;
-        entry.rob_idx = inst->rid;
+        entry.rid = inst->rid;
         entry.store_id = store_id;
         entry.store_token = store_token;
         entry.stq_idx = static_cast<size_t>(idx);
@@ -1122,12 +1254,11 @@ bool LSU::allocate(MInstPtr inst)
             m_store_token_map[store_token] = static_cast<size_t>(idx);
         }
         inst->store_id = store_id;
-        LOG_LEVEL1("LSU Alloc", "store stq:%zu store_id:%lu token:%lu pc:0x%lx rid:%u-%u width:%u",
-                   entry.stq_idx, entry.store_id, entry.store_token, inst->pc,
-                   inst->rid.direct, inst->rid.idx, entry.ls_width);
+        LOG_LEVEL1("LSU Alloc", "store stq:%zu store_id:%lu token:%lu pc:0x%lx rid:%s width:%u",
+            entry.stq_idx, entry.store_id, entry.store_token, inst->pc, inst->rid.str(), entry.ls_width);
         return true;
     }
-    return true;
+    return false;
 }
 
 SQEntry* LSU::find_sq_for_std(MInstPtr inst)
@@ -1199,7 +1330,7 @@ SQEntry* LSU::find_store_by_stq_idx(size_t idx)
 SQEntry* LSU::find_store_by_rid(ROBID rid)
 {
     for (auto& s : lsu_st_q) {
-        if (s.valid && s.rob_idx.idx == rid.idx && s.rob_idx.direct == rid.direct) {
+        if (s.valid && s.rid == rid) {
             return &s;
         }
     }
@@ -1209,7 +1340,7 @@ SQEntry* LSU::find_store_by_rid(ROBID rid)
 LQEntry* LSU::find_load_by_rid(ROBID rid)
 {
     for (auto& l : lsu_ld_q) {
-        if (l.valid && l.rob_idx.idx == rid.idx && l.rob_idx.direct == rid.direct) {
+        if (l.valid && l.rid == rid) {
             return &l;
         }
     }
@@ -1230,7 +1361,7 @@ void LSU::on_store_operands_updated(SQEntry& st)
     if (st.addr_ready && st.data_ready) {
         LOG_LEVEL1("LSU", "operands ready store_id:%lu stq:%zu addr:0x%lx data:0x%lx width:%u, rid:%s",
                    st.store_id, st.stq_idx, st.addr, st.data, st.ls_width,
-                   st.rob_idx.str());
+                   st.rid.str());
         const u8 store_mask = gen_byte_mask(st.addr, st.ls_width ? st.ls_width : 8);
         for (auto& l : lsu_ld_q) {
             if (!l.valid) {
@@ -1258,26 +1389,25 @@ void LSU::on_store_operands_updated(SQEntry& st)
 bool LSU::store_commit_ready(ROBID rid) const
 {
     for (const auto& s : lsu_st_q) {
-        if (s.valid && !s.committed && s.rob_idx.idx == rid.idx && s.rob_idx.direct == rid.direct) {
+        if (s.valid && !s.committed && s.rid == rid) {
             return s.addr_ready && s.data_ready && !s.addr_is_virtual;
         }
     }
-    return true;
+    assert(false);
+    return false;
 }
 
 void LSU::commit_store(ROBID rid)
 {
     for (auto& s : lsu_st_q) {
-        if (!s.valid || s.committed) {
-            continue;
-        }
-        if (s.rob_idx.idx != rid.idx || s.rob_idx.direct != rid.direct) {
+        if (!s.valid || s.committed || s.rid != rid) {
             continue;
         }
         if (!s.addr_ready || !s.data_ready || s.addr_is_virtual) {
             return;
         }
         s.committed = true;
+        s.state = WAIT_WRITEBACK;
         m_stq_commit_head = wrap_inc(m_stq_commit_head, m_store_q_size);
         if (s.store_token != 0) {
             m_store_token_map.erase(s.store_token);
@@ -1285,8 +1415,6 @@ void LSU::commit_store(ROBID rid)
         if (s.uop) {
             m_ssp.clearLFST(s.uop->ssid, s.store_id);
         }
-        LOG_LEVEL1("LSU Commit", "store committed store_id:%lu stq:%zu rid:%s, addr:0x%lx, data:0x%lx, width:%u",
-                   s.store_id, s.stq_idx, rid.str(), s.addr, s.data, s.ls_width);
         return;
     }
 }
@@ -1298,7 +1426,7 @@ void LSU::retire_load(ROBID rid)
         return;
     }
     const size_t idx = lq->ldq_idx;
-    LOG_LEVEL1("LSU Commit", "load retired load_id:%lu ldq:%zu rid:%s, addr:0x%lx, width:%u",
+    LOG_LEVEL1("LSU", "Load Entry Retired From Ldq load_id:%lu ldq:%zu rid:%s, addr:0x%lx, width:%u",
                lq->load_id, idx, rid.str(), lq->addr, lq->uop->ls_width);
     *lq = LQEntry {};
     if (idx == m_ldq_head) {
@@ -1364,12 +1492,13 @@ void LSU::replay(LQEntry& load_entry)
 {
     LOG_LEVEL1("LSU", "Replay load_id:%lu ldq:%zu addr:0x%lx state:%s",
                load_entry.load_id, load_entry.ldq_idx, load_entry.addr,
-               ldst_state_str(load_entry.state));
+               LdStStateStr[load_entry.state]);
     load_entry.executed = false;
     load_entry.in_flight = false;
     load_entry.value_ready = false;
     load_entry.succeeded = false;
     load_entry.forward_std_val = false;
+    load_entry.sb_conflict = false;
     load_entry.speculative = false;
     load_entry.order_fail = false;
     load_entry.state = WAIT_SQ_CHECK;
@@ -1382,18 +1511,22 @@ void LSU::replay(LQEntry& load_entry)
 
 void LSU::replay(SQEntry& store_entry)
 {
+    if (store_entry.committed || store_entry.succeeded) {
+        return;
+    }
     LOG_LEVEL1("LSU", "Replay store_id:%lu stq:%zu addr:0x%lx state:%s",
                store_entry.store_id, store_entry.stq_idx, store_entry.addr,
-               ldst_state_str(store_entry.state));
+               LdStStateStr[store_entry.state]);
     store_entry.data_ready = false;
-    store_entry.state = WAIT_ADDR;
     store_entry.sta_completed = false;
+    store_entry.succeeded = false;
+    store_entry.store_in_flight = false;
 }
 
 void LSU::replay_store_half(ROBID rid, bool kill_sta, bool kill_std)
 {
     SQEntry* st = find_store_by_rid(rid);
-    if (!st || !st->valid) {
+    if (!st || !st->valid || st->committed || st->succeeded) {
         return;
     }
     if (kill_sta) {
@@ -1401,22 +1534,13 @@ void LSU::replay_store_half(ROBID rid, bool kill_sta, bool kill_std)
         st->addr_is_virtual = true;
         st->pa = 0;
         st->sta_completed = false;
-        st->state = WAIT_ADDR;
-        // if (st->uop) {
-        //     st->uop->sta_iss = false;
-        //     st->uop->sta_done = false;
-        //     st->uop->addr_ready = false;
-        // }
     }
     if (kill_std) {
         st->data_ready = false;
         st->sta_completed = false;
-        // if (st->uop) {
-        //     st->uop->std_iss = false;
-        //     st->uop->std_done = false;
-        //     st->uop->data_ready = false;
-        // }
     }
+    st->succeeded = false;
+    st->store_in_flight = false;
     LOG_LEVEL1("LoadStoreUnit", "Replay store half rid:%s kill_sta:%d kill_std:%d",
                rid.str(), kill_sta, kill_std);
 }
@@ -1443,7 +1567,7 @@ void LSU::flush(const FlushEvent& event)
         }
     };
     for (auto& entry : lsu_ld_q) {
-        if (entry.valid && should_flush(entry.rob_idx)) {
+        if (entry.valid && should_flush(entry.rid)) {
             ++flushed_loads;
             if (entry.uop) {
                 entry.uop->valid = false;
@@ -1453,7 +1577,10 @@ void LSU::flush(const FlushEvent& event)
         }
     }
     for (auto& entry : lsu_st_q) {
-        if (entry.valid && should_flush(entry.rob_idx)) {
+        if (entry.valid && should_flush(entry.rid)) {
+            if (entry.committed) {
+                continue;
+            }
             ++flushed_stores;
             if (entry.uop) {
                 entry.uop->valid = false;
@@ -1484,25 +1611,15 @@ void LSU::flush(const FlushEvent& event)
         std::remove_if(m_pending_mem_resps.begin(), m_pending_mem_resps.end(),
             [&](const PendingMemResp& pending) {
                 auto* load = find_load_by_id(pending.load_id);
-                return !load || should_flush(load->rob_idx);
+                return !load || should_flush(load->rid);
             }),
         m_pending_mem_resps.end());
-
-    m_pending_store_resps.erase(
-        std::remove_if(m_pending_store_resps.begin(), m_pending_store_resps.end(),
-            [&](const PendingStoreResp& pending) {
-                if (pending.stq_idx >= m_store_q_size) {
-                    return true;
-                }
-                return should_flush(lsu_st_q[pending.stq_idx].rob_idx);
-            }),
-        m_pending_store_resps.end());
 
     m_wb_pipe.erase(
         std::remove_if(m_wb_pipe.begin(), m_wb_pipe.end(),
             [&](const LSUWBSlot& slot) {
                 auto* load = find_load_by_id(slot.load_id);
-                return !load || should_flush(load->rob_idx);
+                return !load || should_flush(load->rid);
             }),
         m_wb_pipe.end());
 
@@ -1510,19 +1627,19 @@ void LSU::flush(const FlushEvent& event)
         std::remove_if(m_pending_sta_tlb.begin(), m_pending_sta_tlb.end(),
             [&](size_t stq_idx) {
                 auto* store = find_store_by_stq_idx(stq_idx);
-                return !store || should_flush(store->rob_idx);
+                return !store || should_flush(store->rid);
             }),
         m_pending_sta_tlb.end());
 
     for (auto& s : m_exe_slots) {
         auto* load = find_load_by_ldq_idx(s.ldq_idx);
-        if (!load || should_flush(load->rob_idx)) {
+        if (!load || should_flush(load->rid)) {
             s.valid = false;
         }
     }
     for (auto& s : m_s1_slots) {
         auto* load = find_load_by_ldq_idx(s.ldq_idx);
-        if (!load || should_flush(load->rob_idx)) {
+        if (!load || should_flush(load->rid)) {
             s.valid = false;
         }
     }
@@ -1553,6 +1670,8 @@ void LSU::reset()
     m_ldq_head = m_ldq_tail = 0;
     m_stq_head = m_stq_tail = m_stq_commit_head = m_stq_execute_head = 0;
     m_live_store_mask[0] = m_live_store_mask[1] = 0;
+    ++m_sb_epoch;
+    m_store_buffer.clear();
     if (!m_block_load_mask.empty()) {
         std::fill(m_block_load_mask.begin(), m_block_load_mask.end(), false);
         std::fill(m_p1_block_load_mask.begin(), m_p1_block_load_mask.end(), false);
@@ -1592,10 +1711,12 @@ void LSU::dump_state() const
     }
 
     LOG_LEVEL1("LoadStoreUnit", "ldq:%zu/%zu head:%zu tail:%zu stq:%zu/%zu head:%zu tail:%zu commit:%zu exe:%zu "
-               "inflight_ld:%zu ready_st:%zu complete:%zu wb:%zu pending_resp:%zu pending_sta:%zu stall:%d",
+               "sb:%zu/%zu inflight_ld:%zu ready_st:%zu complete:%zu wb:%zu pending_resp:%zu pending_sta:%zu stall:%d",
                valid_loads, m_load_q_size, m_ldq_head, m_ldq_tail,
                valid_stores, m_store_q_size, m_stq_head, m_stq_tail,
-               m_stq_commit_head, m_stq_execute_head, inflight_loads, ready_stores,
+               m_stq_commit_head, m_stq_execute_head,
+               m_store_buffer.size(), m_store_buffer.capacity(),
+               inflight_loads, ready_stores,
                m_complete_q.size(), m_wb_pipe.size(), m_pending_mem_resps.size(),
                m_pending_sta_tlb.size(), static_cast<int>(m_stall));
 

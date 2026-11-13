@@ -310,12 +310,25 @@ typedef struct {
 } FlushEvent;
 
 enum LdStState {
-    WAIT_ADDR,        // 等 AGU
-    WAIT_SQ_CHECK,    // 等 store queue 检查
-    WAIT_TLB,         // TLB 查询中
-    WAIT_CACHE,       // Cache 查询中
-    WAIT_FILL,        // Miss 等待 fill
-    READY,          // 可写回
+    WAIT_ADDR,        // 等 AGU 完成   ld&st状态
+    WAIT_SQ_CHECK,    // 等 store queue 检查      ld 状态
+    WAIT_SB_CHECK,    // 等 Store buffer check  ld 状态
+    WAIT_TLB,         // TLB 查询中              ld&st状态
+    WAIT_WRITEBACK, // 等写 Write store buffer   st状态
+    WAIT_CACHE,       // Cache 查询中             ld 状态
+    WAIT_FILL,        // Miss 等待 fill            ld状态
+    READY,          // 可写回                     ld&st状态
+};
+
+constexpr static const char* LdStStateStr[] = {
+    "WAIT_ADDR",
+    "WAIT_SQ_CHECK",
+    "WAIT_SB_CHECK",
+    "WAIT_TLB",
+    "WAIT_WRITEBACK",
+    "WAIT_CACHE",
+    "WAIT_FILL",
+    "READY",
 };
 
 typedef struct {
@@ -324,7 +337,7 @@ typedef struct {
     uint64_t store_id { 0 };
     uint64_t store_token { 0 };
     size_t   stq_idx { 0 };
-    ROBID rob_idx;
+    ROBID rid { 0, 0 };
     LdStState state {WAIT_ADDR};
 
     bool addr_ready = false;
@@ -349,7 +362,7 @@ typedef struct {
     uint64_t load_id { 0 };
     size_t   ldq_idx { 0 };
     LdStState state {WAIT_ADDR};
-    ROBID rob_idx;
+    ROBID rid { 0, 0 };
 
     bool addr_ready = false;
     uint64_t addr;
@@ -369,6 +382,7 @@ typedef struct {
     bool violation_reported = false;
     bool order_fail = false;
     bool forward_std_val = false;
+    bool sb_conflict { false };
     size_t forward_stq_idx { 0 };
     uint64_t data { 0 };
     uint64_t mem_req_gen { 0 };
