@@ -19,86 +19,8 @@
 #include "config.h"
 #include "perf/perf_def.h"
 #include "store_buffer.h"
+#include "store_predictor.h"
 
-static const int SSIT_SIZE = 1024;
-static const int LFST_SIZE = 1024;
-static const size_t LSQ_MASK_WORDS = 2; // up to 128 STQ entries
-
-struct StoreSetPredictor {
-    uint32_t SSIT[SSIT_SIZE];
-    int64_t  LFST[LFST_SIZE];
-    uint32_t next_id { 1 };
-
-    StoreSetPredictor() {
-        memset(SSIT, 0, sizeof(SSIT));
-        for (auto& x : LFST) x = -1;
-    }
-
-    uint32_t getSSID(uint64_t pc) const
-    {
-        return SSIT[pc % SSIT_SIZE];
-    }
-
-    uint32_t getOrCreateSSID(uint64_t pc)
-    {
-        uint32_t& ssid = SSIT[pc % SSIT_SIZE];
-        if (ssid == 0) {
-            ssid = next_id++;
-            if (next_id >= LFST_SIZE) {
-                next_id = 1;
-            }
-        }
-        return ssid;
-    }
-
-    uint32_t mergeSSID(uint64_t load_pc, uint64_t store_pc)
-    {
-        uint32_t s1 = SSIT[load_pc % SSIT_SIZE];
-        uint32_t s2 = SSIT[store_pc % SSIT_SIZE];
-        uint32_t new_id = 0;
-        if (s1 == 0 && s2 == 0) {
-            new_id = next_id++;
-            if (next_id >= LFST_SIZE) {
-                next_id = 1;
-            }
-        } else if (s1 == 0) {
-            new_id = s2;
-        } else if (s2 == 0) {
-            new_id = s1;
-        } else {
-            new_id = std::min(s1, s2);
-            const uint32_t old_id = std::max(s1, s2);
-            if (old_id < LFST_SIZE && new_id < LFST_SIZE && LFST[new_id] < 0) {
-                LFST[new_id] = LFST[old_id];
-            }
-        }
-        SSIT[load_pc % SSIT_SIZE] = new_id;
-        SSIT[store_pc % SSIT_SIZE] = new_id;
-        return new_id;
-    }
-
-    void updateLFST(uint32_t ssid, uint64_t store_id)
-    {
-        if (ssid > 0 && ssid < LFST_SIZE) {
-            LFST[ssid] = static_cast<int64_t>(store_id);
-        }
-    }
-
-    int64_t getLFST(uint32_t ssid) const
-    {
-        if (ssid == 0 || ssid >= LFST_SIZE) {
-            return -1;
-        }
-        return LFST[ssid];
-    }
-
-    void clearLFST(uint32_t ssid, uint64_t store_id)
-    {
-        if (ssid > 0 && ssid < LFST_SIZE && LFST[ssid] == static_cast<int64_t>(store_id)) {
-            LFST[ssid] = -1;
-        }
-    }
-};
 
 enum LSUStallType {
     NO_STALL = 0,

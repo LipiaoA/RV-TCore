@@ -860,7 +860,7 @@ void LSU::complete_load(uint64_t load_id, uint64_t data)
                     && s.addr_ready && dword_addr_match(s.addr, entry.addr)
                     && mask_overlap(gen_byte_mask(s.addr, s.ls_width), load_mask)
                     && !s.data_ready) {
-                    m_ssp.mergeSSID(entry.uop->pc, s.uop->pc);
+                    m_ssp.merge_ssid(entry.uop->pc, s.uop->pc);
                     break;
                 }
             }
@@ -1052,7 +1052,7 @@ bool LSU::store_set_block(LQEntry& load_entry)
     if (!load_entry.uop) {
         return false;
     }
-    const uint32_t ssid = m_ssp.getSSID(load_entry.uop->pc);
+    const uint32_t ssid = m_ssp.get_ssid(load_entry.uop->pc);
     const int64_t dep_store = find_dep_store(ssid);
     if (dep_store < 0) {
         return false;
@@ -1132,11 +1132,11 @@ void LSU::emit_load_dep_kill(MInstPtr load_uop)
 void LSU::recover_load_misspec(LQEntry& load_entry, SQEntry* store_entry)
 {
     if (store_entry && store_entry->uop && load_entry.uop) {
-        uint32_t ssid = m_ssp.mergeSSID(load_entry.uop->pc, store_entry->uop->pc);
-        m_ssp.updateLFST(ssid, store_entry->store_id);
+        uint32_t ssid = m_ssp.merge_ssid(load_entry.uop->pc, store_entry->uop->pc);
+        m_ssp.update_lfst(ssid, store_entry->store_id);
     } else if (store_entry && load_entry.uop) {
-        uint32_t ssid = m_ssp.mergeSSID(load_entry.uop->pc, store_entry->addr);
-        m_ssp.updateLFST(ssid, store_entry->store_id);
+        uint32_t ssid = m_ssp.merge_ssid(load_entry.uop->pc, store_entry->addr);
+        m_ssp.update_lfst(ssid, store_entry->store_id);
     }
     replay(load_entry);
     emit_load_dep_kill(load_entry.uop);
@@ -1235,8 +1235,8 @@ bool LSU::allocate(MInstPtr inst)
         entry.state = WAIT_ADDR;
         entry.ls_width = inst->ls_width;
         mask_bit_set(m_live_store_mask, static_cast<size_t>(idx));
-        inst->ssid = m_ssp.getOrCreateSSID(inst->pc);
-        m_ssp.updateLFST(inst->ssid, entry.store_id);
+        inst->ssid = m_ssp.get_or_create_ssid(inst->pc);
+        m_ssp.update_lfst(inst->ssid, entry.store_id);
         if (store_token != 0) {
             m_store_token_map[store_token] = static_cast<size_t>(idx);
         }
@@ -1400,7 +1400,7 @@ void LSU::commit_store(ROBID rid)
             m_store_token_map.erase(s.store_token);
         }
         if (s.uop) {
-            m_ssp.clearLFST(s.uop->ssid, s.store_id);
+            m_ssp.clear_lfst(s.uop->ssid, s.store_id);
         }
         return;
     }
@@ -1710,7 +1710,7 @@ void LSU::dump_state() const
 
 int64_t LSU::find_dep_store(uint32_t ssid)
 {
-    const int64_t store_id = m_ssp.getLFST(ssid);
+    const int64_t store_id = m_ssp.get_lfst(ssid);
     if (store_id < 0) {
         return -1;
     }

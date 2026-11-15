@@ -15,9 +15,10 @@ add_library(backend STATIC
     tprf.cpp
     vector/vector_unit.cpp
     tile/tile_unit.cpp
+    lsu/agu.cpp
     lsu/lsu.cpp
     lsu/store_buffer.cpp
-    lsu/agu.cpp
+    lsu/store_predictor.cpp
 )
 
 target_include_directories(backend PUBLIC
