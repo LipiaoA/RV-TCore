@@ -102,11 +102,6 @@ size_t LSU::wrap_dec(size_t idx, size_t cap)
     return (idx - 1 + cap) % cap;
 }
 
-bool LSU::st_dep_hit(const LQEntry& e, size_t stq_idx)
-{
-    return mask_bit_set(e.st_dep_mask, stq_idx);
-}
-
 u8 LSU::gen_byte_mask(u64 addr, u32 width)
 {
     const u32 shift = static_cast<u32>(addr & 7ULL);
@@ -136,11 +131,6 @@ bool LSU::mask_overlap(u8 a, u8 b)
 bool LSU::mask_contains(u8 container, u8 sub)
 {
     return (container & sub) == sub;
-}
-
-u64 LSU::apply_load_gen(const SQEntry& s_entry, u64 load_addr, u32 load_width)
-{
-    return apply_store_data(s_entry.addr, s_entry.data, s_entry.ls_width, load_addr, load_width);
 }
 
 u64 LSU::apply_store_data(u64 store_addr, u64 reg_data, u32 store_width,
@@ -256,8 +246,11 @@ void LSU::retire_stq_head()
     m_stq_execute_head = m_stq_head;
 }
 
-void LSU::drain_sq_to_sb()
+void LSU::wb()
 {
+
+    issue_sb();
+
     // 只从最老的 SQ entry 进入 SB，写入后才能退出。
     while (lsu_st_q[m_stq_head].valid && lsu_st_q[m_stq_head].committed) {
         auto& store = lsu_st_q[m_stq_head];
@@ -291,12 +284,6 @@ void LSU::drain_sq_to_sb()
         }
         retire_stq_head();
     }
-}
-
-void LSU::wb()
-{
-    drain_sq_to_sb();
-    issue_sb();
 
     std::deque<LSUWBSlot> remaining;
     for (auto& slot : m_wb_pipe) {
@@ -951,7 +938,7 @@ std::optional<std::pair<size_t, u64>> LSU::try_forward(u64 addr, u8 load_mask,
     if (!mask_contains(store_mask, load_mask)) {
         return std::nullopt;
     }
-    const u64 data = apply_load_gen(s, addr, load.uop->ls_width);
+    const u64 data = apply_store_data(s.addr, s.data, s.ls_width, addr, load.uop->ls_width);
 
     return std::make_pair(fwd_idx, data);
 }
@@ -962,7 +949,7 @@ size_t LSU::pick_fwd_stq(u64 addr, u8 load_mask, const LQEntry& load) const
     size_t found = m_store_q_size;
     for (size_t i = 0; i < m_store_q_size; ++i) {
         const auto& s = lsu_st_q[i];
-        if (!s.valid || !st_dep_hit(load, i)) {
+        if (!s.valid || !mask_bit_set(load.st_dep_mask, i)) {
             continue;
         }
         if (!m_rob.is_older_than(s.rid, load.rid)) {
@@ -1719,17 +1706,6 @@ void LSU::dump_state() const
                inflight_loads, ready_stores,
                m_complete_q.size(), m_wb_pipe.size(), m_pending_mem_resps.size(),
                m_pending_sta_tlb.size(), static_cast<int>(m_stall));
-
-    for (const auto& s : m_exe_slots) {
-        if (!s.valid) {
-            continue;
-        }
-    }
-    for (const auto& s : m_s1_slots) {
-        if (!s.valid) {
-            continue;
-        }
-    }
 }
 
 int64_t LSU::find_dep_store(uint32_t ssid)

@@ -12,6 +12,7 @@
 
 # Executables
 *.out
+*.log
 
 # debug information files
 build/*

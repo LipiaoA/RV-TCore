@@ -159,7 +159,6 @@ public:
 
     bool                                can_dispatch(MInstPtr inst) const;
     bool                                can_alloc(MInstPtr inst) const;
-    bool                                can_allocate(MInstPtr inst) const { return can_alloc(inst); }
     bool                                allocate(MInstPtr inst);
     std::vector<LQEntry>&               load_q() { return lsu_ld_q; }
     std::vector<SQEntry>&               store_q() { return lsu_st_q; }
@@ -197,12 +196,10 @@ public:
 private:
     static size_t                       wrap_inc(size_t idx, size_t cap);
     static size_t                       wrap_dec(size_t idx, size_t cap);
-    static bool                         st_dep_hit(const LQEntry& e, size_t stq_idx);
     static u8                           gen_byte_mask(u64 addr, u32 width);
     static bool                         dword_addr_match(u64 a, u64 b);
     static bool                         mask_overlap(u8 a, u8 b);
     static bool                         mask_contains(u8 container, u8 sub);
-    static u64                          apply_load_gen(const SQEntry& s_entry, u64 load_addr, u32 load_width);
     static u64                          apply_store_data(u64 store_addr, u64 store_data, u32 store_width,
                                                          u64 load_addr, u32 load_width);
 
@@ -210,7 +207,6 @@ private:
     bool                                stq_full() const;
     void                                update_live_store_mask();
 
-    void                                out();
     void                                wb();
     void                                rsp();
     void                                lc();
