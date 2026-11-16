@@ -627,24 +627,17 @@ void LSU::iss()
             break;
         }
         auto& entry = lsu_ld_q[idx];
+        // StoreSet：按历史违例预测依赖的 in-flight store，地址未消歧前先等。
         if (store_set_block(entry)) {
-            LOG_LEVEL1("LSU ISS", "Store-set wait pc:0x%lx load_id:%lu wait_store:%lu addr:0x%lx",
-                       entry.uop->pc, entry.load_id, entry.wait_store_id, entry.addr);
+            LOG_LEVEL1("LSU ISS", "Block Load load_id:%lu ssid:%u wait_store:%lu pc:0x%lx",
+                entry.load_id, entry.uop->ssid, entry.wait_store_id, entry.uop->pc);
             continue;
         }
-        if (entry.waiting_on_store) {
-            auto* st = find_store_by_id(entry.wait_store_id);
-            if (st && (!st->addr_ready || !st->data_ready)) {
-                continue;
-            }
-            entry.waiting_on_store = false;
-            entry.wait_store_id = static_cast<uint64_t>(-1);
-        }
 
-        const u8 load_mask = entry.uop ? gen_byte_mask(entry.addr, entry.uop->ls_width) : 0xFFu;
+        const u8 load_mask = gen_byte_mask(entry.addr, entry.uop->ls_width);
+
         if (check_stq_violation(entry.addr, entry.rid, load_mask)) {
             entry.state = WAIT_SQ_CHECK;
-            entry.waiting_on_store = true;
             LOG_LEVEL1("LSU ISS", "Store Conflict pc:0x%lx load_id:%lu addr:0x%lx mask:0x%x, rid:%s",
                        entry.uop->pc, entry.load_id, entry.addr, load_mask, entry.uop->rid.str());
             continue;
@@ -855,12 +848,12 @@ void LSU::complete_load(uint64_t load_id, uint64_t data)
         LOG_LEVEL1("LSU WB", "Complete replay pc:0x%lx id:%lu addr:0x%lx mask:0x%x sb_wait:%d",
                    entry.uop->pc, entry.load_id, entry.addr, load_mask, pick.sb_wait);
         if (!pick.sb_wait && entry.uop) {
-            for (const auto& s : lsu_st_q) {
+            for (auto& s : lsu_st_q) {
                 if (s.valid && s.uop && m_rob.is_older_than(s.rid, entry.rid)
                     && s.addr_ready && dword_addr_match(s.addr, entry.addr)
                     && mask_overlap(gen_byte_mask(s.addr, s.ls_width), load_mask)
                     && !s.data_ready) {
-                    m_ssp.merge_ssid(entry.uop->pc, s.uop->pc);
+                    train_store_set(entry.uop, s);
                     break;
                 }
             }
@@ -1047,36 +1040,73 @@ bool LSU::is_spec_load(u64 addr, u8 byte_mask, ROBID rid) const
     return false;
 }
 
+void LSU::clear_store_set_wait(LQEntry& load_entry)
+{
+    load_entry.waiting_on_store = false;
+    load_entry.wait_store_id = 0;
+    if (load_entry.state == WAIT_SQ_CHECK) {
+        load_entry.state = WAIT_ADDR;
+    }
+}
+
 bool LSU::store_set_block(LQEntry& load_entry)
 {
     if (!load_entry.uop) {
         return false;
     }
+
     const uint32_t ssid = m_ssp.get_ssid(load_entry.uop->pc);
-    const int64_t dep_store = find_dep_store(ssid);
-    if (dep_store < 0) {
+    load_entry.uop->ssid = ssid;
+    const u64 store_id = m_ssp.get_lfst(ssid);
+    if (store_id == 0) {
         return false;
     }
-    auto* st_ptr = find_store_by_id(static_cast<uint64_t>(dep_store));
-    if (!st_ptr) {
+    auto st_p = find_store_by_id(store_id);
+    if (!st_p || !st_p->valid || st_p->committed
+        || !m_rob.is_older_than(st_p->rid, load_entry.rid)) {
+        clear_store_set_wait(load_entry);
         return false;
     }
-    auto& st = *st_ptr;
-    if (!st.valid || st.committed || !m_rob.is_older_than(st.rid, load_entry.rid)) {
-        return false;
-    }
+    auto& st = *st_p;
     const u8 load_mask = gen_byte_mask(load_entry.addr, load_entry.uop->ls_width);
-    if (st.addr_ready && !dword_addr_match(st.addr, load_entry.addr)) {
-        return false;
+    if (st.addr_ready && !st.addr_is_virtual) {
+        if (!dword_addr_match(st.addr, load_entry.addr)) {
+            // 预测依赖被地址消歧否定，放行本拍 load。
+            clear_store_set_wait(load_entry);
+            return false;
+        }
+        const u8 store_mask = gen_byte_mask(st.addr, st.ls_width ? st.ls_width : 8);
+        if (!mask_overlap(store_mask, load_mask)) {
+            clear_store_set_wait(load_entry);
+            return false;
+        }
+        if (st.data_ready && mask_contains(store_mask, load_mask)) {
+            // 可完整转发，交给后续 LCAM / resolve_load。
+            clear_store_set_wait(load_entry);
+            return false;
+        }
     }
-    if (st.addr_ready && st.data_ready
-        && mask_contains(gen_byte_mask(st.addr, st.ls_width), load_mask)) {
-        return false;
-    }
+
     load_entry.waiting_on_store = true;
-    load_entry.wait_store_id = static_cast<uint64_t>(dep_store);
+    load_entry.wait_store_id = store_id;
     load_entry.state = WAIT_SQ_CHECK;
     return true;
+}
+
+void LSU::train_store_set(MInstPtr load_uop, SQEntry& store_entry)
+{
+    if (!load_uop || !store_entry.uop) {
+        return;
+    }
+    const uint32_t ssid = m_ssp.merge_ssid(load_uop->pc, store_entry.uop->pc);
+    load_uop->ssid = ssid;
+    store_entry.uop->ssid = ssid;
+    // LFST 记 STQ 下标，不是 SQ.store_id。
+    if (!store_entry.committed) {
+        m_ssp.update_lfst(ssid, store_entry.stq_idx);
+    }
+    LOG_LEVEL1("LSU StoreSet", "train load_pc:0x%lx store_pc:0x%lx ssid:%u stq:%zu store_id:%lu",
+               load_uop->pc, store_entry.uop->pc, ssid, store_entry.stq_idx, store_entry.store_id);
 }
 
 void LSU::check_mem_order(SQEntry& st)
@@ -1131,17 +1161,18 @@ void LSU::emit_load_dep_kill(MInstPtr load_uop)
 
 void LSU::recover_load_misspec(LQEntry& load_entry, SQEntry* store_entry)
 {
-    if (store_entry && store_entry->uop && load_entry.uop) {
-        uint32_t ssid = m_ssp.merge_ssid(load_entry.uop->pc, store_entry->uop->pc);
-        m_ssp.update_lfst(ssid, store_entry->store_id);
-    } else if (store_entry && load_entry.uop) {
-        uint32_t ssid = m_ssp.merge_ssid(load_entry.uop->pc, store_entry->addr);
-        m_ssp.update_lfst(ssid, store_entry->store_id);
+    if (store_entry && load_entry.uop) {
+        train_store_set(load_entry.uop, *store_entry);
     }
     replay(load_entry);
+    if (store_entry) {
+        load_entry.waiting_on_store = true;
+        load_entry.wait_store_id = store_entry->store_id;
+        load_entry.state = WAIT_SQ_CHECK;
+    }
     emit_load_dep_kill(load_entry.uop);
-    LOG_LEVEL1("LSU Recover", "1A misspec load_id:%lu no-flush",
-               load_entry.load_id);
+    LOG_LEVEL1("LSU Recover", "1A misspec load_id:%lu no-flush wait_store:%lu",
+               load_entry.load_id, load_entry.wait_store_id);
 }
 
 bool LSU::can_alloc(MInstPtr inst) const
@@ -1212,7 +1243,7 @@ bool LSU::allocate(MInstPtr inst)
         entry.st_dep_mask[1] = m_live_store_mask[1];
         entry.youngest_stq_idx = m_stq_tail;
         inst->load_idx = load_id;
-        LOG_LEVEL1("LSU Alloc", "load ldq:%zu load_id:%lu pc:0x%lx rid:%u-%u dep_mask:%lx:%lx",
+        LOG_LEVEL1("LSU", "Alloc Load ldq:%zu load_id:%lu pc:0x%lx rid:%u-%u dep_mask:%lx:%lx",
                    entry.ldq_idx, entry.load_id, inst->pc, inst->rid.direct, inst->rid.idx,
                    entry.st_dep_mask[1], entry.st_dep_mask[0]);
         return true;
@@ -1236,13 +1267,15 @@ bool LSU::allocate(MInstPtr inst)
         entry.ls_width = inst->ls_width;
         mask_bit_set(m_live_store_mask, static_cast<size_t>(idx));
         inst->ssid = m_ssp.get_or_create_ssid(inst->pc);
-        m_ssp.update_lfst(inst->ssid, entry.store_id);
+        // 预测器 LFST 跟踪的是 stq_idx；SQ.store_id 仅用于 LSU 内部唯一标识。
+        m_ssp.update_lfst(inst->ssid, store_id);
         if (store_token != 0) {
             m_store_token_map[store_token] = static_cast<size_t>(idx);
         }
         inst->store_id = store_id;
-        LOG_LEVEL1("LSU Alloc", "store stq:%zu store_id:%lu token:%lu pc:0x%lx rid:%s width:%u",
-            entry.stq_idx, entry.store_id, entry.store_token, inst->pc, inst->rid.str(), entry.ls_width);
+        LOG_LEVEL1("LSU", "Alloc Store stq:%zu store_id:%lu ssid:%lu token:%lu pc:0x%lx rid:%s width:%u",
+            entry.stq_idx, entry.store_id, inst->ssid, entry.store_token, inst->pc,
+            inst->rid.str(), entry.ls_width);
         return true;
     }
     return false;
@@ -1345,30 +1378,40 @@ void LSU::on_store_operands_updated(SQEntry& st)
     if (st.addr_ready) {
         check_mem_order(st);
     }
-    if (st.addr_ready && st.data_ready) {
-        LOG_LEVEL1("LSU", "operands ready store_id:%lu stq:%zu addr:0x%lx data:0x%lx width:%u, rid:%s",
-                   st.store_id, st.stq_idx, st.addr, st.data, st.ls_width,
-                   st.rid.str());
-        const u8 store_mask = gen_byte_mask(st.addr, st.ls_width ? st.ls_width : 8);
-        for (auto& l : lsu_ld_q) {
-            if (!l.valid) {
-                continue;
-            }
-            if (l.waiting_on_store && l.wait_store_id == st.store_id) {
-                l.waiting_on_store = false;
-                l.wait_store_id = static_cast<uint64_t>(-1);
-                l.state = WAIT_ADDR;
-            }
-            if (l.executed || l.in_flight) {
-                continue;
-            }
-            if (!dword_addr_match(l.addr, st.addr)) {
-                continue;
-            }
+    if (!st.addr_ready) {
+        return;
+    }
+
+    const u8 store_mask = gen_byte_mask(st.addr, st.ls_width ? st.ls_width : 8);
+    LOG_LEVEL1("LSU", "operands ready store_id:%lu stq:%zu addr:0x%lx data_ready:%d data:0x%lx "
+               "width:%u, rid:%s",
+               st.store_id, st.stq_idx, st.addr, st.data_ready, st.data, st.ls_width,
+               st.rid.str());
+
+    for (auto& l : lsu_ld_q) {
+        if (!l.valid) {
+            continue;
+        }
+
+        if (l.waiting_on_store && l.wait_store_id == st.store_id) {
             const u8 load_mask = l.uop ? gen_byte_mask(l.addr, l.uop->ls_width) : 0xFFu;
-            if (mask_overlap(load_mask, store_mask)) {
-                l.state = WAIT_ADDR;
+            const bool overlap = dword_addr_match(l.addr, st.addr)
+                && mask_overlap(load_mask, store_mask);
+            // 地址消歧后无重叠，或已可完整转发：解除 StoreSet 等待。
+            if (!overlap || (st.data_ready && mask_contains(store_mask, load_mask))) {
+                clear_store_set_wait(l);
             }
+        }
+
+        if (l.executed || l.in_flight || !st.data_ready) {
+            continue;
+        }
+        if (!dword_addr_match(l.addr, st.addr)) {
+            continue;
+        }
+        const u8 load_mask = l.uop ? gen_byte_mask(l.addr, l.uop->ls_width) : 0xFFu;
+        if (mask_overlap(load_mask, store_mask)) {
+            l.state = WAIT_ADDR;
         }
     }
 }
@@ -1400,7 +1443,7 @@ void LSU::commit_store(ROBID rid)
             m_store_token_map.erase(s.store_token);
         }
         if (s.uop) {
-            m_ssp.clear_lfst(s.uop->ssid, s.store_id);
+            m_ssp.clear_lfst(static_cast<u32>(s.uop->ssid), s.stq_idx);
         }
         return;
     }
@@ -1489,7 +1532,7 @@ void LSU::replay(LQEntry& load_entry)
     load_entry.speculative = false;
     load_entry.order_fail = false;
     load_entry.state = WAIT_SQ_CHECK;
-    load_entry.waiting_on_store = true;
+    // waiting_on_store / wait_store_id 由 recover_load_misspec 或下一拍 store_set_block 填写。
     if (load_entry.uop) {
         load_entry.uop->state = InstState::REPLAY;
         load_entry.uop->executed = false;
@@ -1570,6 +1613,7 @@ void LSU::flush(const FlushEvent& event)
             }
             ++flushed_stores;
             if (entry.uop) {
+                m_ssp.clear_lfst(static_cast<u32>(entry.uop->ssid), entry.stq_idx);
                 entry.uop->valid = false;
                 entry.uop->state = InstState::FLUSHED;
             }
@@ -1706,17 +1750,4 @@ void LSU::dump_state() const
                inflight_loads, ready_stores,
                m_complete_q.size(), m_wb_pipe.size(), m_pending_mem_resps.size(),
                m_pending_sta_tlb.size(), static_cast<int>(m_stall));
-}
-
-int64_t LSU::find_dep_store(uint32_t ssid)
-{
-    const int64_t store_id = m_ssp.get_lfst(ssid);
-    if (store_id < 0) {
-        return -1;
-    }
-    const auto* st = const_cast<LSU*>(this)->find_store_by_id(static_cast<uint64_t>(store_id));
-    if (!st || !st->valid || st->committed) {
-        return -1;
-    }
-    return store_id;
 }

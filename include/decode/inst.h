@@ -180,7 +180,7 @@ typedef struct MicroOp {
     bool sta_done { false };
     bool std_done { false };
     StoreIssueHalf store_issue_half { StoreIssueHalf::NONE };
-    u64 ssid { 0 };
+    u32 ssid { 0 };
     // checkpoint id
     u64 c_id { 0 };
     u64 epoch { 0 };

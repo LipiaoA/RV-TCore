@@ -154,7 +154,6 @@ private:
         u64 data { 0 };
     };
     LoadPick                            resolve_load(const LQEntry& entry, u64 mem_data, bool have_mem) const;
-    void                                drain_sq_to_sb();
     void                                issue_sb();
     void                                note_sb_write(const SBEntry& written);
     void                                retire_stq_head();
@@ -172,7 +171,8 @@ private:
     bool                                load_blocked(size_t ldq_idx) const;
     void                                block_load(size_t ldq_idx);
     bool                                store_set_block(LQEntry& load_entry);
-    int64_t                             find_dep_store(uint32_t ssid);
+    void                                clear_store_set_wait(LQEntry& load_entry);
+    void                                train_store_set(MInstPtr load_uop, SQEntry& store_entry);
 
     void                                check_mem_order(SQEntry& st);
     void                                flush_order(LQEntry& load_entry, SQEntry& store_entry);

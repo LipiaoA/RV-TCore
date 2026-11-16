@@ -175,7 +175,9 @@ void CommitUnit::inst_commit() {
                 RetireMemInfo mem_info = retired_ls_info(inst, m_lsu);
                 if (!VeriRef::instance().check_retire(*inst, &mem_info)) {
                     LOG_LEVEL1("CommitUnit", "ERROR! Ref Model Mismatch At PC: 0x%lx inst: %s",
-                               inst->pc, inst->inst_name.c_str());
+                        inst->pc, inst->inst_name.c_str());
+                    std::cout << "CommitUnit: ERROR! Ref Model Mismatch At PC: 0x"
+                        << std::hex << inst->pc << std::endl;
                     FlushEvent event;
                     event.valid = true;
                     event.type = FlushType::EXCEPTION;
@@ -187,6 +189,7 @@ void CommitUnit::inst_commit() {
             }
             if (isa::is_ecall(committed->inst->opcode)) {
                 LOG_LEVEL1("CommitUnit", "Ecall PC: 0x%lx", committed->inst->pc);
+                std::cout << "Ecall PC: 0x" << std::hex << committed->inst->pc << std::endl;
                 FlushEvent event;
                 event.valid = true;
                 event.type = FlushType::STOP;

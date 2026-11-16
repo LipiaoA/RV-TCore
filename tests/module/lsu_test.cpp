@@ -435,6 +435,103 @@ void test_lsu_flush_from_rid_clears_matching_load()
     assert(load->state == InstState::FLUSHED);
 }
 
+void test_store_set_blocks_load_after_training()
+{
+    Harness h;
+    h.mem.store64(0x1300, 0x1111);
+
+    // 第一次：老 store 地址晚到，年轻 load 先执行 → misspec + StoreSet 训练。
+    constexpr u64 token1 = 201;
+    auto* sta1 = make_sta(0x3000, ROBID{1, 0}, 0, token1);
+    sta1->rs1.valid = true;
+    sta1->rs1.ptag = 20;
+    auto* std1 = make_std(0x3000, ROBID{2, 0}, 0x2222, token1);
+    auto* load1 = make_load(0x3100, ROBID{3, 0}, 0x1300, 21);
+
+    assert(h.lsu.allocate(sta1));
+    std1->store_id = sta1->store_id;
+    assert(h.dispatch(sta1));
+    assert(h.dispatch(std1));
+    for (int i = 0; i < 4; ++i) {
+        run_cycle(h);
+        (void)h.dispatch(sta1);
+        (void)h.dispatch(std1);
+    }
+    assert(h.lsu.allocate(load1));
+    assert(h.dispatch(load1));
+    assert(run_until_lsu_complete(h, load1));
+    ack_if_front(h, load1);
+
+    RegResp resp1 {};
+    resp1.valid = true;
+    resp1.ptag = 20;
+    resp1.val = 0x1300;
+    h.lsu_resp_q.clear();
+    h.lsu_resp_q.push_back(resp1);
+    assert(h.dispatch(sta1));
+
+    bool trained = false;
+    for (int i = 0; i < 32; ++i) {
+        run_cycle(h);
+        (void)h.dispatch(sta1);
+        (void)h.dispatch(std1);
+        LQEntry* ld1 = h.lsu.find_load_by_id(load1->load_idx);
+        if (ld1 && ld1->violation_reported) {
+            trained = true;
+            break;
+        }
+    }
+    assert(trained);
+    assert(load1->ssid != 0);
+
+    // 提交并清掉第一组，保留 SSIT 训练结果。
+    assert(run_until_std_complete(h, std1));
+    ack_std(h, std1);
+    assert(run_until_lsu_complete(h, sta1));
+    ack_if_front(h, sta1);
+    assert(h.lsu.store_commit_ready(sta1->rid));
+    h.lsu.commit_store(sta1->rid);
+    h.lsu.retire_load(load1->rid);
+
+    // 第二次：同 PC 的 store 仍未出地址时，load 应被 StoreSet 挡住。
+    constexpr u64 token2 = 202;
+    auto* sta2 = make_sta(0x3000, ROBID{4, 0}, 0, token2);
+    sta2->rs1.valid = true;
+    sta2->rs1.ptag = 22;
+    auto* std2 = make_std(0x3000, ROBID{5, 0}, 0x3333, token2);
+    auto* load2 = make_load(0x3100, ROBID{6, 0}, 0x1300, 23);
+
+    assert(h.lsu.allocate(sta2));
+    std2->store_id = sta2->store_id;
+    assert(h.dispatch(sta2));
+    assert(h.dispatch(std2));
+    for (int i = 0; i < 4; ++i) {
+        run_cycle(h);
+        (void)h.dispatch(sta2);
+        (void)h.dispatch(std2);
+    }
+
+    assert(h.lsu.allocate(load2));
+    LQEntry* ld2 = h.lsu.find_load_by_id(load2->load_idx);
+    assert(ld2 != nullptr);
+    ld2->addr = 0x1300;
+    ld2->addr_ready = true;
+
+    bool blocked = false;
+    for (int i = 0; i < 8; ++i) {
+        run_cycle(h);
+        if (ld2->waiting_on_store && ld2->wait_store_id == sta2->store_id) {
+            blocked = true;
+            break;
+        }
+        assert(!ld2->executed);
+        assert(!ld2->in_flight);
+    }
+    assert(blocked);
+    assert(!ld2->executed);
+    assert(!ld2->in_flight);
+}
+
 } // namespace
 
 int main()
@@ -444,5 +541,6 @@ int main()
     test_younger_load_replays_when_older_store_resolves_same_address();
     test_load_lcam_forward_waits_until_cycle_after_execute();
     test_lsu_flush_from_rid_clears_matching_load();
+    test_store_set_blocks_load_after_training();
     return EXIT_SUCCESS;
 }
