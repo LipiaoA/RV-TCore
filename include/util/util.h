@@ -175,4 +175,6 @@ private:
 
 std::string trim(const std::string& s);
 
+std::string join_channel_path(const std::string &root, const std::string &name);
+void ensure_parent_dir(const std::string &path);
 #endif

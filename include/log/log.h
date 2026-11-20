@@ -13,6 +13,8 @@
 #include <atomic>
 #include <iomanip>
 #include <condition_variable>
+#include <unordered_map>
+#include <cstdio>
 
 typedef enum LogLevel { LEVEL1 = 0, LEVEL2, LEVEL3, LEVEL4, LEVEL5, LEVEL6, TOTAL_LEVEL } LogLevel;
 enum LogMode { SYNC, ASYNC };
@@ -56,6 +58,54 @@ private:
     std::ofstream m_out;
 };
 
+template <typename... Args>
+inline std::string format_printf(const char *format, Args &&...args)
+{
+    try {
+        if constexpr (sizeof...(Args) == 0) {
+            return std::string(format);
+        } else {
+            int size = std::snprintf(nullptr, 0, format, args...);
+            if (size <= 0)
+                return "[Format Error]";
+
+            std::string result(size, '\0');
+            std::snprintf(&result[0], size + 1, format, args...);
+            return result;
+        }
+    } catch (...) {
+        return "[Format Exception]";
+    }
+}
+
+// 按模块持有的自由格式文件句柄，不经过 LogOp 广播
+class FileChannel {
+public:
+    explicit FileChannel(const std::string &path);
+    ~FileChannel();
+
+    FileChannel(const FileChannel &) = delete;
+    FileChannel &operator=(const FileChannel &) = delete;
+
+    bool enabled() const;
+
+    template <typename... Args>
+    void writef(const char *fmt, Args &&...args)
+    {
+        write(format_printf(fmt, std::forward<Args>(args)...));
+    }
+
+    void write(const std::string &raw);
+    void writeln(const std::string &raw);
+    std::ostream &stream();
+    void flush();
+    void close();
+
+private:
+    mutable std::mutex m_mutex;
+    std::ofstream m_out;
+};
+
 template <typename T, typename = void>
 struct is_streamable : std::false_type {};
 
@@ -79,6 +129,13 @@ public:
     void                        set_mode(LogMode mode);
     void                        add_writer(std::shared_ptr<LogOp> w);
     void                        flush();
+
+    void                        set_channel_root(const std::string &dir);
+    void                        set_max_channels(std::size_t n);
+    // 同名复用同一文件；path 为空时使用 root/name.log
+    std::shared_ptr<FileChannel> channel(const std::string &name, const std::string &path = "");
+    void                        close_channel(const std::string &name);
+    void                        close_all_channels();
     template <typename Fmt, typename... Args>
     void                        write(Fmt fmt,  Args &&...args) {
         std::ostringstream line;
@@ -89,7 +146,7 @@ public:
     }
 
     template <typename Mut, typename... Args>
-    void                        log(LogLevel level, const std::string &prefix, Mut mut, Args &&...args) {
+    void log(LogLevel level, const std::string &prefix, Mut mut, Args &&...args) {
         if (level > m_level)
             return;
 
@@ -137,6 +194,7 @@ private:
     };
 
     void worker_loop();
+    void flush_channels();
 
     template <typename T>
     void append_to_stream(std::ostringstream &oss, T &&value) {
@@ -149,16 +207,7 @@ private:
     template <typename... Args>
     std::string format_string(const char* format, Args&&... args) {
         try {
-            if constexpr (sizeof...(Args) == 0) {
-                return std::string(format);
-            } else {
-                int size = std::snprintf(nullptr, 0, format, args...);
-                if (size <= 0) return "[Format Error]";
-
-                std::string result(size, '\0');
-                std::snprintf(&result[0], size + 1, format, args...);
-                return result;
-            }
+            return format_printf(format, std::forward<Args>(args)...);
         } catch (...) {
             return "[Format Exception]";
         }
@@ -178,6 +227,11 @@ private:
     std::condition_variable                             m_cv;
     std::atomic<bool>                                   m_running{false};
     std::thread                                         m_worker;
+
+    std::string                                         m_channel_root{"."};
+    std::size_t                                         m_max_channels{16};
+    std::mutex                                          m_channel_mutex;
+    std::unordered_map<std::string, std::shared_ptr<FileChannel>> m_channels;
 };
 
 #define LOG_LEVEL1(prefix, ...) LogSystem::instance().log(LogLevel::LEVEL1, prefix, __VA_ARGS__)
@@ -186,5 +240,7 @@ private:
 #define LOG_LEVEL4(prefix, ...) LogSystem::instance().log(LogLevel::LEVEL4, prefix, __VA_ARGS__)
 #define LOG_LEVEL5(prefix, ...) LogSystem::instance().log(LogLevel::LEVEL5, prefix, __VA_ARGS__)
 #define LOG_LEVEL6(prefix, ...) LogSystem::instance().log(LogLevel::LEVEL6, prefix, __VA_ARGS__)
+
+#define GET_LOG_CH(name) LogSystem::instance().channel(name)
 
 #endif

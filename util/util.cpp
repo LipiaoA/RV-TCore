@@ -71,3 +71,26 @@ std::string trim(const std::string& s) {
     size_t end = temp.find_last_not_of(whitespace);
     return temp.substr(start, end - start + 1);
 }
+
+std::string join_channel_path(const std::string &root, const std::string &name)
+{
+    const std::string file = name + ".log";
+    if (root.empty() || root == ".")
+        return file;
+
+    std::string dir = root;
+    if (dir.back() != '/')
+        dir.push_back('/');
+    return dir + file;
+}
+
+void ensure_parent_dir(const std::string &path)
+{
+    namespace fs = std::filesystem;
+    fs::path parent = fs::path(path).parent_path();
+    if (parent.empty())
+        return;
+
+    std::error_code ec;
+    fs::create_directories(parent, ec);
+}

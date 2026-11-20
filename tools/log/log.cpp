@@ -1,8 +1,59 @@
 
 #include "log.h"
+#include <filesystem>
 #include <iomanip>
+#include "util.h"
 
 using namespace std;
+
+FileChannel::FileChannel(const string &path)
+    : m_out(path, ios::out | ios::trunc)
+{
+}
+
+FileChannel::~FileChannel()
+{
+    close();
+}
+
+bool FileChannel::enabled() const
+{
+    lock_guard<mutex> lock(m_mutex);
+    return m_out.is_open();
+}
+
+void FileChannel::write(const string &raw)
+{
+    lock_guard<mutex> lock(m_mutex);
+    if (m_out.is_open())
+        m_out << raw;
+}
+
+void FileChannel::writeln(const string &raw)
+{
+    write(raw + "\n");
+}
+
+ostream &FileChannel::stream()
+{
+    return m_out;
+}
+
+void FileChannel::flush()
+{
+    lock_guard<mutex> lock(m_mutex);
+    if (m_out.is_open())
+        m_out.flush();
+}
+
+void FileChannel::close()
+{
+    lock_guard<mutex> lock(m_mutex);
+    if (m_out.is_open()) {
+        m_out.flush();
+        m_out.close();
+    }
+}
 
 LogSystem::~LogSystem()
 {
@@ -12,6 +63,7 @@ LogSystem::~LogSystem()
         if (m_worker.joinable())
             m_worker.join();
     }
+    close_all_channels();
 }
 
 void LogSystem::set_mode(LogMode mode)
@@ -53,6 +105,82 @@ void LogSystem::flush()
         lock_guard<mutex> lock(m_sink_mutex);
         for (auto &logger : m_writer)
             logger->flush();
+    }
+    flush_channels();
+}
+
+void LogSystem::set_channel_root(const string &dir)
+{
+    lock_guard<mutex> lock(m_channel_mutex);
+    m_channel_root = dir.empty() ? "." : dir;
+}
+
+void LogSystem::set_max_channels(size_t n)
+{
+    lock_guard<mutex> lock(m_channel_mutex);
+    m_max_channels = n;
+}
+
+shared_ptr<FileChannel> LogSystem::channel(const string &name, const string &path)
+{
+    lock_guard<mutex> lock(m_channel_mutex);
+    auto it = m_channels.find(name);
+    if (it != m_channels.end())
+        return it->second;
+
+    if (m_channels.size() >= m_max_channels)
+        return nullptr;
+
+    const string full = path.empty() ? join_channel_path(m_channel_root, name) : path;
+    ensure_parent_dir(full);
+    auto ch = make_shared<FileChannel>(full);
+    if (!ch->enabled())
+        return ch;
+
+    m_channels.emplace(name, ch);
+    return ch;
+}
+
+void LogSystem::close_channel(const string &name)
+{
+    shared_ptr<FileChannel> ch;
+    {
+        lock_guard<mutex> lock(m_channel_mutex);
+        auto it = m_channels.find(name);
+        if (it == m_channels.end())
+            return;
+        ch = std::move(it->second);
+        m_channels.erase(it);
+    }
+    if (ch)
+        ch->close();
+}
+
+void LogSystem::close_all_channels()
+{
+    unordered_map<string, shared_ptr<FileChannel>> channels;
+    {
+        lock_guard<mutex> lock(m_channel_mutex);
+        channels.swap(m_channels);
+    }
+    for (auto &item : channels) {
+        if (item.second)
+            item.second->close();
+    }
+}
+
+void LogSystem::flush_channels()
+{
+    vector<shared_ptr<FileChannel>> channels;
+    {
+        lock_guard<mutex> lock(m_channel_mutex);
+        channels.reserve(m_channels.size());
+        for (auto &item : m_channels)
+            channels.push_back(item.second);
+    }
+    for (auto &ch : channels) {
+        if (ch)
+            ch->flush();
     }
 }
 
