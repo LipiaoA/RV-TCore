@@ -33,6 +33,7 @@ public:
     ~Top();
 
     void build();
+    void collect_mem_stats();
 
 public:
     CoreDeps                              get_core_deps();

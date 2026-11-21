@@ -1,7 +1,10 @@
 #include "rob/rob.h"
 
+#include "perf/perf_def.h"
+
 ROB::ROB(const ROBConfig& conf, const ROBDeps& deps)
     : m_capacity(conf.capacity)
+    , m_stats(deps.perf_stats)
 {
     m_head = ROBID{ 0, 0 };
     m_tail = ROBID{ 0, 0 };
@@ -10,10 +13,31 @@ ROB::ROB(const ROBConfig& conf, const ROBDeps& deps)
     std::fill(m_entries, m_entries + MAX_ROB_ENTRIES, RobEntry());
 }
 
+void ROB::account_flushed(RobEntry& entry, FlushType type)
+{
+    if (!m_stats || !m_stats->perf() || !entry.valid || !entry.inst) {
+        return;
+    }
+    MInstPtr inst = entry.inst;
+    if (inst->perf_accounted || inst->perf_issued_uops == 0) {
+        return;
+    }
+    const u64 n = inst->perf_issued_uops;
+    m_stats->issue.flushed_uops += n;
+    const size_t typ = static_cast<size_t>(type);
+    if (typ < PerfStats::MAX_FLUSH_COUNT) {
+        m_stats->issue.flushed_uops_by_type[typ] += n;
+    }
+    inst->perf_accounted = true;
+}
+
 void ROB::flush(const FlushEvent& event) {
     ROBID cur, cut;
     switch (event.scope) {
     case FlushScope::ALL: {
+        for_each([this, &event](RobEntry& e) {
+            account_flushed(e, event.type);
+        });
         reset();
         return;
     } break;
@@ -28,6 +52,7 @@ void ROB::flush(const FlushEvent& event) {
     }
     cur = cut;
     while (!(cur.idx == m_tail.idx && cur.direct == m_tail.direct)) {
+        account_flushed(m_entries[cur.idx], event.type);
         m_entries[cur.idx].valid = false;
         cur = next_id(cur);
         --m_size;

@@ -131,7 +131,7 @@ void CommitUnit::inst_commit() {
             if (entry->inst->type == InstType::STORE &&
                 !m_lsu.store_commit_ready(entry->inst->rid)) {
                 if (i == 0 && m_stats.perf()) {
-                    ++m_stats.commit.head_not_ready_cycles;
+                    note_head_not_ready(entry->inst->type);
                 }
                 break;
             }
@@ -153,7 +153,7 @@ void CommitUnit::inst_commit() {
             }
             entry->inst->state = InstState::RETIRED;
             if (m_stats.perf()) {
-                ++m_stats.commit.retired_insts;
+                note_retire(entry->inst);
             }
             auto committed = m_rob.commit_head();
             if (!committed) {
@@ -200,12 +200,41 @@ void CommitUnit::inst_commit() {
             }
         } else {
             if (i == 0 && m_stats.perf()) {
-                ++m_stats.commit.head_not_ready_cycles;
+                const InstType type = (entry && entry->inst) ? entry->inst->type : InstType::NONE;
+                note_head_not_ready(type);
             }
             break;
         }
     }
     return;
+}
+
+void CommitUnit::note_retire(const MInstPtr& inst)
+{
+    ++m_stats.commit.retired_insts;
+    if (!inst) {
+        return;
+    }
+    if (!inst->perf_accounted) {
+        m_stats.issue.retired_uops += inst->perf_issued_uops;
+        inst->perf_accounted = true;
+    }
+    const u32 type = static_cast<u32>(inst->type);
+    if (type < PerfStats::CommitStats::MAX_INST_TYPES) {
+        ++m_stats.commit.retired_by_type[type];
+    }
+}
+
+void CommitUnit::note_head_not_ready(InstType type)
+{
+    ++m_stats.commit.head_not_ready_cycles;
+    if (type == InstType::LOAD) {
+        ++m_stats.commit.head_not_ready_load;
+    } else if (type == InstType::STORE || type == InstType::STA || type == InstType::STD) {
+        ++m_stats.commit.head_not_ready_store;
+    } else {
+        ++m_stats.commit.head_not_ready_other;
+    }
 }
 
 bool CommitUnit::write_back(const MInstPtr inst)

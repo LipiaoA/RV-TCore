@@ -68,6 +68,12 @@ void FetchUnit::tick()
     fetch1();
     fetch0();
     dump_state();
+    if (m_stats.perf()) {
+        m_stats.frontend.icache_wait = fetch_stalled();
+        if (m_inflight_valid) {
+            ++m_stats.frontend.latency;
+        }
+    }
 }
 
 void FetchUnit::commit()

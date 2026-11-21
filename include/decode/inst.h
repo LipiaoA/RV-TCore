@@ -190,6 +190,10 @@ typedef struct MicroOp {
     u64 exception_cause { 0 };
     pc_t exception_tval { 0 };
 
+    // 性能计数：每次成功发射（含 STORE 半发射 / replay 再发射）+1
+    u32 perf_issued_uops { 0 };
+    bool perf_accounted { false };
+
     bool sta_ready() const {
         return !rs1.valid || rs1.rtyp != RegType::GPR || rs1.ready;
     }

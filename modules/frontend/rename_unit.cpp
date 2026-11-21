@@ -1,8 +1,8 @@
 #include "rename_unit.h"
+#include "perf/perf_def.h"
 #include "rob/rob.h"
 #include "issue/issue_unit.h"
 #include "isa/opcode.h"
-#include "perf/perf_def.h"
 #include "regfile_unit.h"
 #include "vregfile_unit.h"
 #include "tregfile_unit.h"
@@ -14,6 +14,16 @@ bool is_lsq_type(InstType type)
 {
     return type == InstType::LOAD || type == InstType::STA
         || type == InstType::STD || type == InstType::STORE;
+}
+
+void note_rename_stall(PerfStats& stats, BubbleCause cause)
+{
+    if (!stats.perf()) {
+        return;
+    }
+    if (stats.rename_stall == BubbleCause::None) {
+        stats.rename_stall = cause;
+    }
 }
 
 void mark_ptag_used(std::vector<bool>& used, i32 ptag)
@@ -61,6 +71,9 @@ RenameUnit::RenameUnit(const RenameConfig& conf, const RenameDeps& deps)
 
 void RenameUnit::tick() {
     flush();
+    if (m_stats.perf()) {
+        m_stats.rename_stall = BubbleCause::None;
+    }
     r2();
     r1();
     r0();
@@ -279,6 +292,7 @@ void RenameUnit::r1() {
                 if (m_stats.perf()) {
                     ++m_stats.rename.free_list_stall_cycles;
                 }
+                note_rename_stall(m_stats, BubbleCause::FreeList);
                 LOG_LEVEL1("RenameUnit R1", "free list stall, pc:0x%lx, inst: %s, fetch id: %lu",
                     inst->pc, inst->inst_name.c_str(), inst->fetch_id);
                 break;
@@ -286,10 +300,18 @@ void RenameUnit::r1() {
             if (needs_vec_free_entry(inst)) {
                 const u32 need = inst->lmul > 1 ? inst->lmul : 1;
                 if (m_vfree_list.size() < need) {
+                    if (m_stats.perf()) {
+                        ++m_stats.rename.vec_free_list_stall_cycles;
+                    }
+                    note_rename_stall(m_stats, BubbleCause::VecFreeList);
                     break;
                 }
             }
             if (needs_tile_free_entry(inst) && m_tfree_list.empty()) {
+                if (m_stats.perf()) {
+                    ++m_stats.rename.tile_free_list_stall_cycles;
+                }
+                note_rename_stall(m_stats, BubbleCause::TileFreeList);
                 break;
             }
 
@@ -329,6 +351,7 @@ void RenameUnit::r1() {
 
 void RenameUnit::r2() {
     size_t n = 0;
+    bool stalled = false;
     while (n < m_rename_width && !m_r2_buf.empty()) {
         MInstPtr inst = m_r2_buf.front();
         if (!inst || !inst->valid) {
@@ -341,9 +364,20 @@ void RenameUnit::r2() {
             if (m_stats.perf()) {
                 ++m_stats.rename.rob_full_stall_cycles;
             }
+            note_rename_stall(m_stats, BubbleCause::Rob);
+            stalled = true;
             break;
         }
         if (!lsq_resources_available(inst)) {
+            if (m_stats.perf()) {
+                if (inst->type == InstType::LOAD) {
+                    ++m_stats.rename.lq_full_stall_cycles;
+                } else {
+                    ++m_stats.rename.sq_full_stall_cycles;
+                }
+            }
+            note_rename_stall(m_stats, BubbleCause::Lsq);
+            stalled = true;
             break;
         }
 
@@ -391,6 +425,9 @@ void RenameUnit::r2() {
         save_branch_checkpoint(inst);
         m_r2_buf.pop_front();
         ++n;
+    }
+    if (m_stats.perf() && n > 0 && !stalled) {
+        m_stats.rename_stall = BubbleCause::None;
     }
 }
 

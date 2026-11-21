@@ -9,6 +9,7 @@
 #include "pseudo_lru.h"
 #include "config.h"
 #include "module_comm.h"
+#include "perf/perf_def.h"
 
 // --------------------------- Generic Cache ------------------------------
 struct LineMeta { bool valid=false; u64 tag=0; bool dirty=false; u64 last_access=0; };
@@ -29,8 +30,6 @@ typedef struct MemResp {
     bool access_fault { false };
     u64 epoch { 0 };
 } MemResp;
-
-typedef struct CacheStats { u64 accesses=0, hits=0, misses=0, total_latency=0; } CacheStats;
 
 class GCache {
     struct PendingStore {
@@ -57,7 +56,7 @@ public:
     void                                register_upper(GCache* up);
 
     // Stats
-    CacheStats                               get_stats() const { return m_stats; }
+    CacheStats                          get_stats() const { return m_stats; }
 
     // async fetch returns future completing with data; records latency into stats when fulfilled
     SimpleFuture<MemResp>               fetch_line_async(MemReq req);

@@ -30,6 +30,8 @@ private:
     void                                inst_resolve();
     void                                flush();
     bool                                should_flush(const ROBID& rid) const;
+    void                                note_retire(const MInstPtr& inst);
+    void                                note_head_not_ready(InstType type);
 
 private:
     u32                                 m_commit_width;

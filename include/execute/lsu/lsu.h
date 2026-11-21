@@ -99,6 +99,10 @@ public:
 
     LSUStallType                        stall_type() const { return m_stall; }
 
+    // 性能统计：在途未完成 Load / Store 资源受限
+    bool                                has_outstanding_load() const;
+    bool                                store_resource_limited() const;
+
     int                                 alloc_load_entry();
     int                                 alloc_store_entry();
     void                                replay(LQEntry& load_entry);

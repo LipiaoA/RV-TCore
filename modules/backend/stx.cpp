@@ -52,6 +52,15 @@ void STD::fwd_bypass()
 
 void STD::tick()
 {
+    if (m_stats.perf()) {
+        bool busy = m_input_latch.valid;
+        for (i32 i = 0; i < m_stages; ++i) {
+            busy = busy || m_pipe[i].valid;
+        }
+        if (busy) {
+            ++m_stats.fu[static_cast<u32>(m_fu_type)][m_idx].busy_cycles;
+        }
+    }
     E0();
     R1();
     dump_states();

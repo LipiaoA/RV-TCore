@@ -172,6 +172,27 @@ bool LSU::stq_full() const
     return wrap_inc(m_stq_tail, m_store_q_size) == m_stq_head;
 }
 
+bool LSU::has_outstanding_load() const
+{
+    for (const auto& e : lsu_ld_q) {
+        if (e.valid && !e.succeeded && !e.retired) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool LSU::store_resource_limited() const
+{
+    if (stq_full() || m_store_buffer.is_full()) {
+        return true;
+    }
+    if (m_stall == STORE_BUFFER_FULL) {
+        return true;
+    }
+    return false;
+}
+
 void LSU::update_live_store_mask()
 {
     m_live_store_mask[0] = 0;
@@ -763,6 +784,13 @@ void LSU::note_sb_write(const SBEntry& written)
 
 void LSU::replay_load(LQEntry& entry, bool sb_wait)
 {
+    if (m_stats.perf()) {
+        if (sb_wait) {
+            ++m_stats.load_replay_sb;
+        } else {
+            ++m_stats.load_replay_alias;
+        }
+    }
     recover_load_misspec(entry, nullptr);
     entry.sb_conflict = false;
     if (!sb_wait) {
@@ -1534,6 +1562,10 @@ void LSU::replay(LQEntry& load_entry)
     load_entry.state = WAIT_SQ_CHECK;
     // waiting_on_store / wait_store_id 由 recover_load_misspec 或下一拍 store_set_block 填写。
     if (load_entry.uop) {
+        if (m_stats.perf() && load_entry.uop->perf_issued_uops > 0) {
+            m_stats.issue.replayed_uops += load_entry.uop->perf_issued_uops;
+            load_entry.uop->perf_issued_uops = 0;
+        }
         load_entry.uop->state = InstState::REPLAY;
         load_entry.uop->executed = false;
     }

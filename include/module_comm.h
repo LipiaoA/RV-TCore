@@ -47,7 +47,6 @@ struct FetchInst {
     u8  size { 4 };      // 指令字节数（支持 2/4/8 等变长）
 };
 
-
 constexpr u64 EXC_INSTR_ACCESS_FAULT = 1;
 constexpr u64 EXC_INSTR_PAGE_FAULT   = 12;
 
@@ -634,6 +633,7 @@ typedef struct STDDeps {
 
 typedef struct {
     FlushEvent*                 flush_event { nullptr };
+    PerfStats*                  perf_stats { nullptr };
 } ROBDeps;
 
 typedef struct {

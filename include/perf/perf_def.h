@@ -1,7 +1,31 @@
 #ifndef PERF_DEF_H
 #define PERF_DEF_H
 
+#include <array>
+
 #include "util/util.h"
+
+typedef struct CacheStats {
+    u64 accesses { 0 };
+    u64 hits { 0 };
+    u64 misses { 0 };
+    u64 total_latency { 0 };
+} CacheStats;
+
+enum class BubbleCause : u8 {
+    None = 0,
+    Recovery,
+    NoReady,
+    Lsq,
+    Rob,
+    FreeList,
+    VecFreeList,
+    TileFreeList,
+    ICache,
+    FetchBw,
+    FuBusy,
+    COUNT
+};
 
 enum class PerfEventType : u8 {
     BranchMispredict,
@@ -59,7 +83,11 @@ struct PerfStats {
         u64 fetch_bubbles { 0 };
         u64 recovery_slots { 0 };
 
+        u64 latency { 0 };
+        u64 bandwidth { 0 };
+
         u64 fetch_id { 0 };
+        bool icache_wait { false };
     };
 
     struct RenameStats {
@@ -68,15 +96,25 @@ struct PerfStats {
         u64 dispatched_insts { 0 };
         u64 rob_full_stall_cycles { 0 };
         u64 free_list_stall_cycles { 0 };
+        u64 lq_full_stall_cycles { 0 };
+        u64 sq_full_stall_cycles { 0 };
+        u64 vec_free_list_stall_cycles { 0 };
+        u64 tile_free_list_stall_cycles { 0 };
         u64 flushed_insts { 0 };
     };
 
     struct IssueStats {
         u64 selected_insts { 0 };
         u64 issued_insts { 0 };
+        u64 retired_uops { 0 };
+        u64 flushed_uops { 0 };
+        u64 replayed_uops { 0 };
+        u64 inflight_uops { 0 };
         u64 fu_busy_count { 0 };  // 因端口繁忙而未发射指令总次数
         u64 flushed_insts { 0 };
         u64 no_ready_inst_cycles { 0 }; // 因未就绪而未发射指令总周期数
+        std::array<u64, MAX_FLUSH_COUNT> flushed_uops_by_type {};
+        std::array<u64, MAX_FLUSH_COUNT> recovery_slots_by_type {};
     };
 
     struct FuStats {
@@ -88,13 +126,19 @@ struct PerfStats {
         u64 fail_direction { 0 };
         u64 succ_target { 0 };
         u64 fail_target { 0 };
+        u64 busy_cycles { 0 };
     };
 
     struct CommitStats {
+        constexpr static u32 MAX_INST_TYPES = 16;
         u64 resolved_insts { 0 };
         u64 retired_insts { 0 };
         u64 rob_empty_cycles { 0 };
         u64 head_not_ready_cycles { 0 };
+        u64 head_not_ready_load { 0 };
+        u64 head_not_ready_store { 0 };
+        u64 head_not_ready_other { 0 };
+        std::array<u64, MAX_INST_TYPES> retired_by_type {};
     };
 
     struct FlushStats {
@@ -111,6 +155,18 @@ struct PerfStats {
     FuStats fu[MAX_FLUSH_COUNT][MAX_FU_NUM];
     CommitStats commit;
     FlushStats flush;
+    std::array<u64, static_cast<size_t>(BubbleCause::COUNT)> bubble_slots {};
+    BubbleCause rename_stall { BubbleCause::None };
+    CacheStats icache {};
+    CacheStats dcache {};
+    CacheStats itlb {};
+    CacheStats dtlb {};
+    u64 load_replay_sb { 0 };
+    u64 load_replay_alias { 0 };
+
+    // MemStalls（按周期计数，供 Memory Bound = (AnyLoad+Stores)/Clocks）
+    u64 mem_stall_any_load { 0 };
+    u64 mem_stall_stores { 0 };
 
     inline bool perf() const
     {
@@ -119,7 +175,9 @@ struct PerfStats {
 
     void reset()
     {
+        const u64 level = stats_level;
         *this = PerfStats {};
+        stats_level = level;
     }
 
     double ipc() const

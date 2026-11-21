@@ -36,7 +36,8 @@ typedef struct TopdownRes {
     u64 total_cycles { 0 };
     u64 total_slots { 0 };
     u64 total_insts { 0 };
-
+    u64 inflight_uops { 0 };
+    u32 issue_width { 0 };
 
     f64 ipc {0.0};
     // Top Level
@@ -44,12 +45,13 @@ typedef struct TopdownRes {
     f64 retiring { 0.0 };
     f64 frontend_bound { 0.0 };
     f64 backend_bound { 0.0 };
+    f64 unaccounted { 0.0 };
 
     // Bad Speculation
-    u64 branch_mispredict_slots;
-    u64 load_replay_slots;
-    u64 memory_order_violation_slots;
-    u64 other_flush_slots;
+    u64 branch_mispredict_slots { 0 };
+    u64 load_replay_slots { 0 };
+    u64 memory_order_violation_slots { 0 };
+    u64 other_flush_slots { 0 };
 
     f64 branch_mispredict { 0.0 };
     f64 load_replay { 0.0 };
@@ -60,6 +62,10 @@ typedef struct TopdownRes {
 
     f64 memory_bound = 0.0;
     f64 core_bound = 0.0;
+
+    // MemStalls 原始周期计数
+    u64 mem_stall_any_load { 0 };
+    u64 mem_stall_stores { 0 };
 } TopdownRes;
 
 class Topdown {
@@ -72,6 +78,7 @@ public:
 
     void                        print_results();
     void                        print_stats();
+    const TopdownRes&           result() const { return m_res; }
 private:
     PerfStats&                  m_stats;
     TopdownRes                  m_res;

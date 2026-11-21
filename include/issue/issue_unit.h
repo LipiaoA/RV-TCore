@@ -4,6 +4,7 @@
 #include "intf.h"
 #include "module_comm.h"
 #include "decode/inst.h"
+#include "perf/perf_def.h"
 #include <deque>
 #include <unordered_set>
 #include "config.h"
@@ -42,6 +43,10 @@ private:
     void                                apply_replay_to_inst(MInstPtr inst, i32 ptag, bool kill_sta, bool kill_std);
     void                                handle_dep_kill(const WakeupEvent& event);
     void                                clean_bypass_hint();
+    BubbleCause                         classify_bubble() const;
+    void                                account_issue_slots(u32 int_issued, u32 ls_issued, u64 fu_busy);
+    void                                account_mem_stalls(u32 issued_uops);
+    bool                                rob_head_store_blocked() const;
 
 private:
     std::vector<MInstPtr>               m_int_q;

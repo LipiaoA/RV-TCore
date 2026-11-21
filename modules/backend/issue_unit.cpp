@@ -69,17 +69,33 @@ void IssueUnit::apply_replay_to_inst(MInstPtr inst, i32 ptag, bool kill_sta, boo
         return;
     }
 
+    auto note_replayed = [&](u32 wasted) {
+        if (!m_stats.perf() || wasted == 0) {
+            return;
+        }
+        m_stats.issue.replayed_uops += wasted;
+        if (inst->perf_issued_uops >= wasted) {
+            inst->perf_issued_uops -= wasted;
+        } else {
+            inst->perf_issued_uops = 0;
+        }
+    };
+
     if (inst->type == InstType::STORE) {
-        if (kill_sta) {
+        u32 wasted = 0;
+        if (kill_sta && inst->sta_iss) {
+            ++wasted;
             inst->sta_iss = false;
             inst->sta_done = false;
             inst->addr_ready = false;
         }
-        if (kill_std) {
+        if (kill_std && inst->std_iss) {
+            ++wasted;
             inst->std_iss = false;
             inst->std_done = false;
             inst->data_ready = false;
         }
+        note_replayed(wasted);
         inst->store_issue_half = StoreIssueHalf::NONE;
         inst->state = InstState::REPLAY;
         m_exec.squash_rid(inst->rid, ptag);
@@ -113,6 +129,7 @@ void IssueUnit::apply_replay_to_inst(MInstPtr inst, i32 ptag, bool kill_sta, boo
         }
     }
 
+    note_replayed(inst->perf_issued_uops);
     inst->state = InstState::REPLAY;
     m_exec.squash_rid(inst->rid, ptag);
     m_rob.mark_not_ready(inst->rid);
@@ -518,7 +535,9 @@ void IssueUnit::issue()
     retire_executed(m_fp_q);
     retire_executed(m_vec_q);
     retire_executed(m_tensor_q);
-    if ((!m_int_q.empty() && !m_ls_q.empty() && m_fp_q.empty() && m_select_buffer.empty())) {
+    if (m_select_buffer.empty()
+        && (!m_int_q.empty() || !m_ls_q.empty() || !m_fp_q.empty()
+            || !m_vec_q.empty() || !m_tensor_q.empty())) {
         if (m_stats.perf()) {
             ++m_stats.issue.no_ready_inst_cycles;
         }
@@ -544,10 +563,10 @@ void IssueUnit::issue()
         bool ret = m_exec.dispatch(inst);
         if (m_stats.perf() && ret) {
             ++m_stats.issue.issued_insts;
+            ++inst->perf_issued_uops;
             if (inst->fetch_id == m_stats.frontend.fetch_id) {
                 m_stats.frontend.fetch_id = 0;
             }
-
         }
         if (!ret) {
             inst->store_issue_half = StoreIssueHalf::NONE;
@@ -617,15 +636,106 @@ void IssueUnit::issue()
     m_select_buffer.clear();
     clean_bypass_hint();
     if (m_stats.perf()) {
-        const FuStates& fu_states = m_exec.get_fu_states();
-        u32 i_empty = m_int_issue_width - int_issued + m_ls_issue_width - ls_issued;
-        u32 e_empty = fu_states.alu_aval + fu_states.bru_aval + fu_states.agu_aval + fu_states.std_aval;
+        account_issue_slots(int_issued, ls_issued, fu_busy);
+    }
+}
 
-        m_stats.frontend.fetch_bubbles += std::min(i_empty, e_empty);
+BubbleCause IssueUnit::classify_bubble() const
+{
+    if (m_stats.frontend.fetch_id != 0) {
+        return BubbleCause::Recovery;
+    }
+    if (!m_int_q.empty() || !m_ls_q.empty() || !m_fp_q.empty()
+        || !m_vec_q.empty() || !m_tensor_q.empty()) {
+        return BubbleCause::NoReady;
+    }
+    switch (m_stats.rename_stall) {
+    case BubbleCause::Lsq:
+    case BubbleCause::Rob:
+    case BubbleCause::FreeList:
+    case BubbleCause::VecFreeList:
+    case BubbleCause::TileFreeList:
+        return m_stats.rename_stall;
+    default:
+        break;
+    }
+    if (m_stats.frontend.icache_wait) {
+        return BubbleCause::ICache;
+    }
+    return BubbleCause::FetchBw;
+}
 
-        if (m_stats.frontend.fetch_id != 0) {
-            m_stats.frontend.recovery_slots += std::min(i_empty, e_empty);
-        }
+void IssueUnit::account_issue_slots(u32 int_issued, u32 ls_issued, u64 fu_busy)
+{
+    m_stats.issue.fu_busy_count += fu_busy;
+
+    u32 i_empty = 0;
+    if (m_int_issue_width > int_issued) {
+        i_empty += static_cast<u32>(m_int_issue_width - int_issued);
+    }
+    if (m_ls_issue_width > ls_issued) {
+        i_empty += static_cast<u32>(m_ls_issue_width - ls_issued);
+    }
+    const FuStates& fu_states = m_exec.get_fu_states();
+    const u32 e_empty = fu_states.alu_aval + fu_states.bru_aval
+        + fu_states.agu_aval + fu_states.std_aval;
+    const u32 bubble_n = std::min(i_empty, e_empty);
+    const u32 fu_limited = i_empty - bubble_n;
+    const BubbleCause cause = classify_bubble();
+
+    m_stats.bubble_slots[static_cast<size_t>(cause)] += bubble_n;
+    m_stats.bubble_slots[static_cast<size_t>(BubbleCause::FuBusy)] += fu_limited;
+    m_stats.frontend.fetch_bubbles += bubble_n;
+    if (cause == BubbleCause::Recovery) {
+        m_stats.frontend.recovery_slots += bubble_n;
+        // fetch_id 目前仅在 BRANCH_MISPRED 时置位
+        const size_t typ = static_cast<size_t>(FlushType::BRANCH_MISPRED);
+        m_stats.issue.recovery_slots_by_type[typ] += bubble_n;
+    }
+
+    account_mem_stalls(int_issued + ls_issued);
+}
+
+bool IssueUnit::rob_head_store_blocked() const
+{
+    if (!m_lsu) {
+        return false;
+    }
+    auto head = m_rob.head();
+    if (!head || !head->valid || !head->inst || !head->inst->valid) {
+        return false;
+    }
+    if (head->inst->type != InstType::STORE) {
+        return false;
+    }
+    return !m_lsu->store_commit_ready(head->inst->rid);
+}
+
+void IssueUnit::account_mem_stalls(u32 issued_uops)
+{
+    if (!m_lsu) {
+        return;
+    }
+
+    // MemStalls.AnyLoad：本拍没有 uop 发射执行，且存在尚未完成的在途 Load
+    if (issued_uops == 0 && m_lsu->has_outstanding_load()) {
+        ++m_stats.mem_stall_any_load;
+        return;
+    }
+
+    // MemStalls.Stores：吞吐偏低，同时 Store 资源/发射条件卡住后续执行
+    const u32 width = static_cast<u32>(m_int_issue_width + m_ls_issue_width);
+    const bool low_throughput = width == 0 ? (issued_uops == 0) : (issued_uops * 2 <= width);
+    if (!low_throughput) {
+        return;
+    }
+
+    const bool store_limited =
+        m_stats.rename_stall == BubbleCause::Lsq
+        || m_lsu->store_resource_limited()
+        || rob_head_store_blocked();
+    if (store_limited) {
+        ++m_stats.mem_stall_stores;
     }
 }
 

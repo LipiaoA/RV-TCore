@@ -4,6 +4,7 @@
 
 #include "rv_def.h"
 #include "util.h"
+#include "perf/perf_def.h"
 
 struct TLBResult { bool ok; u64 pa; bool page_fault; std::string reason; };
 
@@ -22,6 +23,7 @@ public:
 
     // Asynchronous translate that models PTW across levels and possible faults.
     SimpleFuture<TLBResult>                     translate_async(u64 va);
+    const CacheStats&                           stats() const { return m_stats; }
 
 private:
     CycleScheduler*                             m_sched;
@@ -29,7 +31,8 @@ private:
     std::vector<PTWLevelConfig>                 m_levels;
     std::unordered_map<u64,u64>                 m_map; // vpn -> pfn
     std::mutex                                  m_mtx;
-    bool                                        m_use_vpn;
+    bool                                        m_use_vpn { false };
+    CacheStats                                  m_stats {};
 };
 
 #endif

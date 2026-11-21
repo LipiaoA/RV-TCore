@@ -46,6 +46,7 @@ public:
     bool                                 is_older_than(const ROBID& a, const ROBID& b) const;
 private:
     ROBID                               next_id(ROBID id) const;
+    void                                account_flushed(RobEntry& entry, FlushType type);
 
 private:
     RobEntry                            m_entries[MAX_ROB_ENTRIES];
@@ -56,6 +57,7 @@ private:
     ROBID                               m_head { 0, 0 };
     // 指向最后一个有效 entry的下一个位置，用于分配新的 ROBID
     ROBID                               m_tail { 0, 0 };
+    PerfStats*                          m_stats { nullptr };
 };
 
 #endif

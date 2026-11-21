@@ -46,6 +46,7 @@ void Model::run() {
             break;
         }
     }
+    m_top->collect_mem_stats();
     m_topdown->analyze();
     m_topdown->report();
     return;

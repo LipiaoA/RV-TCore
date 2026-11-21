@@ -162,6 +162,7 @@ void Top::build() {
 
     ROBDeps rob_deps;
     rob_deps.flush_event = m_comm_queues.flush_event;
+    rob_deps.perf_stats = m_perf_stats;
     m_rob = new ROB(rob_conf, rob_deps);
 
     IFetchDeps fetch_deps;
@@ -354,6 +355,22 @@ void Top::build() {
     flush_deps.flush_req_q = m_comm_queues.flush_req_q;
     flush_deps.perf_stats = m_perf_stats;
     m_flush = new FlushUnit(flush_conf, flush_deps);
+}
+
+void Top::collect_mem_stats()
+{
+    if (!m_perf_stats || !m_icache || !m_dcache || !m_itlb || !m_dtlb) {
+        assert(false);
+        return;
+    }
+
+    m_perf_stats->icache = m_icache->get_stats();
+    m_perf_stats->frontend.icache_miss_count = m_perf_stats->icache.misses;
+
+    m_perf_stats->dcache = m_dcache->get_stats();
+    m_perf_stats->itlb = m_itlb->stats();
+    m_perf_stats->frontend.itlb_miss_count = m_perf_stats->itlb.misses;
+    m_perf_stats->dtlb = m_dtlb->stats();
 }
 
 CoreDeps Top::get_core_deps() {
